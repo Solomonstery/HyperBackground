@@ -1,0 +1,35 @@
+name: 构建 LSPosed 模块
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: 构建 HyperBackground
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+      - name: 配置 Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: 安装 Android SDK 组件
+        shell: bash
+        run: |
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.1"
+      - name: 构建 LSPosed 模块 APK
+        shell: bash
+        run: |
+          chmod +x build.sh
+          ./build.sh
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HyperBackground-v1.1.0
+          path: dist/HyperBackground-v1.1.0.apk
+          if-no-files-found: error

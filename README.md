@@ -1,53 +1,80 @@
-# HyperBackground 1.1.0
+# HyperBackground 1.1.1
 
-面向 HyperOS 4 / Android 17 设置应用的 LSPosed 背景模块。
+面向 HyperOS 4 / Android 17 设置应用的 LSPosed 背景自定义模块。
 
-## 1.1.0 新增
+> 当前维护版本：**1.1.1**。1.1.0 已跳过，不再作为当前构建版本。
 
-- **设置主页独立通道**：主页图片、透明度、模糊开关和模糊强度均单独保存。
-- **全局设置背景通道**：作用于其他 Settings 页面，明确排除设置主页与“我的设备”。
-- **“我的设备”继续保持独立通道**：保留原 RuntimeShader 抑制/恢复逻辑，并同样支持透明度与模糊。
-- **透明度调节**：0–100%。
-- **背景模糊**：独立开关，0–80 强度，Android 12+ 使用 RenderEffect。
-- **强制字体颜色**：跟随系统 / 强制浅色 / 强制深色。
-- **MIUIX 风格配置页**：卡片式布局、圆角控件、浅色 HyperOS 风格。
-- **Monet 主题色**：配置页默认从系统壁纸主色自动取色。
-- **调色盘**：可输入 `#RRGGBB` 自定义模块主题色，使用自定义颜色时自动关闭 Monet。
-- **作者卡片**：制作者“苍簇”，点击打开酷安主页。
+## 功能
 
-## 三通道规则
+### 设置主页
 
-1. `home`：只作用于 `com.android.settings.MiuiSettings`。
-2. `global`：作用于其他 `SettingsActivity` 页面，但在“我的设备”Fragment 激活时自动撤下。
-3. `device`：只作用于 `com.android.settings.device.MiuiMyDeviceSettings`，不会被全局背景覆盖。
+- 自定义 JPG / PNG / WebP / GIF 背景
+- 独立透明度调节
+- 独立背景模糊开关与模糊强度
+- 与“我的设备”通道完全独立
 
-因此主页和全局是完全独立的配置，不存在“全局图覆盖主页图”的优先级问题。
+### 我的设备
+
+- 独立自定义背景
+- 支持图片、GIF / 动态 WebP
+- 支持无声循环 MP4 / WebM
+- 独立透明度调节
+- 独立背景模糊开关与模糊强度
+- 保留针对 HyperOS“我的设备”页面的 RuntimeShader 背景处理
+
+## 1.1.1 变更
+
+- **移除全局背景通道**：不再 Hook 通用 Settings 页面，从根本上避免全局背景干涉主页或“我的设备”。
+- **双通道隔离**：现在仅保留“设置主页”和“我的设备”，两者配置与 Hook 路径互相独立。
+- **可视化主题调色盘**：不再只依赖手动输入 `#RRGGBB`，加入实时颜色预览、HSV 调节、HEX 同步与快捷颜色。
+- **Monet 主题色**：模块配置界面可继续根据系统壁纸取色，也可以切换到自定义颜色。
+- **强制字体颜色模式**：支持跟随系统 / 强制浅色 / 强制深色。
+- **界面优化**：配置页继续采用面向 HyperOS 的卡片式布局。
+- **作者信息**：制作者 **苍簇**，作者卡片可跳转酷安主页。
+
+## 通道规则
+
+1. `home`：仅作用于 `com.android.settings.MiuiSettings` 设置主页。
+2. `device`：仅作用于 `com.android.settings.device.MiuiMyDeviceSettings` “我的设备”页面。
+
+**1.1.1 不再提供 global / 全局背景通道。**
 
 ## 文件支持
 
-- 主页：JPG / PNG / WebP / GIF。
-- 全局：JPG / PNG / WebP / GIF。
-- 我的设备：图片、GIF / 动态 WebP、无声循环 MP4 / WebM。
-- 单文件最大 200 MB。
+- 设置主页：JPG / PNG / WebP / GIF
+- 我的设备：图片、GIF / 动态 WebP、无声循环 MP4 / WebM
+- 单文件最大 200 MB
 
 ## 生效方式
 
-配置修改后重新进入对应 Settings 页面即可。透明度、模糊、文字模式都会进入背景缓存键，返回设置页面时会重新读取配置。
+修改配置后重新进入对应 Settings 页面。主页和“我的设备”分别读取自己的背景、透明度和模糊配置。
 
-## Hook 说明
+## Hook 范围
 
-- 首页：`com.android.settings.MiuiSettings`。
-- 全局：`com.android.settings.SettingsActivity#onResume/onStop`。
-- 我的设备：`com.android.settings.device.MiuiMyDeviceSettings`。
-- 模块仅作用域 `com.android.settings`。
+- 设置主页：`com.android.settings.MiuiSettings`
+- 我的设备：`com.android.settings.device.MiuiMyDeviceSettings`
+- LSPosed 作用域：`com.android.settings`
 
-## 本地构建
+## 构建
 
-项目需要 Android SDK Platform 35、Build Tools 35.0.1、Java 17。
+GitHub Actions 当前只构建：
 
-```sh
-chmod +x build.sh
-./build.sh
-```
+`HyperBackground-v1.1.1-source.zip`
 
-输出：`dist/HyperBackground-v1.1.0.apk`。
+构建环境：
+
+- Java 17
+- Android SDK Platform 35
+- Android Build Tools 35.0.1
+
+构建产物：
+
+`HyperBackground-v1.1.1.apk`
+
+发布 APK 会校验固定签名证书指纹，防止意外产生不同签名的安装包。
+
+## 作者
+
+**苍簇**
+
+酷安主页：https://www.coolapk.com/u/18795532

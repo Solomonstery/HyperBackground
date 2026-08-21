@@ -31,8 +31,25 @@ jobs:
           yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.1"
 
+      - name: 恢复固定发布签名
+        shell: bash
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "未配置固定发布签名 RELEASE_KEYSTORE_BASE64，拒绝生成不同签名的 APK。"
+            exit 1
+          fi
+          mkdir -p signing
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > signing/hyperbackground-release.jks
+
       - name: 构建 LSPosed 模块 APK
         shell: bash
+        env:
+          SIGNING_KEYSTORE: ${{ github.workspace }}/signing/hyperbackground-release.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
         run: |
           chmod +x build.sh
           ./build.sh

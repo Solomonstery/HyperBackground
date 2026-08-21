@@ -1,25 +1,53 @@
-name: 构建 LSPosed 模块
+name: 构建并发布 LSPosed 模块
 
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'HyperBackground-v*-source.zip'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    name: 构建 HyperBackground 1.1.1
+    name: 自动构建最新版本
     runs-on: ubuntu-latest
     steps:
       - name: 检出项目
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: 校验并解压 1.1.1 源码
+      - name: 选择版本号最高的源码包
+        id: version
         shell: bash
         run: |
-          test -f HyperBackground-v1.1.1-source.zip
-          unzip -t HyperBackground-v1.1.1-source.zip
+          shopt -s nullglob
+          files=(HyperBackground-v*-source.zip)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo '没有找到 HyperBackground-v*-source.zip'
+            exit 1
+          fi
+          SOURCE="$(printf '%s\n' "${files[@]}" | sort -V | tail -n 1)"
+          VERSION="${SOURCE#HyperBackground-v}"
+          VERSION="${VERSION%-source.zip}"
+          echo "source=$SOURCE" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "apk=HyperBackground-v$VERSION.apk" >> "$GITHUB_OUTPUT"
+          echo "选择源码：$SOURCE"
+          echo "构建版本：$VERSION"
+
+      - name: 校验并解压源码
+        shell: bash
+        env:
+          SOURCE: ${{ steps.version.outputs.source }}
+        run: |
+          unzip -t "$SOURCE"
           rm -rf HyperBackground
-          unzip -o HyperBackground-v1.1.1-source.zip
+          unzip -o "$SOURCE"
           test -f HyperBackground/app/src/main/AndroidManifest.xml
           test -f HyperBackground/build.sh
           test -f HyperBackground/signing/hyperbackground-debug.jks
@@ -34,7 +62,7 @@ jobs:
         shell: bash
         run: |
           yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.1"
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.1'
 
       - name: 构建 LSPosed 模块 APK
         shell: bash
@@ -45,22 +73,42 @@ jobs:
           chmod +x build.sh
           ./build.sh
 
-      - name: 校验发布签名
+      - name: 校验版本与固定签名
         shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          APK_NAME: ${{ steps.version.outputs.apk }}
         run: |
-          EXPECTED="8C:79:74:AD:4C:33:97:FB:23:11:F6:B4:E4:7B:F8:93:63:06:DB:F2:B7:97:C2:20:80:66:ED:F4:15:EC:40:A9"
-          APK="HyperBackground/dist/HyperBackground-v1.1.1.apk"
-          test -f "$APK"
+          EXPECTED='8C:79:74:AD:4C:33:97:FB:23:11:F6:B4:E4:7B:F8:93:63:06:DB:F2:B7:97:C2:20:80:66:ED:F4:15:EC:40:A9'
+          APK="$(find HyperBackground/dist -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          ACTUAL_VERSION="$($ANDROID_SDK_ROOT/build-tools/35.0.1/aapt2 dump badging "$APK" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -n 1)"
+          echo "源码包版本：$VERSION"
+          echo "APK 实际版本：$ACTUAL_VERSION"
+          test "$ACTUAL_VERSION" = "$VERSION"
           RAW="$($ANDROID_SDK_ROOT/build-tools/35.0.1/apksigner verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
           ACTUAL="$(printf '%s' "$RAW" | tr '[:lower:]' '[:upper:]' | sed 's/../&:/g;s/:$//')"
-          echo "期望指纹：$EXPECTED"
-          echo "实际指纹：$ACTUAL"
+          echo "签名指纹：$ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
-          echo "签名校验通过。"
+          cp "$APK" "$APK_NAME"
 
-      - name: 上传 APK
+      - name: 上传 Actions 产物
         uses: actions/upload-artifact@v4
         with:
-          name: HyperBackground-v1.1.1
-          path: HyperBackground/dist/HyperBackground-v1.1.1.apk
+          name: HyperBackground-v${{ steps.version.outputs.version }}
+          path: HyperBackground-v${{ steps.version.outputs.version }}.apk
           if-no-files-found: error
+
+      - name: 发布到 GitHub Releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          APK_NAME: ${{ steps.version.outputs.apk }}
+        run: |
+          TAG="v$VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK_NAME" --clobber
+          else
+            gh release create "$TAG" "$APK_NAME" --title "HyperBackground $VERSION" --generate-notes
+          fi

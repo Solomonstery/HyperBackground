@@ -49,14 +49,14 @@ jobs:
         shell: bash
         run: |
           EXPECTED="8C:79:74:AD:4C:33:97:FB:23:11:F6:B4:E4:7B:F8:93:63:06:DB:F2:B7:97:C2:20:80:66:ED:F4:15:EC:40:A9"
-          APK="$(find HyperBackground/dist -maxdepth 1 -type f -name '*.apk' | head -n 1)"
-          test -n "$APK"
+          APK="HyperBackground/dist/HyperBackground-v1.1.1.apk"
+          test -f "$APK"
           RAW="$($ANDROID_SDK_ROOT/build-tools/35.0.1/apksigner verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
           ACTUAL="$(printf '%s' "$RAW" | tr '[:lower:]' '[:upper:]' | sed 's/../&:/g;s/:$//')"
           echo "期望指纹：$EXPECTED"
           echo "实际指纹：$ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
-          cp "$APK" HyperBackground/dist/HyperBackground-v1.1.1.apk
+          echo "签名校验通过。"
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4

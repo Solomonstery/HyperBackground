@@ -21,10 +21,16 @@ mapfile -t APP_SOURCES < <(find "$PROJECT_DIR/app/src/main/java" "$BUILD_DIR/gen
 (cd "$BUILD_DIR/dex" && zip -q -u "$BUILD_DIR/unsigned.apk" classes.dex)
 (cd "$PROJECT_DIR/module-meta" && zip -q -u "$BUILD_DIR/unsigned.apk" META-INF/xposed/scope.list)
 "$BUILD_TOOLS/zipalign" -f 4 "$BUILD_DIR/unsigned.apk" "$BUILD_DIR/aligned.apk"
-KEYSTORE="$SIGNING_DIR/hyperbackground-build.jks"
-if [[ ! -f "$KEYSTORE" ]]; then "$JAVA_HOME_DIR/bin/keytool" -genkeypair -keystore "$KEYSTORE" -storepass hyperbackground -keypass hyperbackground -alias hyperbackground -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=HyperBackground,O=Cangcu,C=CN" >/dev/null 2>&1; fi
+
+KEYSTORE="${SIGNING_KEYSTORE:-$SIGNING_DIR/hyperbackground-release.jks}"
+STORE_PASSWORD="${SIGNING_STORE_PASSWORD:-}"
+KEY_PASSWORD="${SIGNING_KEY_PASSWORD:-$STORE_PASSWORD}"
+KEY_ALIAS="${SIGNING_KEY_ALIAS:-hyperbackground}"
+[[ -f "$KEYSTORE" ]] || { echo "缺少固定发布签名：$KEYSTORE" >&2; exit 1; }
+[[ -n "$STORE_PASSWORD" ]] || { echo "缺少 SIGNING_STORE_PASSWORD" >&2; exit 1; }
+
 OUTPUT="$DIST_DIR/HyperBackground-v1.1.0.apk"
-"$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias hyperbackground --ks-pass pass:hyperbackground --key-pass pass:hyperbackground --out "$OUTPUT" "$BUILD_DIR/aligned.apk"
+"$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" --ks-pass "pass:$STORE_PASSWORD" --key-pass "pass:$KEY_PASSWORD" --out "$OUTPUT" "$BUILD_DIR/aligned.apk"
 "$BUILD_TOOLS/apksigner" verify --verbose "$OUTPUT"
 "$BUILD_TOOLS/aapt2" dump badging "$OUTPUT" | sed -n '1,8p'
 echo "构建完成：$OUTPUT"

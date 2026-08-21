@@ -1,112 +1,125 @@
 # HyperBackground
 
-面向 HyperOS 4 / Android 17 设置应用的 LSPosed 背景自定义模块。
+一个面向 HyperOS 设置应用的 LSPosed 背景与外观自定义模块。
 
-> 当前开发版本：**1.1.2**  
-> 1.1.0 已跳过；后续构建与发布由 GitHub Actions 自动选择仓库中版本号最高的源码包。
+> 当前版本：**1.1.3**  
+> 主要适配环境：HyperOS 4 / Android 17  
+> LSPosed 作用域：`com.android.settings`
 
 ## 功能
 
-### 设置主页
+### 设置主页背景
 
 - 自定义 JPG / PNG / WebP / GIF 背景
 - 独立透明度调节
-- 独立背景模糊开关与模糊强度
-- 与“我的设备”通道完全独立
+- 独立背景模糊开关
+- 独立模糊强度调节
+- 与“我的设备”背景完全独立
 
-### 我的设备
+### 我的设备背景
 
 - 独立自定义背景
-- 支持图片、GIF / 动态 WebP
+- 支持 JPG / PNG / WebP / GIF
+- 支持动态 WebP
 - 支持无声循环 MP4 / WebM
 - 独立透明度调节
-- 独立背景模糊开关与模糊强度
-- 保留针对 HyperOS“我的设备”页面的 RuntimeShader 背景处理
+- 独立背景模糊开关与强度
+- 针对 HyperOS“我的设备”页面进行独立处理
 
-### 模块界面
+### 设置应用外观
 
-- 跟随系统 / 浅色 / 深色三种界面模式
+可单独控制 `com.android.settings` 的界面模式：
+
+- 跟随系统
+- 强制浅色
+- 强制深色
+
+该功能通过 Settings 应用自身的日夜模式配置实现，不是简单修改卡片背景颜色。
+
+> “设置应用外观”和模块已有的文字颜色控制是两套独立功能。强制 Settings 浅色/深色不会直接修改文字颜色选项的配置值。
+
+### 文字颜色
+
+- 保留独立的文字颜色控制
+- 可用于自定义背景下改善文字可读性
+- 与“设置应用外观”分开配置
+
+### 模块自身界面
+
+- 跟随系统 / 浅色 / 深色
 - 模块本体支持自定义背景
-- 模块背景拥有独立透明度、模糊开关与模糊强度
+- 模块背景透明度调节
+- 背景模糊开关与模糊强度
 - Monet 壁纸取色
 - 可视化 HSV 主题调色盘
-- HEX、色相、饱和度、明度与颜色预览实时同步
-- 应用自定义主题色后保留当前滚动位置
-- 自定义模块图标与作者头像
+- HEX / 色相 / 饱和度 / 明度联动
+- 自定义模块图标
+- 作者信息、酷安主页及 GitHub 仓库入口
 
-## 1.1.2 变更
+## 1.1.3 更新内容
 
-- 修正 APK 实际版本号：`versionName=1.1.2`、`versionCode=3`。
-- 修复自定义主题色后配置页强制跳回顶部的问题。
-- 改进可视化调色盘，相关文字与预览会随当前颜色同步变化。
-- 增加模块本体浅色、深色与跟随系统模式。
-- 增加模块本体自定义背景、透明度及模糊控制。
-- 使用新的自定义模块图标，并同步用于作者头像。
-- 作者区域保留酷安入口，并增加 GitHub 仓库跳转入口。
-- 继续保持“设置主页 / 我的设备”双通道隔离，不恢复全局背景。
+- 新增 **“设置应用外观”**：可让 Settings 单独跟随系统、强制浅色或强制深色。
+- Settings 外观切换改为应用级日夜模式处理，不直接遍历或染色 HyperOS 卡片 View。
+- Settings 外观与原有文字颜色控制彻底分离。
+- 移除实验性的 HyperOS Logo / Logo 自定义文字功能。
+- 保持“设置主页”和“我的设备”两个背景通道互相隔离。
+- 修正源码构建所需的 Xposed API 编译声明。
+- 统一版本信息为 `versionName=1.1.3`、`versionCode=4`。
 
-## 通道规则
+## 背景通道
 
-1. `home`：仅作用于 `com.android.settings.MiuiSettings` 设置主页。
-2. `device`：仅作用于 `com.android.settings.device.MiuiMyDeviceSettings` “我的设备”页面。
+模块目前只保留两个 Settings 背景通道：
 
-模块不提供 `global` 全局背景通道，避免全局 Hook 干涉两个独立页面。
+1. `home`：设置主页
+2. `device`：我的设备
+
+不提供全局背景通道，避免全局 Hook 对主页和“我的设备”造成交叉干涉。
+
+## 使用方法
+
+1. 安装 HyperBackground。
+2. 在 LSPosed 中启用模块。
+3. 作用域勾选 **设置（`com.android.settings`）**。
+4. 强制停止并重新打开设置，或重启设备。
+5. 打开 HyperBackground 配置需要的背景、透明度、模糊和外观选项。
+
+切换“设置应用外观”后，建议彻底退出并重新打开设置，使 Activity 重新初始化主题。
 
 ## 文件支持
 
 - 设置主页：JPG / PNG / WebP / GIF
-- 我的设备：图片、GIF / 动态 WebP、无声循环 MP4 / WebM
-- 单文件最大 200 MB
-
-## 生效方式
-
-修改配置后重新进入对应 Settings 页面。主页和“我的设备”分别读取自己的背景、透明度和模糊配置。
+- 我的设备：JPG / PNG / WebP / GIF / 动态 WebP / 无声循环 MP4 / WebM
+- 单个媒体文件最大 200 MB
 
 ## Hook 范围
 
+- 包名：`com.android.settings`
 - 设置主页：`com.android.settings.MiuiSettings`
 - 我的设备：`com.android.settings.device.MiuiMyDeviceSettings`
-- LSPosed 作用域：`com.android.settings`
 
-## 自动构建与发布
+不同 HyperOS 版本内部实现可能存在差异，因此其他 Android / HyperOS 大版本不保证完全兼容。
 
-仓库根目录中的源码包统一命名为：
+## 自动构建与 Release
+
+源码包使用：
 
 ```text
 HyperBackground-vX.Y.Z-source.zip
 ```
 
-GitHub Actions 会自动扫描这些源码包，并使用版本号排序选择**版本号最高**的一份进行构建。例如同时存在：
+GitHub Actions 会自动选择仓库中版本号最高的源码包，并执行：
 
 ```text
-HyperBackground-v1.1.1-source.zip
-HyperBackground-v1.1.2-source.zip
-```
-
-则自动构建 `1.1.2`。
-
-构建流程：
-
-```text
-选择最新源码包
-→ ZIP 完整性校验
-→ 解压源码
-→ Java 17 / Android SDK 35 编译
-→ 检查 APK 实际 versionName
+源码包完整性检查
+→ 解压并识别工程目录
+→ Java 17 / Android SDK 35 构建
+→ 校验 APK 实际 versionName
 → 校验固定签名证书
 → 上传 Actions Artifact
-→ 自动创建或更新 GitHub Release
+→ 创建或更新 GitHub Release
 ```
 
-如果源码包文件名版本与 APK 内部实际 `versionName` 不一致，构建会直接失败，不会发布错误版本。
-
-构建成功后会同时生成：
-
-- Actions Artifact：`HyperBackground-vX.Y.Z`
-- APK：`HyperBackground-vX.Y.Z.apk`
-- GitHub Release：`vX.Y.Z`
-
-Release 已配置 `contents: write` 权限，可由 Actions 自动创建并附加 APK。
+只有源码包版本与 APK 内部真实版本一致，并且签名校验通过后才会进入发布流程。
 
 ## 构建环境
 
@@ -114,13 +127,13 @@ Release 已配置 `contents: write` 权限，可由 Actions 自动创建并附�
 - Android SDK Platform 35
 - Android Build Tools 35.0.1
 
-## 签名
+## 说明
 
-自动构建会校验固定签名证书 SHA-256 指纹，防止误用其他证书生成无法覆盖安装的 APK。
+这是针对 HyperOS Settings 的 Hook 模块。建议升级前保留上一版本 APK；如果新系统更新导致某个页面失效，请附带 HyperOS / Android 版本以及 LSPosed 日志反馈。
 
 ## 作者
 
 **苍簇**
 
-- 酷安主页：https://www.coolapk.com/u/18795532
+- 酷安：https://www.coolapk.com/u/18795532
 - GitHub：https://github.com/Solomonstery/HyperBackground

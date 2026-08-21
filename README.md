@@ -2,9 +2,8 @@
 
 一个面向 HyperOS 设置应用的 LSPosed 背景与外观自定义模块。
 
-> 当前版本：**1.1.3**  
-> 主要适配环境：HyperOS 4 / Android 17  
-> LSPosed 作用域：`com.android.settings`
+> 当前版本：**1.2.2**  
+> 主要适配环境：HyperOS 4 / Android 17
 
 ## 功能
 
@@ -26,6 +25,19 @@
 - 独立背景模糊开关与强度
 - 针对 HyperOS“我的设备”页面进行独立处理
 
+### 全局背景
+
+- 为普通 Settings 二级页面提供独立全局背景
+- 同时支持由手机管家提供的相关设置页面
+- 独立图片、透明度、模糊开关与模糊强度
+- 不覆盖“设置主页”与“我的设备”两个专用通道
+
+当前作用域包含：
+
+- `com.android.settings`
+- `com.miui.securitymanager`
+- `com.miui.securitycenter`
+
 ### 设置应用外观
 
 可单独控制 `com.android.settings` 的界面模式：
@@ -36,12 +48,11 @@
 
 该功能通过 Settings 应用自身的日夜模式配置实现，不是简单修改卡片背景颜色。
 
-> “设置应用外观”和模块已有的文字颜色控制是两套独立功能。强制 Settings 浅色/深色不会直接修改文字颜色选项的配置值。
-
 ### 文字颜色
 
-- 保留独立的文字颜色控制
-- 可用于自定义背景下改善文字可读性
+- 独立的文字颜色控制
+- 支持持续强制浅色 / 深色文字
+- 页面刷新、Preference 重绑后仍会重新应用
 - 与“设置应用外观”分开配置
 
 ### 模块自身界面
@@ -56,32 +67,39 @@
 - 自定义模块图标
 - 作者信息、酷安主页及 GitHub 仓库入口
 
-## 1.1.3 更新内容
+## 1.2.2 更新内容
 
-- 新增 **“设置应用外观”**：可让 Settings 单独跟随系统、强制浅色或强制深色。
-- Settings 外观切换改为应用级日夜模式处理，不直接遍历或染色 HyperOS 卡片 View。
-- Settings 外观与原有文字颜色控制彻底分离。
-- 移除实验性的 HyperOS Logo / Logo 自定义文字功能。
-- 保持“设置主页”和“我的设备”两个背景通道互相隔离。
-- 修正源码构建所需的 Xposed API 编译声明。
-- 统一版本信息为 `versionName=1.1.3`、`versionCode=4`。
+- 修复普通 Settings 二级页面全局背景大面积不显示的问题。
+- 修复全局背景 View 在页面 `setContentView()` 后被 HyperOS 新布局替换掉，但模块仍错误复用旧 session 的问题。
+- 复用背景 session 前会检查背景 View 是否仍挂载在当前页面；如果已失效则自动重建。
+- `onResume` 阶段改为在 DecorView 下一帧重新确认和挂载背景，避免过早插入导致被系统布局覆盖。
+- 保留 1.2.x 的手机管家跨包背景支持。
+- 保持设置主页 / 我的设备 / 全局背景三通道隔离，不互相覆盖。
+- 保持原有字体持续强制、设置应用深浅模式、模块背景、Monet 与调色盘功能不变。
 
 ## 背景通道
 
-模块目前只保留两个 Settings 背景通道：
+模块现在提供三个互相隔离的背景通道：
 
 1. `home`：设置主页
 2. `device`：我的设备
+3. `global`：其他 Settings 页面及支持的手机管家设置页面
 
-不提供全局背景通道，避免全局 Hook 对主页和“我的设备”造成交叉干涉。
+优先级：
+
+```text
+我的设备 > 设置主页 > 全局背景
+```
+
+全局背景不会主动覆盖前两个专用通道。
 
 ## 使用方法
 
 1. 安装 HyperBackground。
 2. 在 LSPosed 中启用模块。
-3. 作用域勾选 **设置（`com.android.settings`）**。
-4. 强制停止并重新打开设置，或重启设备。
-5. 打开 HyperBackground 配置需要的背景、透明度、模糊和外观选项。
+3. 作用域勾选设置和手机管家相关包。
+4. 强制停止并重新打开对应应用，或重启设备。
+5. 在 HyperBackground 中配置主页、我的设备或全局背景。
 
 切换“设置应用外观”后，建议彻底退出并重新打开设置，使 Activity 重新初始化主题。
 
@@ -89,15 +107,17 @@
 
 - 设置主页：JPG / PNG / WebP / GIF
 - 我的设备：JPG / PNG / WebP / GIF / 动态 WebP / 无声循环 MP4 / WebM
+- 全局背景：JPG / PNG / WebP / GIF
 - 单个媒体文件最大 200 MB
 
 ## Hook 范围
 
-- 包名：`com.android.settings`
+- 设置：`com.android.settings`
+- 手机管家相关：`com.miui.securitymanager` / `com.miui.securitycenter`
 - 设置主页：`com.android.settings.MiuiSettings`
 - 我的设备：`com.android.settings.device.MiuiMyDeviceSettings`
 
-不同 HyperOS 版本内部实现可能存在差异，因此其他 Android / HyperOS 大版本不保证完全兼容。
+不同 HyperOS / 手机管家版本内部实现可能存在差异，其他系统版本不保证完全兼容。
 
 ## 自动构建与 Release
 
@@ -126,10 +146,6 @@ GitHub Actions 会自动选择仓库中版本号最高的源码包，并执行�
 - Java 17
 - Android SDK Platform 35
 - Android Build Tools 35.0.1
-
-## 说明
-
-这是针对 HyperOS Settings 的 Hook 模块。建议升级前保留上一版本 APK；如果新系统更新导致某个页面失效，请附带 HyperOS / Android 版本以及 LSPosed 日志反馈。
 
 ## 作者
 

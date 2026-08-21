@@ -13,11 +13,14 @@ jobs:
       - name: 检出项目
         uses: actions/checkout@v4
 
-      - name: 载入模块源码
+      - name: 校验并解压完整源码
         shell: bash
         run: |
-          curl -fL "https://raw.githubusercontent.com/Solomonstery/HyperBackground/source/source-bundle.zip" -o source-bundle.zip
-          unzip -o source-bundle.zip
+          test -f HyperBackground-v1.1.0-source.zip
+          unzip -t HyperBackground-v1.1.0-source.zip
+          unzip -o HyperBackground-v1.1.0-source.zip
+          test -f app/src/main/AndroidManifest.xml
+          test -f build.sh
 
       - name: 配置 Java 17
         uses: actions/setup-java@v4
@@ -58,13 +61,11 @@ jobs:
         shell: bash
         run: |
           EXPECTED="8C:79:74:AD:4C:33:97:FB:23:11:F6:B4:E4:7B:F8:93:63:06:DB:F2:B7:97:C2:20:80:66:ED:F4:15:EC:40:A9"
-          ACTUAL="$($ANDROID_SDK_ROOT/build-tools/35.0.1/apksigner verify --print-certs dist/HyperBackground-v1.1.0.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr '[:lower:]' '[:upper:]' | sed 's/../&:/g;s/:$//')"
+          RAW="$($ANDROID_SDK_ROOT/build-tools/35.0.1/apksigner verify --print-certs dist/HyperBackground-v1.1.0.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          ACTUAL="$(printf '%s' "$RAW" | tr '[:lower:]' '[:upper:]' | sed 's/../&:/g;s/:$//')"
           echo "期望指纹：$EXPECTED"
           echo "实际指纹：$ACTUAL"
-          if [ "$ACTUAL" != "$EXPECTED" ]; then
-            echo "发布签名指纹不匹配，拒绝上传 APK。"
-            exit 1
-          fi
+          test "$ACTUAL" = "$EXPECTED"
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4

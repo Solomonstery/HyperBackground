@@ -46,11 +46,26 @@ jobs:
           SOURCE: ${{ steps.version.outputs.source }}
         run: |
           unzip -t "$SOURCE"
-          rm -rf HyperBackground
-          unzip -o "$SOURCE"
+          rm -rf _src HyperBackground
+          mkdir -p _src
+          unzip -o "$SOURCE" -d _src
+
+          if [ -f _src/HyperBackground/app/src/main/AndroidManifest.xml ]; then
+            mv _src/HyperBackground HyperBackground
+          elif [ -f _src/app/src/main/AndroidManifest.xml ]; then
+            mkdir -p HyperBackground
+            shopt -s dotglob nullglob
+            mv _src/* HyperBackground/
+          else
+            echo '源码包目录结构无法识别。'
+            find _src -maxdepth 3 -type f | sort | head -n 100
+            exit 1
+          fi
+
           test -f HyperBackground/app/src/main/AndroidManifest.xml
           test -f HyperBackground/build.sh
           test -f HyperBackground/signing/hyperbackground-debug.jks
+          echo '源码目录结构检查通过。'
 
       - name: 配置 Java 17
         uses: actions/setup-java@v4
@@ -90,7 +105,10 @@ jobs:
           ACTUAL="$(printf '%s' "$RAW" | tr '[:lower:]' '[:upper:]' | sed 's/../&:/g;s/:$//')"
           echo "签名指纹：$ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
-          cp "$APK" "$APK_NAME"
+          TARGET="$APK_NAME"
+          if [ "$APK" != "$TARGET" ]; then
+            cp "$APK" "$TARGET"
+          fi
 
       - name: 上传 Actions 产物
         uses: actions/upload-artifact@v4

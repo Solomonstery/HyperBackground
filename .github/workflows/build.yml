@@ -235,3 +235,44 @@ jobs:
               -F prerelease="$PRERELEASE" >/dev/null
           fi
           gh release upload "$TAG" "$APK_NAME" --clobber
+
+          while IFS=$'\t' read -r OLD_ID OLD_TAG; do
+            test -n "$OLD_ID" || continue
+            test "$OLD_TAG" != "$TAG" || continue
+
+            LOWER_TAG="${OLD_TAG,,}"
+            case "$LOWER_TAG" in
+              *test*|*alpha*|*beta*|*rc*|*dev*) ;;
+              *) continue ;;
+            esac
+
+            OLD_VERSION="${OLD_TAG#v}"
+            OLD_CHANGES="$(awk -v version="$OLD_VERSION" '
+              $0 == "## " version { found = 1; next }
+              found && /^## / { exit }
+              found { print }
+            ' CHANGELOG.md | sed '/./,$!d')"
+            if [[ -z "${OLD_CHANGES//[[:space:]]/}" ]]; then
+              OLD_CHANGES='- 此历史测试版没有单独保存变更说明。'
+            fi
+
+            OLD_NOTES="$RUNNER_TEMP/hyperbackground-$OLD_VERSION-release-notes.md"
+            {
+              printf '# HyperBackground %s\n\n' "$OLD_VERSION"
+              printf '%s\n%s\n\n' '> [!WARNING]' '> 此版本为历史测试版，可能包含未完成实机验证的功能；建议优先使用当前正式版。'
+              printf '%s\n\n' '## 版本信息'
+              printf -- '- 版本：`%s`\n' "$OLD_VERSION"
+              printf -- '- 类型：**测试版**\n'
+              printf -- '- 状态：历史发行，原有 APK 与标签保持不变。\n\n'
+              printf '%s\n\n' '## 本版变更'
+              printf '%s\n\n' "$OLD_CHANGES"
+              printf '%s\n\n' '## 构建链'
+              printf '%s\n' '- `main`：从仓库根目录源码构建。'
+              printf '%s\n' '- `source-archives`：从版本号最高的源码 ZIP 构建。'
+            } > "$OLD_NOTES"
+
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$OLD_ID" \
+              -f body="$(cat "$OLD_NOTES")" \
+              -F prerelease=true \
+              -f make_latest=false >/dev/null
+          done < <(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | [.id, .tag_name] | @tsv')

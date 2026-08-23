@@ -2,7 +2,7 @@ name: 构建并发布 LSPosed 模块
 
 on:
   push:
-    branches: [ main ]
+    branches: [ source-archives ]
     paths:
       - 'HyperBackground-v*-source.zip'
       - '.github/workflows/build.yml'

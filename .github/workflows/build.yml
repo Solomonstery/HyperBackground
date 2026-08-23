@@ -4,7 +4,13 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'HyperBackground-v*-source.zip'
+      - 'app/**'
+      - 'module-meta/**'
+      - 'signing/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'build.sh'
       - '.github/workflows/build.yml'
   workflow_dispatch:
 
@@ -21,46 +27,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 选择版本号最高的源码包
-        id: version
+      - name: 校验源码结构
         shell: bash
         run: |
-          shopt -s nullglob
-          files=(HyperBackground-v*-source.zip)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo '没有找到 HyperBackground-v*-source.zip'
-            exit 1
-          fi
-          SOURCE="$(printf '%s\n' "${files[@]}" | sort -V | tail -n 1)"
-          echo "source=$SOURCE" >> "$GITHUB_OUTPUT"
-          echo "选择源码：$SOURCE"
-
-      - name: 校验并解压源码
-        shell: bash
-        env:
-          SOURCE: ${{ steps.version.outputs.source }}
-        run: |
-          unzip -t "$SOURCE"
-          rm -rf _src HyperBackground
-          mkdir -p _src
-          unzip -o "$SOURCE" -d _src
-
-          if [ -f _src/HyperBackground/app/src/main/AndroidManifest.xml ]; then
-            mv _src/HyperBackground HyperBackground
-          elif [ -f _src/app/src/main/AndroidManifest.xml ]; then
-            mkdir -p HyperBackground
-            shopt -s dotglob nullglob
-            mv _src/* HyperBackground/
-          else
-            echo '源码包目录结构无法识别。'
-            find _src -maxdepth 3 -type f | sort | head -n 100
-            exit 1
-          fi
-
-          test -f HyperBackground/app/src/main/AndroidManifest.xml
-          test -f HyperBackground/build.sh
-          test -f HyperBackground/signing/hyperbackground-debug.jks
-          echo '源码目录结构检查通过。'
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/build.gradle.kts
+          test -f build.sh
+          test -f signing/hyperbackground-debug.jks
+          echo '仓库根源码结构检查通过。'
 
       - name: 配置 Java 17
         uses: actions/setup-java@v5
@@ -76,7 +50,6 @@ jobs:
 
       - name: 构建 LSPosed 模块 APK
         shell: bash
-        working-directory: HyperBackground
         env:
           JAVA_RUNTIME: ${{ env.JAVA_HOME }}
         run: |
@@ -88,7 +61,7 @@ jobs:
         shell: bash
         run: |
           EXPECTED='8C:79:74:AD:4C:33:97:FB:23:11:F6:B4:E4:7B:F8:93:63:06:DB:F2:B7:97:C2:20:80:66:ED:F4:15:EC:40:A9'
-          APK="$(find HyperBackground/dist -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          APK="$(find dist -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
           ACTUAL_VERSION="$($ANDROID_SDK_ROOT/build-tools/35.0.1/aapt2 dump badging "$APK" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -n 1)"
           test -n "$ACTUAL_VERSION"

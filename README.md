@@ -67,6 +67,8 @@ HyperOS 设置背景与外观自定义 LSPosed 模块。
 dist/HyperBackground-v1.3.2-test.apk
 ```
 
+历史版本源码 ZIP 已集中保存在 [`source-archives`](https://github.com/Solomonstery/HyperBackground/tree/source-archives) 分支；`main` 只保留当前可构建源码，GitHub Actions 直接从仓库根目录构建。
+
 ## 作者
 
 **苍簇**

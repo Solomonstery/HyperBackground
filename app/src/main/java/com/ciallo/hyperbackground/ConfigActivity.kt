@@ -361,7 +361,7 @@ class ConfigActivity : ComponentActivity() {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                     MiniPill("Compose")
                     MiniPill("MIUIX")
-                    MiniPill("1.3.2-test")
+                    MiniPill("1.3.3-test")
                 }
             }
         }
@@ -383,7 +383,6 @@ class ConfigActivity : ComponentActivity() {
         var opacity by remember(slot, revision) { mutableFloatStateOf(prefs.getInt(BackgroundContract.OPACITY_PREFIX + slot, 100).toFloat()) }
         var blur by remember(slot, revision) { mutableStateOf(prefs.getBoolean(BackgroundContract.BLUR_ENABLED_PREFIX + slot, false)) }
         var radius by remember(slot, revision) { mutableFloatStateOf(prefs.getInt(BackgroundContract.BLUR_RADIUS_PREFIX + slot, 20).toFloat()) }
-        var themeChannel by remember(slot, revision) { mutableStateOf(prefs.getBoolean(BackgroundContract.THEME_CHANNEL_ENABLED, false)) }
         val file = remember(slot, revision) { File(File(filesDir, "backgrounds"), "$slot.bin") }
         val status = if (file.isFile) "已启用 · ${humanSize(file.length())}" else "跟随系统默认"
 
@@ -418,18 +417,6 @@ class ConfigActivity : ComponentActivity() {
                     SliderPreference("模糊强度", radius, 0f..80f, "") {
                         radius = it
                         prefs.edit().putInt(BackgroundContract.BLUR_RADIUS_PREFIX + slot, it.toInt()).apply()
-                    }
-                    if (slot == BackgroundContract.GLOBAL) {
-                        SwitchPreference(
-                            title = "主题通道实验",
-                            summary = "让二级菜单优先从主题背景属性透出全局背景；仅影响页面底色，不主动改卡片颜色",
-                            checked = themeChannel,
-                            onCheckedChange = {
-                                themeChannel = it
-                                prefs.edit().putBoolean(BackgroundContract.THEME_CHANNEL_ENABLED, it).apply()
-                                toast("主题通道已${if (it) "开启" else "关闭"}；重新进入二级菜单测试")
-                            }
-                        )
                     }
                     Spacer(Modifier.height(8.dp))
                 }
@@ -726,7 +713,7 @@ class ConfigActivity : ComponentActivity() {
             readTimeout = 6000
             requestMethod = "GET"
             setRequestProperty("Accept", "application/json, text/plain, */*")
-            setRequestProperty("User-Agent", "HyperBG/1.3.2-test")
+            setRequestProperty("User-Agent", "HyperBG/1.3.3-test")
         }
         try {
             val code = connection.responseCode
@@ -763,7 +750,7 @@ class ConfigActivity : ComponentActivity() {
                     if (bitmap != null) androidx.compose.foundation.Image(bitmap = bitmap, contentDescription = null, modifier = Modifier.size(58.dp).clip(RoundedCornerShape(18.dp)))
                     Column(Modifier.padding(start = 14.dp).weight(1f)) {
                         Text("制作者 · 苍簇", style = MiuixTheme.textStyles.headline1)
-                        Text("HyperBG 1.3.2-test", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        Text("HyperBG 1.3.3-test", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

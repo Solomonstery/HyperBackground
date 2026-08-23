@@ -20,7 +20,6 @@ final class BackgroundContract {
     static final String DEVICE_LOGO_TEXT = "device_logo_text";
     static final String DEVICE_LOGO_COLOR = "device_logo_color";
     static final String SETTINGS_THEME_MODE = "settings_theme_mode";
-    static final String THEME_CHANNEL_ENABLED = "theme_channel_enabled";
 
     static final String UI_MONET = "ui_monet";
     static final String UI_ACCENT = "ui_accent";
@@ -61,7 +60,6 @@ final class BackgroundContract {
     static final String COLUMN_DEVICE_LOGO_TEXT = "device_logo_text";
     static final String COLUMN_DEVICE_LOGO_COLOR = "device_logo_color";
     static final String COLUMN_SETTINGS_THEME_MODE = "settings_theme_mode";
-    static final String COLUMN_THEME_CHANNEL_ENABLED = "theme_channel_enabled";
 
     private BackgroundContract() {}
 
@@ -77,7 +75,7 @@ final class BackgroundContract {
             cursor = context.getContentResolver().query(uri, new String[]{
                     COLUMN_MIME, COLUMN_SIZE, COLUMN_MODIFIED, COLUMN_OPACITY,
                     COLUMN_BLUR_ENABLED, COLUMN_BLUR_RADIUS, COLUMN_FONT_MODE,
-                    COLUMN_DEVICE_LOGO_MODE, COLUMN_DEVICE_LOGO_TEXT, COLUMN_DEVICE_LOGO_COLOR, COLUMN_SETTINGS_THEME_MODE, COLUMN_THEME_CHANNEL_ENABLED
+                    COLUMN_DEVICE_LOGO_MODE, COLUMN_DEVICE_LOGO_TEXT, COLUMN_DEVICE_LOGO_COLOR, COLUMN_SETTINGS_THEME_MODE
             }, null, null, null);
             if (cursor == null || !cursor.moveToFirst()) return Source.missing(slot, uri);
             String mime = string(cursor, COLUMN_MIME, "application/octet-stream");
@@ -91,10 +89,9 @@ final class BackgroundContract {
             String deviceLogoText = string(cursor, COLUMN_DEVICE_LOGO_TEXT, "HyperOS");
             int deviceLogoColor = intValue(cursor, COLUMN_DEVICE_LOGO_COLOR, 0xFF111111);
             int settingsThemeMode = intValue(cursor, COLUMN_SETTINGS_THEME_MODE, SETTINGS_THEME_FOLLOW);
-            boolean themeChannelEnabled = intValue(cursor, COLUMN_THEME_CHANNEL_ENABLED, 0) != 0;
             boolean exists = size >= 0L;
             return new Source(slot, uri, mime, size, modified, exists,
-                    opacity, blur, blurRadius, fontMode, deviceLogoMode, deviceLogoText, deviceLogoColor, settingsThemeMode, themeChannelEnabled);
+                    opacity, blur, blurRadius, fontMode, deviceLogoMode, deviceLogoText, deviceLogoColor, settingsThemeMode);
         } catch (Throwable ignored) {
             return Source.missing(slot, uri);
         } finally {
@@ -115,27 +112,27 @@ final class BackgroundContract {
     static final class Source {
         final String slot; final Uri uri; final String mime; final long size; final long modified;
         final boolean exists; final int opacity; final boolean blurEnabled; final int blurRadius;
-        final int fontMode; final int deviceLogoMode; final String deviceLogoText; final int deviceLogoColor; final int settingsThemeMode; final boolean themeChannelEnabled;
+        final int fontMode; final int deviceLogoMode; final String deviceLogoText; final int deviceLogoColor; final int settingsThemeMode;
         Source(String slot, Uri uri, String mime, long size, long modified, boolean exists,
                int opacity, boolean blurEnabled, int blurRadius, int fontMode,
-               int deviceLogoMode, String deviceLogoText, int deviceLogoColor, int settingsThemeMode, boolean themeChannelEnabled) {
+               int deviceLogoMode, String deviceLogoText, int deviceLogoColor, int settingsThemeMode) {
             this.slot = slot; this.uri = uri; this.mime = mime == null ? "application/octet-stream" : mime;
             this.size = size; this.modified = modified; this.exists = exists;
             this.opacity = Math.max(0, Math.min(100, opacity));
             this.blurEnabled = blurEnabled; this.blurRadius = Math.max(0, Math.min(80, blurRadius));
             this.fontMode = fontMode; this.deviceLogoMode = deviceLogoMode;
             this.deviceLogoText = deviceLogoText == null ? "HyperOS" : deviceLogoText;
-            this.deviceLogoColor = deviceLogoColor; this.settingsThemeMode = settingsThemeMode; this.themeChannelEnabled = themeChannelEnabled;
+            this.deviceLogoColor = deviceLogoColor; this.settingsThemeMode = settingsThemeMode;
         }
         static Source missing(String slot, Uri uri) {
             return new Source(slot, uri, "", -1L, -1L, false, 100, false, 20, FONT_FOLLOW,
-                    DEVICE_LOGO_SYSTEM, "HyperOS", 0xFF111111, SETTINGS_THEME_FOLLOW, false);
+                    DEVICE_LOGO_SYSTEM, "HyperOS", 0xFF111111, SETTINGS_THEME_FOLLOW);
         }
         boolean isVideo() { return mime.startsWith("video/"); }
         String cacheKey() {
             return slot + ':' + mime + ':' + size + ':' + modified + ':' + opacity + ':'
                     + blurEnabled + ':' + blurRadius + ':' + fontMode + ':' + deviceLogoMode + ':'
-                    + deviceLogoText + ':' + deviceLogoColor + ':' + settingsThemeMode + ':' + themeChannelEnabled;
+                    + deviceLogoText + ':' + deviceLogoColor + ':' + settingsThemeMode;
         }
     }
 }

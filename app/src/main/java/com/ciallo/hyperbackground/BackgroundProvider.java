@@ -41,7 +41,6 @@ public final class BackgroundProvider extends ContentProvider {
             else if (BackgroundContract.COLUMN_DEVICE_LOGO_TEXT.equals(column)) row.add(p.getString(BackgroundContract.DEVICE_LOGO_TEXT, "HyperOS"));
             else if (BackgroundContract.COLUMN_DEVICE_LOGO_COLOR.equals(column)) row.add(p.getInt(BackgroundContract.DEVICE_LOGO_COLOR, 0xFF111111));
             else if (BackgroundContract.COLUMN_SETTINGS_THEME_MODE.equals(column)) row.add(p.getInt(BackgroundContract.SETTINGS_THEME_MODE, BackgroundContract.SETTINGS_THEME_FOLLOW));
-            else if (BackgroundContract.COLUMN_THEME_CHANNEL_ENABLED.equals(column)) row.add(p.getBoolean(BackgroundContract.THEME_CHANNEL_ENABLED, false) ? 1 : 0);
             else row.add(null);
         }
         return result;
@@ -76,7 +75,6 @@ public final class BackgroundProvider extends ContentProvider {
                 BackgroundContract.COLUMN_OPACITY, BackgroundContract.COLUMN_BLUR_ENABLED,
                 BackgroundContract.COLUMN_BLUR_RADIUS, BackgroundContract.COLUMN_FONT_MODE,
                 BackgroundContract.COLUMN_DEVICE_LOGO_MODE, BackgroundContract.COLUMN_DEVICE_LOGO_TEXT,
-                BackgroundContract.COLUMN_DEVICE_LOGO_COLOR, BackgroundContract.COLUMN_SETTINGS_THEME_MODE,
-                BackgroundContract.COLUMN_THEME_CHANNEL_ENABLED};
+                BackgroundContract.COLUMN_DEVICE_LOGO_COLOR, BackgroundContract.COLUMN_SETTINGS_THEME_MODE};
     }
 }

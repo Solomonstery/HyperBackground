@@ -23,7 +23,6 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
 
         if (settings) {
             SettingsThemeOverride.install();
-            ThemeChannelOverride.install();
             TextColorOverride.install();
             hookHomeActivity(lpparam.classLoader);
             hookHomeFragment(lpparam.classLoader);

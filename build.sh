@@ -28,5 +28,5 @@ fi
 mkdir -p "$PROJECT_DIR/dist"
 APK="$(find "$PROJECT_DIR/app/build/outputs/apk/release" -maxdepth 1 -type f -name '*.apk' | head -n 1)"
 test -n "$APK"
-cp "$APK" "$PROJECT_DIR/dist/HyperBackground-v1.3.2-test.apk"
-echo "Built: $PROJECT_DIR/dist/HyperBackground-v1.3.2-test.apk"
+cp "$APK" "$PROJECT_DIR/dist/HyperBackground-v1.3.3-test.apk"
+echo "Built: $PROJECT_DIR/dist/HyperBackground-v1.3.3-test.apk"

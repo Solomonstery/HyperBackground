@@ -1,151 +1,71 @@
 # HyperBackground
 
-一个面向 HyperOS 设置应用的 LSPosed 背景与外观自定义模块。
+HyperOS 设置背景与外观自定义 LSPosed 模块。
 
-> 当前版本：**1.2.2**  
-> 主要适配环境：HyperOS 4 / Android 17
+> 当前开发版本：**1.3.2-test**  
+> UI 架构：**Kotlin + Jetpack Compose + Miuix KMP**  
+> Hook 核心：沿用 1.2.3 已验证逻辑
 
-## 功能
+> **已知问题：**“主题通道实验”当前实机测试未生效，暂不作为可用功能；建议保持关闭。
 
-### 设置主页背景
+## 1.3.2-test
 
-- 自定义 JPG / PNG / WebP / GIF 背景
-- 独立透明度调节
-- 独立背景模糊开关
-- 独立模糊强度调节
-- 与“我的设备”背景完全独立
+- 保留“主题通道实验”测试入口；当前实机测试未生效，已列为已知问题。
+- 模块无自定义背景时，底色改为跟随 MIUIX 浅色 / 深色主题，不再固定灰黑。
+- 新增“卡片透明度”，只调整模块卡片 surface 的透明度；原“背景透明度”明确改名为“背景图透明度”。
+- HyperBG 大标题下新增“一言”区域，点击可刷新。
+- 默认一言 API：`https://uapis.cn/api/v1/saying`，默认读取字段：`text`。
+- 一言支持自定义 API 和 JSON 点路径字段（例如 `data.text`）；若 API 直接返回纯文本，可将读取字段留空。
+- 包名与签名保持不变。
 
-### 我的设备背景
+## 1.3.1
 
-- 独立自定义背景
-- 支持 JPG / PNG / WebP / GIF
-- 支持动态 WebP
-- 支持无声循环 MP4 / WebM
-- 独立透明度调节
-- 独立背景模糊开关与强度
-- 针对 HyperOS“我的设备”页面进行独立处理
+这是一次配置界面的大重构，视觉和交互路线参考 KernelSU Manager 当前的 MIUIX 实现。
 
-### 全局背景
+- 配置 Activity 从 Java View 手写界面迁移为 Kotlin `ComponentActivity` + Compose。
+- 使用 `top.yukonga.miuix.kmp` 的 `MiuixTheme`、`Scaffold`、`TopAppBar`、`Card`、`Slider`、`TabRow`、`SwitchPreference` 等组件。
+- 浅色 / 深色 / 跟随系统统一由 `ThemeController` 管理。
+- Monet 壁纸取色和自定义主题色继续保留，并直接驱动 MIUIX 主题。
+- 设置主页 / 我的设备 / 全局背景三通道重新组织为 MIUIX 卡片。
+- 保留媒体选择、透明度、模糊开关和模糊强度。
+- “设置应用外观”和“文字颜色”继续保持两套独立配置。
+- 模块自身自定义背景、透明度、模糊继续保留。
+- 作者卡保留苍簇、酷安和 GitHub 入口。
+- 固定签名文件继续沿用，避免升级安装时签名变化。
+- Xposed Hook / Provider / BackgroundApplier 等稳定核心没有随 UI 重构改写。
 
-- 为普通 Settings 二级页面提供独立全局背景
-- 同时支持由手机管家提供的相关设置页面
-- 独立图片、透明度、模糊开关与模糊强度
-- 不覆盖“设置主页”与“我的设备”两个专用通道
-
-当前作用域包含：
+## 当前作用域
 
 - `com.android.settings`
-- `com.miui.securitymanager`
-- `com.miui.securitycenter`
-
-### 设置应用外观
-
-可单独控制 `com.android.settings` 的界面模式：
-
-- 跟随系统
-- 强制浅色
-- 强制深色
-
-该功能通过 Settings 应用自身的日夜模式配置实现，不是简单修改卡片背景颜色。
-
-### 文字颜色
-
-- 独立的文字颜色控制
-- 支持持续强制浅色 / 深色文字
-- 页面刷新、Preference 重绑后仍会重新应用
-- 与“设置应用外观”分开配置
-
-### 模块自身界面
-
-- 跟随系统 / 浅色 / 深色
-- 模块本体支持自定义背景
-- 模块背景透明度调节
-- 背景模糊开关与模糊强度
-- Monet 壁纸取色
-- 可视化 HSV 主题调色盘
-- HEX / 色相 / 饱和度 / 明度联动
-- 自定义模块图标
-- 作者信息、酷安主页及 GitHub 仓库入口
-
-## 1.2.2 更新内容
-
-- 修复普通 Settings 二级页面全局背景大面积不显示的问题。
-- 修复全局背景 View 在页面 `setContentView()` 后被 HyperOS 新布局替换掉，但模块仍错误复用旧 session 的问题。
-- 复用背景 session 前会检查背景 View 是否仍挂载在当前页面；如果已失效则自动重建。
-- `onResume` 阶段改为在 DecorView 下一帧重新确认和挂载背景，避免过早插入导致被系统布局覆盖。
-- 保留 1.2.x 的手机管家跨包背景支持。
-- 保持设置主页 / 我的设备 / 全局背景三通道隔离，不互相覆盖。
-- 保持原有字体持续强制、设置应用深浅模式、模块背景、Monet 与调色盘功能不变。
+- `com.milink.service`
 
 ## 背景通道
 
-模块现在提供三个互相隔离的背景通道：
-
 1. `home`：设置主页
 2. `device`：我的设备
-3. `global`：其他 Settings 页面及支持的手机管家设置页面
+3. `global`：普通 Settings 页面及已验证的设备互联页面
 
-优先级：
+## 构建
 
-```text
-我的设备 > 设置主页 > 全局背景
+1. Java 17
+2. Android SDK 37
+3. Gradle 9.7
+4. AGP 9.3.1
+5. Kotlin 2.4.10
+6. Compose BOM 2026.08.00
+7. Miuix KMP 0.9.3
+
+运行：
+
+```bash
+./build.sh
 ```
 
-全局背景不会主动覆盖前两个专用通道。
-
-## 使用方法
-
-1. 安装 HyperBackground。
-2. 在 LSPosed 中启用模块。
-3. 作用域勾选设置和手机管家相关包。
-4. 强制停止并重新打开对应应用，或重启设备。
-5. 在 HyperBackground 中配置主页、我的设备或全局背景。
-
-切换“设置应用外观”后，建议彻底退出并重新打开设置，使 Activity 重新初始化主题。
-
-## 文件支持
-
-- 设置主页：JPG / PNG / WebP / GIF
-- 我的设备：JPG / PNG / WebP / GIF / 动态 WebP / 无声循环 MP4 / WebM
-- 全局背景：JPG / PNG / WebP / GIF
-- 单个媒体文件最大 200 MB
-
-## Hook 范围
-
-- 设置：`com.android.settings`
-- 手机管家相关：`com.miui.securitymanager` / `com.miui.securitycenter`
-- 设置主页：`com.android.settings.MiuiSettings`
-- 我的设备：`com.android.settings.device.MiuiMyDeviceSettings`
-
-不同 HyperOS / 手机管家版本内部实现可能存在差异，其他系统版本不保证完全兼容。
-
-## 自动构建与 Release
-
-源码包使用：
+`build.sh` 会在需要时下载 Gradle 发行版，然后执行 `:app:assembleRelease`。产物输出到：
 
 ```text
-HyperBackground-vX.Y.Z-source.zip
+dist/HyperBackground-v1.3.2-test.apk
 ```
-
-GitHub Actions 会自动选择仓库中版本号最高的源码包，并执行：
-
-```text
-源码包完整性检查
-→ 解压并识别工程目录
-→ Java 17 / Android SDK 35 构建
-→ 校验 APK 实际 versionName
-→ 校验固定签名证书
-→ 上传 Actions Artifact
-→ 创建或更新 GitHub Release
-```
-
-只有源码包版本与 APK 内部真实版本一致，并且签名校验通过后才会进入发布流程。
-
-## 构建环境
-
-- Java 17
-- Android SDK Platform 35
-- Android Build Tools 35.0.1
 
 ## 作者
 
@@ -153,3 +73,11 @@ GitHub Actions 会自动选择仓库中版本号最高的源码包，并执行�
 
 - 酷安：https://www.coolapk.com/u/18795532
 - GitHub：https://github.com/Solomonstery/HyperBackground
+
+
+## 1.3.1
+
+- UI 图标切换为 Miuix Icons。
+- 设置主页图标改为 MIUIX 齿轮图标。
+- 我的设备与全局背景使用对应的 MIUIX 图标。
+- 保持包名 `com.ciallo.hyperbackground` 不变。

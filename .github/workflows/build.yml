@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 检出项目
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -32,13 +32,8 @@ jobs:
             exit 1
           fi
           SOURCE="$(printf '%s\n' "${files[@]}" | sort -V | tail -n 1)"
-          VERSION="${SOURCE#HyperBackground-v}"
-          VERSION="${VERSION%-source.zip}"
           echo "source=$SOURCE" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "apk=HyperBackground-v$VERSION.apk" >> "$GITHUB_OUTPUT"
           echo "选择源码：$SOURCE"
-          echo "构建版本：$VERSION"
 
       - name: 校验并解压源码
         shell: bash
@@ -68,7 +63,7 @@ jobs:
           echo '源码目录结构检查通过。'
 
       - name: 配置 Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -77,7 +72,7 @@ jobs:
         shell: bash
         run: |
           yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.1'
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37' 'build-tools;35.0.1'
 
       - name: 构建 LSPosed 模块 APK
         shell: bash
@@ -89,40 +84,39 @@ jobs:
           ./build.sh
 
       - name: 校验版本与固定签名
+        id: package
         shell: bash
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          APK_NAME: ${{ steps.version.outputs.apk }}
         run: |
           EXPECTED='8C:79:74:AD:4C:33:97:FB:23:11:F6:B4:E4:7B:F8:93:63:06:DB:F2:B7:97:C2:20:80:66:ED:F4:15:EC:40:A9'
           APK="$(find HyperBackground/dist -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
           ACTUAL_VERSION="$($ANDROID_SDK_ROOT/build-tools/35.0.1/aapt2 dump badging "$APK" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -n 1)"
-          echo "源码包版本：$VERSION"
+          test -n "$ACTUAL_VERSION"
           echo "APK 实际版本：$ACTUAL_VERSION"
-          test "$ACTUAL_VERSION" = "$VERSION"
           RAW="$($ANDROID_SDK_ROOT/build-tools/35.0.1/apksigner verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
           ACTUAL="$(printf '%s' "$RAW" | tr '[:lower:]' '[:upper:]' | sed 's/../&:/g;s/:$//')"
           echo "签名指纹：$ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
-          TARGET="$APK_NAME"
+          TARGET="HyperBackground-v$ACTUAL_VERSION.apk"
           if [ "$APK" != "$TARGET" ]; then
             cp "$APK" "$TARGET"
           fi
+          echo "version=$ACTUAL_VERSION" >> "$GITHUB_OUTPUT"
+          echo "apk=$TARGET" >> "$GITHUB_OUTPUT"
 
       - name: 上传 Actions 产物
         uses: actions/upload-artifact@v4
         with:
-          name: HyperBackground-v${{ steps.version.outputs.version }}
-          path: HyperBackground-v${{ steps.version.outputs.version }}.apk
+          name: HyperBackground-v${{ steps.package.outputs.version }}
+          path: ${{ steps.package.outputs.apk }}
           if-no-files-found: error
 
       - name: 发布到 GitHub Releases
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-          APK_NAME: ${{ steps.version.outputs.apk }}
+          VERSION: ${{ steps.package.outputs.version }}
+          APK_NAME: ${{ steps.package.outputs.apk }}
         run: |
           TAG="v$VERSION"
           if gh release view "$TAG" >/dev/null 2>&1; then

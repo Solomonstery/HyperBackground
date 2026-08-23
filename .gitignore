@@ -1,0 +1,8 @@
+/build/
+/dist/
+/.gradle/
+/.gradle-dist/
+/.gradle-user-home/
+/.idea/
+/local.properties
+*.idsig

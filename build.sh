@@ -1,36 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ANDROID_SDK_DIR="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$PROJECT_DIR/../tools/android-sdk}}"
-ANDROID_JAR="$ANDROID_SDK_DIR/platforms/android-35/android.jar"
-BUILD_TOOLS="$ANDROID_SDK_DIR/build-tools/35.0.1"
-JAVA_HOME_DIR="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
-export PATH="$JAVA_HOME_DIR/bin:$PATH"
-[[ -f "$ANDROID_JAR" ]] || { echo "缺少 Android SDK Platform 35：$ANDROID_JAR" >&2; exit 1; }
-[[ -x "$BUILD_TOOLS/aapt2" && -x "$BUILD_TOOLS/d8" && -x "$BUILD_TOOLS/apksigner" ]] || { echo "缺少 Android Build Tools 35.0.1：$BUILD_TOOLS" >&2; exit 1; }
-BUILD_DIR="$PROJECT_DIR/build"; DIST_DIR="$PROJECT_DIR/dist"; SIGNING_DIR="$PROJECT_DIR/signing"
-rm -rf "$BUILD_DIR"; mkdir -p "$BUILD_DIR/compiled" "$BUILD_DIR/generated" "$BUILD_DIR/stubs" "$BUILD_DIR/classes" "$BUILD_DIR/dex" "$DIST_DIR" "$SIGNING_DIR"
-"$BUILD_TOOLS/aapt2" compile --dir "$PROJECT_DIR/app/src/main/res" -o "$BUILD_DIR/compiled/resources.zip"
-"$BUILD_TOOLS/aapt2" link -I "$ANDROID_JAR" --manifest "$PROJECT_DIR/app/src/main/AndroidManifest.xml" -A "$PROJECT_DIR/app/src/main/assets" --java "$BUILD_DIR/generated" --min-sdk-version 28 --target-sdk-version 35 --version-code 2 --version-name 1.1.0 -o "$BUILD_DIR/unsigned.apk" "$BUILD_DIR/compiled/resources.zip"
-mapfile -t STUB_SOURCES < <(find "$PROJECT_DIR/compile-stubs" -name '*.java' -print | sort)
-"$JAVA_HOME_DIR/bin/javac" -source 8 -target 8 -proc:none -Xlint:none -classpath "$ANDROID_JAR" -d "$BUILD_DIR/stubs" "${STUB_SOURCES[@]}"
-mapfile -t APP_SOURCES < <(find "$PROJECT_DIR/app/src/main/java" "$BUILD_DIR/generated" -name '*.java' -print | sort)
-"$JAVA_HOME_DIR/bin/javac" -source 8 -target 8 -proc:none -Xlint:none -classpath "$ANDROID_JAR:$BUILD_DIR/stubs" -d "$BUILD_DIR/classes" "${APP_SOURCES[@]}"
-(cd "$BUILD_DIR/classes" && zip -qr "$BUILD_DIR/app-classes.jar" .)
-"$BUILD_TOOLS/d8" --lib "$ANDROID_JAR" --min-api 28 --output "$BUILD_DIR/dex" "$BUILD_DIR/app-classes.jar"
-(cd "$BUILD_DIR/dex" && zip -q -u "$BUILD_DIR/unsigned.apk" classes.dex)
-(cd "$PROJECT_DIR/module-meta" && zip -q -u "$BUILD_DIR/unsigned.apk" META-INF/xposed/scope.list)
-"$BUILD_TOOLS/zipalign" -f 4 "$BUILD_DIR/unsigned.apk" "$BUILD_DIR/aligned.apk"
+GRADLE_VERSION="9.7.0"
+CACHE_DIR="$PROJECT_DIR/.gradle-dist"
+GRADLE_HOME="$CACHE_DIR/gradle-$GRADLE_VERSION"
+ZIP="$CACHE_DIR/gradle-$GRADLE_VERSION-bin.zip"
+mkdir -p "$CACHE_DIR"
+if [[ ! -x "$GRADLE_HOME/bin/gradle" ]]; then
+  if [[ ! -f "$ZIP" ]]; then
+    echo "Downloading Gradle $GRADLE_VERSION..."
+    curl -fL --retry 3 "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip" -o "$ZIP"
+  fi
+  rm -rf "$GRADLE_HOME"
+  unzip -q "$ZIP" -d "$CACHE_DIR"
+fi
+export GRADLE_USER_HOME="$PROJECT_DIR/.gradle-user-home"
 
-KEYSTORE="${SIGNING_KEYSTORE:-$SIGNING_DIR/hyperbackground-release.jks}"
-STORE_PASSWORD="${SIGNING_STORE_PASSWORD:-}"
-KEY_PASSWORD="${SIGNING_KEY_PASSWORD:-$STORE_PASSWORD}"
-KEY_ALIAS="${SIGNING_KEY_ALIAS:-hyperbackground}"
-[[ -f "$KEYSTORE" ]] || { echo "缺少固定发布签名：$KEYSTORE" >&2; exit 1; }
-[[ -n "$STORE_PASSWORD" ]] || { echo "缺少 SIGNING_STORE_PASSWORD" >&2; exit 1; }
-
-OUTPUT="$DIST_DIR/HyperBackground-v1.1.0.apk"
-"$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" --ks-pass "pass:$STORE_PASSWORD" --key-pass "pass:$KEY_PASSWORD" --out "$OUTPUT" "$BUILD_DIR/aligned.apk"
-"$BUILD_TOOLS/apksigner" verify --verbose "$OUTPUT"
-"$BUILD_TOOLS/aapt2" dump badging "$OUTPUT" | sed -n '1,8p'
-echo "构建完成：$OUTPUT"
+# Compose / AndroidX used by 1.3.0 requires compileSdk 37.
+# Install the platform here as a fallback so CI does not depend on an older
+# workflow step that may still only preinstall android-35.
+if command -v sdkmanager >/dev/null 2>&1; then
+  echo "Ensuring Android SDK Platform 37 is installed..."
+  yes | sdkmanager --licenses >/dev/null 2>&1 || true
+  sdkmanager "platforms;android-37" >/dev/null
+fi
+"$GRADLE_HOME/bin/gradle" --no-daemon :app:assembleRelease
+mkdir -p "$PROJECT_DIR/dist"
+APK="$(find "$PROJECT_DIR/app/build/outputs/apk/release" -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+test -n "$APK"
+cp "$APK" "$PROJECT_DIR/dist/HyperBackground-v1.3.2-test.apk"
+echo "Built: $PROJECT_DIR/dist/HyperBackground-v1.3.2-test.apk"

@@ -11,6 +11,8 @@ on:
       - 'settings.gradle.kts'
       - 'gradle.properties'
       - 'build.sh'
+      - 'README.md'
+      - 'CHANGELOG.md'
       - '.github/workflows/build.yml'
   workflow_dispatch:
 
@@ -84,16 +86,122 @@ jobs:
           path: ${{ steps.package.outputs.apk }}
           if-no-files-found: error
 
+      - name: 生成发行说明
+        id: release_notes
+        shell: bash
+        env:
+          VERSION: ${{ steps.package.outputs.version }}
+          APK_NAME: ${{ steps.package.outputs.apk }}
+          SOURCE_ROOT: .
+          BUILD_CHAIN: main 分支仓库根目录源码
+        run: |
+          set -euo pipefail
+
+          LOWER_VERSION="${VERSION,,}"
+          case "$LOWER_VERSION" in
+            *test*|*alpha*|*beta*|*rc*|*dev*)
+              CHANNEL='测试版'
+              PRERELEASE='true'
+              MAKE_LATEST='false'
+              ;;
+            *)
+              CHANNEL='正式版'
+              PRERELEASE='false'
+              MAKE_LATEST='true'
+              ;;
+          esac
+
+          CHANGELOG_FILE="$SOURCE_ROOT/CHANGELOG.md"
+          CHANGES=''
+          if [[ -f "$CHANGELOG_FILE" ]]; then
+            CHANGES="$(awk -v version="$VERSION" '
+              $0 == "## " version { found = 1; next }
+              found && /^## / { exit }
+              found { print }
+            ' "$CHANGELOG_FILE" | sed '/./,$!d')"
+          fi
+          if [[ -z "${CHANGES//[[:space:]]/}" ]]; then
+            CHANGES='- 本版本没有提供独立变更说明，请查看对应提交记录。'
+          fi
+
+          GRADLE_VERSION="$(sed -n 's/^GRADLE_VERSION="\([^"]*\)"/\1/p' "$SOURCE_ROOT/build.sh" | head -n 1)"
+          AGP_VERSION="$(sed -n 's/.*com.android.application") version "\([^"]*\)".*/\1/p' "$SOURCE_ROOT/build.gradle.kts" | head -n 1)"
+          KOTLIN_VERSION="$(sed -n 's/.*org.jetbrains.kotlin.android") version "\([^"]*\)".*/\1/p' "$SOURCE_ROOT/build.gradle.kts" | head -n 1)"
+          COMPILE_SDK="$(sed -n 's/^[[:space:]]*compileSdk = \([0-9]*\).*/\1/p' "$SOURCE_ROOT/app/build.gradle.kts" | head -n 1)"
+          COMPOSE_BOM="$(sed -n 's/.*compose-bom:\([^"]*\)".*/\1/p' "$SOURCE_ROOT/app/build.gradle.kts" | head -n 1)"
+          MIUIX_VERSION="$(sed -n 's/.*miuix-ui-android:\([^"]*\)".*/\1/p' "$SOURCE_ROOT/app/build.gradle.kts" | head -n 1)"
+          APK_SHA256="$(sha256sum "$APK_NAME" | awk '{print $1}')"
+
+          : "${GRADLE_VERSION:=未知}"
+          : "${AGP_VERSION:=未知}"
+          : "${KOTLIN_VERSION:=未知}"
+          : "${COMPILE_SDK:=未知}"
+          : "${COMPOSE_BOM:=未知}"
+          : "${MIUIX_VERSION:=未知}"
+
+          NOTES_PATH="$RUNNER_TEMP/hyperbackground-release-notes.md"
+          {
+            printf '# HyperBackground %s\n\n' "$VERSION"
+            if [[ "$PRERELEASE" == 'true' ]]; then
+              printf '%s\n%s\n\n' '> [!WARNING]' '> 此版本为测试版，可能包含尚未完成实机验证的功能，请保留上一正式版安装包。'
+            else
+              printf '%s\n%s\n\n' '> [!NOTE]' '> 此版本为正式版。'
+            fi
+            printf '%s\n\n' '## 版本信息'
+            printf -- '- 版本：`%s`\n' "$VERSION"
+            printf -- '- 类型：**%s**\n' "$CHANNEL"
+            printf -- '- 构建来源：%s\n' "$BUILD_CHAIN"
+            printf -- '- 提交：[`%s`](%s/%s/commit/%s)\n' "${GITHUB_SHA:0:7}" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_SHA"
+            printf -- '- 构建记录：[GitHub Actions #%s](%s/%s/actions/runs/%s)\n\n' "$GITHUB_RUN_NUMBER" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+            printf '%s\n\n' '## 本版变更'
+            printf '%s\n\n' "$CHANGES"
+            printf '%s\n\n' '## 构建链'
+            printf '%s\n' '- `main`：检出仓库根目录源码 → Java 17 → Android SDK → Gradle Release 构建 → 固定签名校验 → Actions 产物 → GitHub Release。'
+            printf '%s\n\n' '- `source-archives`：选择版本号最高的源码 ZIP → 校验并解压 → 使用同一构建与签名流程 → Actions 产物 → GitHub Release。'
+            printf '%s\n\n' '## 构建环境'
+            printf -- '- Java：`17`\n'
+            printf -- '- Android SDK：`%s`\n' "$COMPILE_SDK"
+            printf -- '- Gradle：`%s`\n' "$GRADLE_VERSION"
+            printf -- '- Android Gradle Plugin：`%s`\n' "$AGP_VERSION"
+            printf -- '- Kotlin：`%s`\n' "$KOTLIN_VERSION"
+            printf -- '- Compose BOM：`%s`\n' "$COMPOSE_BOM"
+            printf -- '- Miuix KMP：`%s`\n\n' "$MIUIX_VERSION"
+            printf '%s\n\n' '## 完整性信息'
+            printf -- '- APK SHA-256：`%s`\n' "$APK_SHA256"
+            printf '%s\n' '- 签名证书 SHA-256：`8C:79:74:AD:4C:33:97:FB:23:11:F6:B4:E4:7B:F8:93:63:06:DB:F2:B7:97:C2:20:80:66:ED:F4:15:EC:40:A9`'
+          } > "$NOTES_PATH"
+
+          echo "path=$NOTES_PATH" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "make_latest=$MAKE_LATEST" >> "$GITHUB_OUTPUT"
+
       - name: 发布到 GitHub Releases
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.package.outputs.version }}
           APK_NAME: ${{ steps.package.outputs.apk }}
+          NOTES_PATH: ${{ steps.release_notes.outputs.path }}
+          PRERELEASE: ${{ steps.release_notes.outputs.prerelease }}
+          MAKE_LATEST: ${{ steps.release_notes.outputs.make_latest }}
         run: |
+          set -euo pipefail
           TAG="v$VERSION"
+          BODY="$(cat "$NOTES_PATH")"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$APK_NAME" --clobber
+            RELEASE_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.id')"
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+              -f name="HyperBackground $VERSION" \
+              -f body="$BODY" \
+              -F prerelease="$PRERELEASE" \
+              -f make_latest="$MAKE_LATEST" >/dev/null
           else
-            gh release create "$TAG" "$APK_NAME" --title "HyperBackground $VERSION" --generate-notes
+            gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$TAG" \
+              -f target_commitish="$GITHUB_SHA" \
+              -f name="HyperBackground $VERSION" \
+              -f body="$BODY" \
+              -F draft=false \
+              -F prerelease="$PRERELEASE" >/dev/null
           fi
+          gh release upload "$TAG" "$APK_NAME" --clobber

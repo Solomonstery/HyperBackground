@@ -2,6 +2,31 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.3.7-test3
+
+- MIUIX 二级页面的全局背景仅在识别到 `ActionBarOverlayLayout` 时提升到其根层，不再触碰 DecorView。
+- 状态栏、返回栏和大标题区域改为透明，背景图连续延伸到屏幕顶部。
+- 直接清除 `ActionBarContainer` 内部绘制的 primary background，解决普通 `View.background` 清理无效的问题。
+- 保留应用设置顶部功能卡、隐私页切换条和正文卡片的原生半透明样式。
+- 已成功的设备互联与省电管理继续沿用内容层挂载，不进入顶栏提升逻辑。
+- 测试版恢复正式包名 `com.ciallo.hyperbackground`，使用与正式版相同的私有 Release 签名并由 GitHub 标记为 Pre-release，可直接覆盖安装。
+- 构建作用域校验由 8 项同步为 9 项，加入 `com.xiaomi.misettings`。
+
+## 1.3.7-test2
+
+- 回滚 1.3.7-test 错误的 DecorView 底层挂载，设备互联恢复为 1.3.6 已验证的 `android.R.id.content` 实现。
+- 电话服务、小米账号、主题壁纸、手机管家等普通 Android / Miuix 页面统一使用内容层背景，并保留异步布局后的重复挂载。
+- 新增 `com.xiaomi.misettings` 作用域，覆盖“健康使用手机”等由独立应用承载的页面。
+- 增加 Instrumentation 生命周期兜底，处理未经过标准 Activity 基类回调的页面。
+- 正式版与测试版的 Xposed 运行字段按包名隔离，避免两个模块同时安装时会话对象冲突。
+- 新增 Hook 读取记录，可直接确认目标进程是否成功注入并读取全局背景。
+- 系统桌面为 Flutter / Rust 共享运行时页面，本测试版保留注入诊断，不再使用会导致其他页面回归的通用 Surface 覆盖。
+- 测试包继续使用 `com.ciallo.hyperbackground.test` 与调试证书，不覆盖或改动 1.3.6 正式版。
+
+## 1.3.7-test
+
+- 首轮多软件背景 Hook 兼容测试（已由 1.3.7-test2 替代）。
+
 ## 1.3.6
 
 - 全局背景新增电话服务、小米账号、主题壁纸、系统桌面、手机管家与省电管理作用域。

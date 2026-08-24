@@ -4,13 +4,20 @@ plugins {
 }
 
 val releaseKeystorePath = providers.environmentVariable("HYPERBG_KEYSTORE_PATH").orNull
-    ?: error("Missing required private signing environment variable: HYPERBG_KEYSTORE_PATH")
 val releaseKeystorePassword = providers.environmentVariable("HYPERBG_KEYSTORE_PASSWORD").orNull
-    ?: error("Missing required private signing environment variable: HYPERBG_KEYSTORE_PASSWORD")
 val releaseKeyAlias = providers.environmentVariable("HYPERBG_KEY_ALIAS").orNull
-    ?: error("Missing required private signing environment variable: HYPERBG_KEY_ALIAS")
 val releaseKeyPassword = providers.environmentVariable("HYPERBG_KEY_PASSWORD").orNull
-    ?: error("Missing required private signing environment variable: HYPERBG_KEY_PASSWORD")
+val releaseSigningReady = listOf(
+    releaseKeystorePath,
+    releaseKeystorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+val releaseRequested = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
+
+if (releaseRequested && !releaseSigningReady) {
+    error("Release builds require the private HYPERBG signing environment variables")
+}
 
 android {
     namespace = "com.ciallo.hyperbackground"
@@ -20,13 +27,14 @@ android {
         applicationId = "com.ciallo.hyperbackground"
         minSdk = 33
         targetSdk = 35
-        versionCode = 20
-        versionName = "1.3.6"
+        versionCode = 23
+        versionName = "1.3.7-test3"
     }
 
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true
     }
 
     compileOptions {
@@ -35,12 +43,14 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file(releaseKeystorePath)
-            storePassword = releaseKeystorePassword
-            keyAlias = releaseKeyAlias
-            keyPassword = releaseKeyPassword
-            storeType = "PKCS12"
+        if (releaseSigningReady) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseKeystorePath))
+                storePassword = requireNotNull(releaseKeystorePassword)
+                keyAlias = requireNotNull(releaseKeyAlias)
+                keyPassword = requireNotNull(releaseKeyPassword)
+                storeType = "PKCS12"
+            }
         }
     }
 
@@ -49,7 +59,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("release")
+            if (releaseSigningReady) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

@@ -17,11 +17,15 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 final class BackgroundApplier {
-    private static final String HOME_SESSION = "hyperbackground.home.session";
-    private static final String GLOBAL_SESSION = "hyperbackground.global.session";
-    private static final String DEVICE_SESSION = "hyperbackground.device.session";
-    private static final String DEVICE_ACTIVE = "hyperbackground.device.active";
-    private static final String ORIGINAL_TEXT_COLOR = "hyperbackground.original.text.color";
+    // Namespace Xposed additional fields with the stable application id so sessions cannot
+    // collide with another module using similar field names inside the hooked process.
+    private static final String FIELD_PREFIX = BuildConfig.APPLICATION_ID + ".hook.";
+    private static final String HOME_SESSION = FIELD_PREFIX + "home.session";
+    private static final String GLOBAL_SESSION = FIELD_PREFIX + "global.session";
+    private static final String DEVICE_SESSION = FIELD_PREFIX + "device.session";
+    private static final String DEVICE_ACTIVE = FIELD_PREFIX + "device.active";
+    private static final String ORIGINAL_TEXT_COLOR = FIELD_PREFIX + "original.text.color";
+    private static final String GLOBAL_DIAGNOSTIC = FIELD_PREFIX + "global.diagnostic";
 
     private BackgroundApplier() {}
 
@@ -36,6 +40,7 @@ final class BackgroundApplier {
     static void applyGlobal(Activity activity) {
         if (activity == null) return;
         if (shouldSkipGlobal(activity)) {
+            diagnostic(activity, "skip " + activity.getClass().getName());
             removeGlobal(activity);
             return;
         }
@@ -106,6 +111,10 @@ final class BackgroundApplier {
             return false;
         }
 
+        if (BackgroundContract.PACKAGE_MI_SETTINGS.equals(packageName)) {
+            return !matchesMiSettings(className);
+        }
+
         return true;
     }
 
@@ -163,13 +172,16 @@ final class BackgroundApplier {
 
     private static boolean matchesPhoneSettings(String className) {
         String n = className == null ? "" : className.toLowerCase();
-        return n.contains(".settings.")
+        return n.startsWith("com.android.phone.settings.")
                 || n.contains("setting")
                 || n.contains("calloptions")
+                || n.contains("callbarringoptions")
                 || n.contains("callfeaturessetting")
                 || n.contains("callforwardtype")
                 || n.contains("callforwardoptions")
-                || n.contains("additionalcalloptions");
+                || n.contains("additionalcalloptions")
+                || n.endsWith("fivegnrcasettingactivity")
+                || n.endsWith("nrdisplayactivity");
     }
 
     private static boolean matchesAccountSettings(String className) {
@@ -177,16 +189,31 @@ final class BackgroundApplier {
         return n.contains(".settings.")
                 || n.contains("accountsettings")
                 || n.contains("accountsecurity")
+                || n.contains("agreementandprivacy")
+                || n.contains("systemadactivity")
                 || n.contains("userdetailinfo")
                 || n.contains("userphoneinfo")
                 || n.contains("devicesettinglist")
-                || n.contains("devicedetailinfo");
+                || n.contains("devicedetailinfo")
+                || n.contains("snslistactivity")
+                || n.contains("snsaccountactivity");
     }
 
     private static boolean matchesThemeSettings(String className) {
         String n = className == null ? "" : className.toLowerCase();
         return n.contains(".settings.")
                 || n.contains("themesettings")
+                || n.contains("themepreference")
+                || n.contains("themeabout")
+                || n.endsWith(".activity.themetabactivity")
+                || n.contains("themeandwallpaper")
+                || n.contains("wallpapersettings")
+                || n.contains("wallpapersubsetting")
+                || n.contains("wallpapertabactivity")
+                || n.contains("wallpapermiuitab")
+                || n.contains("privacysettings")
+                || n.contains("authoritymanagement")
+                || n.contains("supportthemeactivity")
                 || n.contains("personalize")
                 || n.contains("aifromsettings");
     }
@@ -214,6 +241,17 @@ final class BackgroundApplier {
                 || n.contains("optimiz");
     }
 
+    private static boolean matchesMiSettings(String className) {
+        String n = className == null ? "" : className.toLowerCase();
+        return n.contains("healthy")
+                || n.contains("usagestat")
+                || n.contains("focusmode")
+                || n.contains("devicelimit")
+                || n.contains("appusage")
+                || n.contains("screen")
+                || n.contains("settings");
+    }
+
     private static void removeGlobal(Activity activity) {
         if (activity == null) return;
         try {
@@ -226,19 +264,27 @@ final class BackgroundApplier {
         try {
             BackgroundContract.Source source = BackgroundContract.query(activity, slot);
             LayerSession old = (LayerSession) XposedHelpers.getAdditionalInstanceField(activity, fieldKey);
-            if (!source.exists) { if (old != null) removeLayer(activity, fieldKey, old); return; }
+            if (!source.exists) {
+                if (BackgroundContract.GLOBAL.equals(slot)) {
+                    diagnostic(activity, "source-missing authority=" + BackgroundContract.AUTHORITY);
+                }
+                if (old != null) removeLayer(activity, fieldKey, old);
+                return;
+            }
 
             View contentView = activity.findViewById(android.R.id.content);
             if (!(contentView instanceof ViewGroup)) return;
             ViewGroup content = (ViewGroup) contentView;
+            ViewGroup host = selectLayerHost(activity, content, home);
+            boolean transparentTopBar = host != content;
 
-            // Activity.onCreate is commonly hooked through the framework base method.
-            // HyperOS Settings frequently calls setContentView() *after* super.onCreate(),
-            // which can remove an already inserted media view while leaving our session alive.
-            // Never trust a cached session unless its media view is still attached to the
-            // current android.R.id.content hierarchy.
+            // Keep the media in android.R.id.content. This is the path already verified on
+            // device interconnection. Miuix secondary pages are the one deliberate exception:
+            // their expanded action bar is a sibling of android.R.id.content, so the media must
+            // sit one level higher in the known ActionBarOverlayLayout to continue behind the
+            // status bar, back button and large title. We never promote to DecorView.
             if (old != null && old.media.sourceKey().equals(source.cacheKey())
-                    && old.media.getParent() == content && old.observedRoot == content) {
+                    && old.media.getParent() == host && old.observedRoot == host) {
                 old.media.onHostResume();
                 old.refresh(activity, home);
                 return;
@@ -246,14 +292,16 @@ final class BackgroundApplier {
             if (old != null) removeLayer(activity, fieldKey, old);
             View originalRoot = content.getChildCount() > 0 ? content.getChildAt(0) : null;
             BackgroundMediaView media = new BackgroundMediaView(activity, source);
-            ViewGroup.LayoutParams mediaParams = content instanceof FrameLayout
+            ViewGroup.LayoutParams mediaParams = host instanceof FrameLayout
                     ? new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     : new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
 
             LayerSession session = new LayerSession(media);
+            if (host != content) session.clear(host);
             session.clear(content);
             if (originalRoot != null) session.clear(originalRoot);
             clearNamed(activity, session, "nestedheaderlayout");
+            clearNamed(activity, session, "nested_header_layout");
             clearNamed(activity, session, "scroll_headers");
             clearNamed(activity, session, "main_content");
             if (!home) {
@@ -272,10 +320,72 @@ final class BackgroundApplier {
                     activity.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
                 }
             } catch (Throwable ignored) {}
-            content.addView(media, 0, mediaParams);
-            session.attach(activity, content, home);
+            host.addView(media, 0, mediaParams);
+            session.attach(activity, host, home, transparentTopBar);
             XposedHelpers.setAdditionalInstanceField(activity, fieldKey, session);
+            if (BackgroundContract.GLOBAL.equals(slot)) {
+                diagnostic(activity, "applied host=" + host.getClass().getName()
+                        + " root=" + (originalRoot == null ? "none" : originalRoot.getClass().getName())
+                        + " topBar=" + (transparentTopBar ? "transparent" : "content-only")
+                        + " activity=" + activity.getClass().getName());
+            }
         } catch (Throwable error) { log("applyLayer/" + slot, error); }
+    }
+
+    private static ViewGroup selectLayerHost(Activity activity, ViewGroup content, boolean home) {
+        if (home || activity == null || content == null) return content;
+        try {
+            Object parent = content.getParent();
+            if (parent instanceof ViewGroup && isMiuixActionBarHost(activity, (ViewGroup) parent)) {
+                return (ViewGroup) parent;
+            }
+
+            int id = activity.getResources().getIdentifier(
+                    "action_bar_overlay_layout", "id", activity.getPackageName());
+            View candidate = id == 0 ? null : activity.findViewById(id);
+            if (candidate instanceof ViewGroup
+                    && candidate != activity.getWindow().getDecorView()
+                    && isAncestor((ViewGroup) candidate, content)
+                    && isMiuixActionBarHost(activity, (ViewGroup) candidate)) {
+                return (ViewGroup) candidate;
+            }
+        } catch (Throwable ignored) {}
+        return content;
+    }
+
+    private static boolean isMiuixActionBarHost(Activity activity, ViewGroup view) {
+        if (view == null) return false;
+        String cls = view.getClass().getName().toLowerCase();
+        String idName = resourceEntryName(activity, view);
+        return cls.contains("miuix.appcompat.internal.app.widget.actionbaroverlaylayout")
+                || cls.contains("miuix.appcompat.internal.app.widget.actionbarmovablelayout")
+                || "action_bar_overlay_layout".equals(idName);
+    }
+
+    private static boolean isAncestor(ViewGroup ancestor, View child) {
+        View current = child;
+        while (current != null) {
+            if (current == ancestor) return true;
+            Object parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return false;
+    }
+
+    private static String resourceEntryName(Activity activity, View view) {
+        if (activity == null || view == null || view.getId() == View.NO_ID || view.getId() == 0) return "";
+        try { return activity.getResources().getResourceEntryName(view.getId()).toLowerCase(); }
+        catch (Throwable ignored) { return ""; }
+    }
+
+    private static void diagnostic(Activity activity, String message) {
+        try {
+            Object previous = XposedHelpers.getAdditionalInstanceField(activity, GLOBAL_DIAGNOSTIC);
+            if (message.equals(previous)) return;
+            XposedHelpers.setAdditionalInstanceField(activity, GLOBAL_DIAGNOSTIC, message);
+            XposedBridge.log("[HyperBackground] " + activity.getPackageName() + " " + message);
+            BackgroundContract.reportDiagnostic(activity, message);
+        } catch (Throwable ignored) {}
     }
 
     private static void stopLayer(Activity activity, String fieldKey) {
@@ -394,22 +504,33 @@ final class BackgroundApplier {
         final BackgroundMediaView media;
         final List<View> clearedViews = new ArrayList<>();
         final List<Drawable> originalBackgrounds = new ArrayList<>();
+        final List<ActionBarSurface> actionBarSurfaces = new ArrayList<>();
         ViewGroup observedRoot;
         ViewTreeObserver.OnGlobalLayoutListener layoutListener;
         boolean homeMode;
+        boolean transparentTopBar;
+        Window statusBarWindow;
+        int originalStatusBarColor;
+        boolean statusBarColorSaved;
 
         LayerSession(BackgroundMediaView media) { this.media = media; }
 
         void clear(View view) {
-            if (view == null || view == media || clearedViews.contains(view)) return;
-            clearedViews.add(view);
-            originalBackgrounds.add(view.getBackground());
+            if (view == null || view == media) return;
+            if (!clearedViews.contains(view)) {
+                clearedViews.add(view);
+                originalBackgrounds.add(view.getBackground());
+            }
+            // Miuix can re-apply theme backgrounds after the first lifecycle callback.
+            // Always null the current value while preserving only the first original value.
             view.setBackground(null);
         }
 
-        void attach(final Activity activity, ViewGroup root, boolean home) {
+        void attach(final Activity activity, ViewGroup root, boolean home, boolean transparentTopBar) {
             observedRoot = root;
             homeMode = home;
+            this.transparentTopBar = transparentTopBar;
+            if (transparentTopBar) prepareTransparentStatusBar(activity);
             refresh(activity, home);
             layoutListener = new ViewTreeObserver.OnGlobalLayoutListener() {
                 @Override public void onGlobalLayout() {
@@ -422,6 +543,7 @@ final class BackgroundApplier {
         void refresh(Activity activity, boolean home) {
             if (home || activity == null || observedRoot == null) return;
             clearPageSurfaces(activity, observedRoot, observedRoot, 0);
+            if (transparentTopBar) clearActionBarSurfaces(activity, observedRoot, 0);
         }
 
         void detach() {
@@ -441,6 +563,72 @@ final class BackgroundApplier {
             }
             clearedViews.clear();
             originalBackgrounds.clear();
+            for (ActionBarSurface state : actionBarSurfaces) {
+                try {
+                    XposedHelpers.callMethod(state.view, "setPrimaryBackground", state.primaryBackground);
+                } catch (Throwable ignored) {}
+            }
+            actionBarSurfaces.clear();
+            if (statusBarColorSaved && statusBarWindow != null) {
+                try { statusBarWindow.setStatusBarColor(originalStatusBarColor); } catch (Throwable ignored) {}
+            }
+            statusBarWindow = null;
+            statusBarColorSaved = false;
+        }
+
+        private void prepareTransparentStatusBar(Activity activity) {
+            try {
+                Window window = activity.getWindow();
+                if (window == null) return;
+                if (!statusBarColorSaved) {
+                    statusBarWindow = window;
+                    originalStatusBarColor = window.getStatusBarColor();
+                    statusBarColorSaved = true;
+                }
+                window.setStatusBarColor(Color.TRANSPARENT);
+            } catch (Throwable ignored) {}
+        }
+
+        private void clearActionBarSurfaces(Activity activity, View view, int depth) {
+            if (view == null || view == media || depth > 8) return;
+            String idName = BackgroundApplier.resourceEntryName(activity, view);
+            String cls = view.getClass().getName().toLowerCase();
+
+            boolean actionBarView = containsAny(idName,
+                    "action_bar_overlay_layout", "action_bar_container", "action_bar", "app_bar",
+                    "collapsing_toolbar", "support_action_bar")
+                    || cls.contains("actionbaroverlaylayout")
+                    || cls.contains("actionbarmovablelayout")
+                    || cls.contains("actionbarcontainer")
+                    || cls.contains("appbarlayout")
+                    || cls.contains("collapsingtoolbarlayout");
+            if (actionBarView) {
+                clear(view);
+                clearMiuixPrimaryBackground(view, cls);
+            }
+
+            if (view instanceof ViewGroup) {
+                ViewGroup group = (ViewGroup) view;
+                for (int i = 0; i < group.getChildCount(); i++) {
+                    clearActionBarSurfaces(activity, group.getChildAt(i), depth + 1);
+                }
+            }
+        }
+
+        private void clearMiuixPrimaryBackground(View view, String className) {
+            if (!className.contains("actionbarcontainer")) return;
+            ActionBarSurface saved = null;
+            for (ActionBarSurface state : actionBarSurfaces) {
+                if (state.view == view) { saved = state; break; }
+            }
+            try {
+                Object current = XposedHelpers.callMethod(view, "getPrimaryBackground");
+                if (saved == null) {
+                    saved = new ActionBarSurface(view, current instanceof Drawable ? (Drawable) current : null);
+                    actionBarSurfaces.add(saved);
+                }
+                if (current != null) XposedHelpers.callMethod(view, "setPrimaryBackground", (Object) null);
+            } catch (Throwable ignored) {}
         }
 
         private void clearPageSurfaces(Activity activity, View view, View root, int depth) {
@@ -477,6 +665,24 @@ final class BackgroundApplier {
                 return true;
             }
 
+            // The supplied Phone/Account/Theme builds split a Miuix page into several
+            // full-width host panels instead of one full-height root. Clear those host
+            // panels while retaining inset cards and controls.
+            boolean externalSettingsPage = BackgroundContract.PACKAGE_PHONE.equals(pkg)
+                    || BackgroundContract.PACKAGE_ACCOUNT.equals(pkg)
+                    || BackgroundContract.PACKAGE_THEME_MANAGER.equals(pkg)
+                    || BackgroundContract.PACKAGE_SECURITY_CENTER.equals(pkg)
+                    || BackgroundContract.PACKAGE_POWER_KEEPER.equals(pkg)
+                    || BackgroundContract.PACKAGE_MI_SETTINGS.equals(pkg);
+            if (externalSettingsPage
+                    && view instanceof ViewGroup
+                    && depth <= 8
+                    && width >= (int) (rootWidth * 0.94f)
+                    && height >= (int) (rootHeight * 0.15f)
+                    && !containsAny(idName, "card", "button", "switch", "checkbox", "icon", "image", "banner")) {
+                return true;
+            }
+
             if (!large) return false;
 
             String cls = view.getClass().getName().toLowerCase();
@@ -509,6 +715,14 @@ final class BackgroundApplier {
             if (value == null || value.isEmpty()) return false;
             for (String needle : needles) if (value.contains(needle)) return true;
             return false;
+        }
+    }
+    private static final class ActionBarSurface {
+        final View view;
+        final Drawable primaryBackground;
+        ActionBarSurface(View view, Drawable primaryBackground) {
+            this.view = view;
+            this.primaryBackground = primaryBackground;
         }
     }
     private static final class DeviceSession {

@@ -1,5 +1,6 @@
 package com.ciallo.hyperbackground
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Color as AndroidColor
@@ -86,6 +87,7 @@ import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 class ConfigActivity : ComponentActivity() {
     private lateinit var prefs: SharedPreferences
@@ -348,7 +350,10 @@ class ConfigActivity : ComponentActivity() {
                     item { BackgroundCard(BackgroundContract.DEVICE, "我的设备", "图片 / GIF / WebP / MP4 / WebM", MiuixIcons.Phone, true, revision) }
                     item { BackgroundCard(BackgroundContract.GLOBAL, "全局背景", "设置二级页 + 系统设置组件", MiuixIcons.Background, false, revision) }
                 }
-                1 -> item { TextAndSettingsAppearanceCard() }
+                1 -> {
+                    item { TextAndSettingsAppearanceCard() }
+                    item { ScopeRestartCard() }
+                }
                 2 -> {
                     item { ModuleAppearanceCard(themeMode, monet, accent, onThemeMode, onMonet, onAccent, revision) }
                     item { SayingSettingsCard(sayingApi, sayingKey, onSayingApi, onSayingKey) }
@@ -461,6 +466,29 @@ class ConfigActivity : ComponentActivity() {
                     fontMode = it
                     prefs.edit().putInt(BackgroundContract.FONT_MODE, it).apply()
                 }
+            }
+        }
+    }
+
+    @Composable
+    private fun ScopeRestartCard() {
+        UiCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("作用域工具", style = MiuixTheme.textStyles.headline1)
+                Text(
+                    "结束设置及相关系统组件进程，让刚启用的 LSPosed 作用域和新背景立即重新载入。",
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+                TextButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = "重启作用域",
+                    onClick = { showRestartScopeDialog() },
+                )
+                TextButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = "查看 Hook 读取记录",
+                    onClick = { showHookDiagnostics() },
+                )
             }
         }
     }
@@ -901,10 +929,10 @@ class ConfigActivity : ComponentActivity() {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("本次版本说明", style = MiuixTheme.textStyles.headline1)
                 Text("HyperBG ${BuildConfig.VERSION_NAME}", color = MiuixTheme.colorScheme.primary)
-                Text("• 全局背景扩展到电话、账号、主题、桌面、手机管家与省电设置。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                Text("• 调色盘新增 12 色预设、HSV 滑杆与 6/8 位 HEX 输入。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                Text("• 登录、授权、凭据、支付、拨号等敏感窗口保持系统原样。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                Text("• 从本版起使用固定私有签名；首次升级需要卸载旧签名版本。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Text("• MIUIX 二级页面的状态栏、返回栏与大标题背景改为透明。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Text("• 应用设置功能卡、隐私切换条和正文卡片保持原生半透明样式。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Text("• 设备互联与省电管理继续使用已验证的内容层挂载，不受顶栏改动影响。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Text("• 测试版使用正式包名与同一私有签名，通过 GitHub Pre-release 发布。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             }
         }
     }
@@ -1004,6 +1032,100 @@ class ConfigActivity : ComponentActivity() {
         runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }.onFailure { toast("无法打开链接") }
     }
 
+    private fun showRestartScopeDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("重启作用域")
+            .setMessage("常规重启不会结束电话服务。完整重启可能让通话与移动网络短暂中断，恢复后会重新载入 Hook。")
+            .setNegativeButton("取消", null)
+            .setNeutralButton("完整重启") { _, _ -> restartScopes(includePhone = true) }
+            .setPositiveButton("常规重启") { _, _ -> restartScopes(includePhone = false) }
+            .show()
+    }
+
+    private fun showHookDiagnostics() {
+        val now = System.currentTimeMillis()
+        val text = buildString {
+            append("先打开目标页面，再回到这里查看。显示‘已读取’代表目标进程已执行 Hook，并成功读取全局背景。\n\n")
+            SCOPE_PACKAGES.forEach { packageName ->
+                val last = prefs.getLong(BackgroundContract.DIAGNOSTIC_QUERY_PREFIX + packageName, 0L)
+                val slot = prefs.getString(BackgroundContract.DIAGNOSTIC_SLOT_PREFIX + packageName, null)
+                val activity = prefs.getString(BackgroundContract.DIAGNOSTIC_ACTIVITY_PREFIX + packageName, null)
+                val render = prefs.getString(BackgroundContract.DIAGNOSTIC_RENDER_PREFIX + packageName, null)
+                append(SCOPE_LABELS[packageName] ?: packageName)
+                append("：")
+                if (last <= 0L) {
+                    append("未收到读取请求")
+                } else {
+                    val seconds = ((now - last).coerceAtLeast(0L) / 1000L)
+                    val age = when {
+                        seconds < 60L -> "${seconds} 秒前"
+                        seconds < 3600L -> "${seconds / 60L} 分钟前"
+                        else -> "${seconds / 3600L} 小时前"
+                    }
+                    append("已读取 · $age")
+                    if (!slot.isNullOrBlank()) append(" · $slot")
+                    if (!activity.isNullOrBlank()) append("\n  ${activity.substringAfterLast('.')}")
+                    if (!render.isNullOrBlank()) append("\n  ${render.take(180)}")
+                }
+                append('\n')
+            }
+        }.trim()
+
+        AlertDialog.Builder(this)
+            .setTitle("Hook 读取记录")
+            .setMessage(text)
+            .setNegativeButton("关闭", null)
+            .setNeutralButton("清空记录") { _, _ ->
+                val editor = prefs.edit()
+                SCOPE_PACKAGES.forEach { packageName ->
+                    editor.remove(BackgroundContract.DIAGNOSTIC_QUERY_PREFIX + packageName)
+                    editor.remove(BackgroundContract.DIAGNOSTIC_SLOT_PREFIX + packageName)
+                    editor.remove(BackgroundContract.DIAGNOSTIC_ACTIVITY_PREFIX + packageName)
+                    editor.remove(BackgroundContract.DIAGNOSTIC_RENDER_PREFIX + packageName)
+                }
+                editor.apply()
+                toast("Hook 读取记录已清空")
+            }
+            .show()
+    }
+
+    private fun restartScopes(includePhone: Boolean) {
+        toast("正在请求 Root 并重启作用域…")
+        Thread {
+            val result = forceStopScopes(includePhone)
+            runOnUiThread {
+                if (result.first) {
+                    toast(if (includePhone) "完整作用域已重启" else "常规作用域已重启")
+                    runCatching {
+                        startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                } else {
+                    toast(result.second)
+                }
+            }
+        }.start()
+    }
+
+    private fun forceStopScopes(includePhone: Boolean): Pair<Boolean, String> {
+        val packages = if (includePhone) SCOPE_PACKAGES else SCOPE_PACKAGES.filterNot { it == BackgroundContract.PACKAGE_PHONE }
+        val command = packages.joinToString(separator = "; ") { "am force-stop $it" }
+        return runCatching {
+            val process = ProcessBuilder("su", "-c", command)
+                .redirectErrorStream(true)
+                .start()
+            val completed = process.waitFor(25, TimeUnit.SECONDS)
+            if (!completed) {
+                process.destroy()
+                false to "Root 操作超时，请检查授权"
+            } else if (process.exitValue() == 0) {
+                true to ""
+            } else {
+                val detail = process.inputStream.bufferedReader().use { it.readText() }.trim().take(80)
+                false to if (detail.isBlank()) "重启失败，请确认 Root 授权" else "重启失败：$detail"
+            }
+        }.getOrElse { false to "无法调用 Root：${it.message ?: "未知错误"}" }
+    }
+
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
 
     companion object {
@@ -1011,6 +1133,28 @@ class ConfigActivity : ComponentActivity() {
         private const val DEFAULT_SAYING_KEY = "text"
         private const val LATEST_RELEASE_API = "https://api.github.com/repos/Solomonstery/HyperBackground/releases/latest"
         private const val RELEASES_URL = "https://github.com/Solomonstery/HyperBackground/releases"
+        private val SCOPE_PACKAGES = listOf(
+            BackgroundContract.PACKAGE_SETTINGS,
+            BackgroundContract.PACKAGE_MILINK,
+            BackgroundContract.PACKAGE_PHONE,
+            BackgroundContract.PACKAGE_ACCOUNT,
+            BackgroundContract.PACKAGE_THEME_MANAGER,
+            BackgroundContract.PACKAGE_HOME,
+            BackgroundContract.PACKAGE_SECURITY_CENTER,
+            BackgroundContract.PACKAGE_POWER_KEEPER,
+            BackgroundContract.PACKAGE_MI_SETTINGS,
+        )
+        private val SCOPE_LABELS = mapOf(
+            BackgroundContract.PACKAGE_SETTINGS to "系统设置",
+            BackgroundContract.PACKAGE_MILINK to "设备互联",
+            BackgroundContract.PACKAGE_PHONE to "电话服务",
+            BackgroundContract.PACKAGE_ACCOUNT to "小米账号",
+            BackgroundContract.PACKAGE_THEME_MANAGER to "主题壁纸",
+            BackgroundContract.PACKAGE_HOME to "系统桌面",
+            BackgroundContract.PACKAGE_SECURITY_CENTER to "手机管家 / 隐私安全",
+            BackgroundContract.PACKAGE_POWER_KEEPER to "省电管理",
+            BackgroundContract.PACKAGE_MI_SETTINGS to "健康使用手机",
+        )
 
         private fun humanSize(b: Long): String = when {
             b >= 1048576L -> String.format("%.1f MB", b / 1048576f)

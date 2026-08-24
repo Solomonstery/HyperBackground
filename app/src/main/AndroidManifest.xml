@@ -25,7 +25,7 @@
 
         <provider
             android:name=".BackgroundProvider"
-            android:authorities="com.ciallo.hyperbackground.provider"
+            android:authorities="${applicationId}.provider"
             android:exported="true"
             android:grantUriPermissions="true" />
 

@@ -8,6 +8,7 @@ import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
 import android.os.Binder;
+import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -26,7 +27,8 @@ public final class BackgroundProvider extends ContentProvider {
         return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
     }
     @Override public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {
-        enforceReader(); String slot = requireSlot(uri); File file = fileFor(slot); String[] columns = columns(projection);
+        enforceReader(); String slot = requireSlot(uri); recordReader(slot, selection);
+        File file = fileFor(slot); String[] columns = columns(projection);
         MatrixCursor result = new MatrixCursor(columns, 1); MatrixCursor.RowBuilder row = result.newRow();
         SharedPreferences p = prefs();
         for (String column : columns) {
@@ -48,8 +50,44 @@ public final class BackgroundProvider extends ContentProvider {
     @Override public Uri insert(Uri uri, ContentValues values) { throw new UnsupportedOperationException("Read only"); }
     @Override public int delete(Uri uri, String selection, String[] selectionArgs) { throw new UnsupportedOperationException("Read only"); }
     @Override public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) { throw new UnsupportedOperationException("Read only"); }
+    @Override public Bundle call(String method, String arg, Bundle extras) {
+        if (!BackgroundContract.METHOD_REPORT_DIAGNOSTIC.equals(method)) return super.call(method, arg, extras);
+        enforceReader();
+        String packageName = resolveCallingPackage();
+        String message = extras == null ? null : extras.getString(BackgroundContract.EXTRA_DIAGNOSTIC_MESSAGE);
+        if (packageName != null && message != null && !message.isEmpty()) {
+            prefs().edit().putString(BackgroundContract.DIAGNOSTIC_RENDER_PREFIX + packageName, message).apply();
+        }
+        return Bundle.EMPTY;
+    }
 
     private SharedPreferences prefs() { return getContext().getSharedPreferences(BackgroundContract.PREFS, 0); }
+    private void recordReader(String slot, String activityName) {
+        try {
+            String packageName = resolveCallingPackage();
+            if (packageName == null || !BackgroundContract.isSupportedPackage(packageName)) return;
+            SharedPreferences.Editor editor = prefs().edit()
+                    .putLong(BackgroundContract.DIAGNOSTIC_QUERY_PREFIX + packageName, System.currentTimeMillis())
+                    .putString(BackgroundContract.DIAGNOSTIC_SLOT_PREFIX + packageName, slot);
+            if (activityName != null && !activityName.isEmpty()) {
+                editor.putString(BackgroundContract.DIAGNOSTIC_ACTIVITY_PREFIX + packageName, activityName);
+            }
+            editor.apply();
+        } catch (Throwable ignored) {}
+    }
+    private String resolveCallingPackage() {
+        String packageName = null;
+        try { packageName = getCallingPackage(); } catch (Throwable ignored) {}
+        if (packageName != null && BackgroundContract.isSupportedPackage(packageName)) return packageName;
+        int caller = Binder.getCallingUid();
+        String[] packages = getContext().getPackageManager().getPackagesForUid(caller);
+        if (packages != null) {
+            for (String candidate : packages) {
+                if (BackgroundContract.isSupportedPackage(candidate)) return candidate;
+            }
+        }
+        return null;
+    }
     private void enforceReader() {
         int caller = Binder.getCallingUid(); if (caller == android.os.Process.myUid() || caller == 1000) return;
         PackageManager pm = getContext().getPackageManager(); String[] packages = pm.getPackagesForUid(caller);

@@ -4,6 +4,8 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Bundle;
+import android.util.Log;
 
 final class BackgroundContract {
     static final String PACKAGE_SETTINGS = "com.android.settings";
@@ -14,6 +16,7 @@ final class BackgroundContract {
     static final String PACKAGE_HOME = "com.miui.home";
     static final String PACKAGE_SECURITY_CENTER = "com.miui.securitycenter";
     static final String PACKAGE_POWER_KEEPER = "com.miui.powerkeeper";
+    static final String PACKAGE_MI_SETTINGS = "com.xiaomi.misettings";
 
     private static final String[] SUPPORTED_PACKAGES = new String[] {
             PACKAGE_SETTINGS,
@@ -23,10 +26,11 @@ final class BackgroundContract {
             PACKAGE_THEME_MANAGER,
             PACKAGE_HOME,
             PACKAGE_SECURITY_CENTER,
-            PACKAGE_POWER_KEEPER
+            PACKAGE_POWER_KEEPER,
+            PACKAGE_MI_SETTINGS
     };
 
-    static final String AUTHORITY = "com.ciallo.hyperbackground.provider";
+    static final String AUTHORITY = BuildConfig.APPLICATION_ID + ".provider";
     static final String HOME = "home";
     static final String DEVICE = "device";
     static final String GLOBAL = "global";
@@ -52,6 +56,12 @@ final class BackgroundContract {
     static final String UI_SAYING_API = "ui_saying_api";
     static final String UI_SAYING_KEY = "ui_saying_key";
     static final String UI_SCROLL_Y = "ui_scroll_y";
+    static final String DIAGNOSTIC_QUERY_PREFIX = "diagnostic_query_";
+    static final String DIAGNOSTIC_SLOT_PREFIX = "diagnostic_slot_";
+    static final String DIAGNOSTIC_ACTIVITY_PREFIX = "diagnostic_activity_";
+    static final String DIAGNOSTIC_RENDER_PREFIX = "diagnostic_render_";
+    static final String METHOD_REPORT_DIAGNOSTIC = "report_diagnostic";
+    static final String EXTRA_DIAGNOSTIC_MESSAGE = "message";
 
     static final int UI_THEME_FOLLOW = 0;
     static final int UI_THEME_LIGHT = 1;
@@ -104,7 +114,7 @@ final class BackgroundContract {
                     COLUMN_MIME, COLUMN_SIZE, COLUMN_MODIFIED, COLUMN_OPACITY,
                     COLUMN_BLUR_ENABLED, COLUMN_BLUR_RADIUS, COLUMN_FONT_MODE,
                     COLUMN_DEVICE_LOGO_MODE, COLUMN_DEVICE_LOGO_TEXT, COLUMN_DEVICE_LOGO_COLOR, COLUMN_SETTINGS_THEME_MODE
-            }, null, null, null);
+            }, context.getClass().getName(), null, null);
             if (cursor == null || !cursor.moveToFirst()) return Source.missing(slot, uri);
             String mime = string(cursor, COLUMN_MIME, "application/octet-stream");
             long size = longValue(cursor, COLUMN_SIZE, -1L);
@@ -120,11 +130,22 @@ final class BackgroundContract {
             boolean exists = size >= 0L;
             return new Source(slot, uri, mime, size, modified, exists,
                     opacity, blur, blurRadius, fontMode, deviceLogoMode, deviceLogoText, deviceLogoColor, settingsThemeMode);
-        } catch (Throwable ignored) {
+        } catch (Throwable error) {
+            Log.e("HyperBackground", "Cannot query " + slot + " background from "
+                    + context.getPackageName() + " via " + AUTHORITY, error);
             return Source.missing(slot, uri);
         } finally {
             if (cursor != null) cursor.close();
         }
+    }
+
+    static void reportDiagnostic(Context context, String message) {
+        if (context == null || message == null) return;
+        try {
+            Bundle extras = new Bundle();
+            extras.putString(EXTRA_DIAGNOSTIC_MESSAGE, message);
+            context.getContentResolver().call(uri(GLOBAL), METHOD_REPORT_DIAGNOSTIC, null, extras);
+        } catch (Throwable ignored) {}
     }
 
     private static String string(Cursor c, String name, String fallback) {

@@ -1,6 +1,7 @@
 package com.ciallo.hyperbackground;
 
 import android.app.Activity;
+import android.app.Instrumentation;
 import android.os.Bundle;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
@@ -15,7 +16,11 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
         if (!BackgroundContract.isSupportedPackage(lpparam.packageName)) return;
         boolean settings = BackgroundContract.PACKAGE_SETTINGS.equals(lpparam.packageName);
 
+        XposedBridge.log("[HyperBackground] injected package=" + lpparam.packageName
+                + " process=" + lpparam.processName + " version=" + BuildConfig.VERSION_NAME);
         hookGlobalActivities();
+        hookInstrumentationLifecycle();
+        hookKnownPackageLifecycle(lpparam);
 
         if (settings) {
             SettingsThemeOverride.install();
@@ -23,6 +28,32 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
             hookHomeActivity(lpparam.classLoader);
             hookHomeFragment(lpparam.classLoader);
             hookDeviceFragment(lpparam.classLoader);
+        }
+    }
+
+    private static void hookInstrumentationLifecycle() {
+        try {
+            XposedHelpers.findAndHookMethod(
+                    Instrumentation.class,
+                    "callActivityOnCreate",
+                    Activity.class,
+                    Bundle.class,
+                    new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.args[0] instanceof Activity) scheduleGlobal((Activity) param.args[0]);
+                        }
+                    });
+            XposedHelpers.findAndHookMethod(
+                    Instrumentation.class,
+                    "callActivityOnResume",
+                    Activity.class,
+                    new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.args[0] instanceof Activity) scheduleGlobal((Activity) param.args[0]);
+                        }
+                    });
+        } catch (Throwable error) {
+            logHookError("Instrumentation lifecycle", error);
         }
     }
 
@@ -34,7 +65,16 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
                     Bundle.class,
                     new XC_MethodHook() {
                         @Override protected void afterHookedMethod(MethodHookParam param) {
-                            if (param.thisObject instanceof Activity) BackgroundApplier.applyGlobal((Activity) param.thisObject);
+                            if (param.thisObject instanceof Activity) scheduleGlobal((Activity) param.thisObject);
+                        }
+                    });
+            XposedHelpers.findAndHookMethod(
+                    Activity.class,
+                    "onPostCreate",
+                    Bundle.class,
+                    new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.thisObject instanceof Activity) scheduleGlobal((Activity) param.thisObject);
                         }
                     });
             XposedHelpers.findAndHookMethod(
@@ -42,16 +82,7 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
                     "onResume",
                     new XC_MethodHook() {
                         @Override protected void afterHookedMethod(MethodHookParam param) {
-                            if (param.thisObject instanceof Activity) {
-                                final Activity activity = (Activity) param.thisObject;
-                                try {
-                                    android.view.View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
-                                    if (decor != null) decor.post(() -> BackgroundApplier.applyGlobal(activity));
-                                    else BackgroundApplier.applyGlobal(activity);
-                                } catch (Throwable ignored) {
-                                    BackgroundApplier.applyGlobal(activity);
-                                }
-                            }
+                            if (param.thisObject instanceof Activity) scheduleGlobal((Activity) param.thisObject);
                         }
                     });
             XposedHelpers.findAndHookMethod(
@@ -59,15 +90,17 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
                     "onContentChanged",
                     new XC_MethodHook() {
                         @Override protected void afterHookedMethod(MethodHookParam param) {
-                            if (param.thisObject instanceof Activity) {
-                                final Activity activity = (Activity) param.thisObject;
-                                try {
-                                    android.view.View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
-                                    if (decor != null) decor.post(() -> BackgroundApplier.applyGlobal(activity));
-                                    else BackgroundApplier.applyGlobal(activity);
-                                } catch (Throwable ignored) {
-                                    BackgroundApplier.applyGlobal(activity);
-                                }
+                            if (param.thisObject instanceof Activity) scheduleGlobal((Activity) param.thisObject);
+                        }
+                    });
+            XposedHelpers.findAndHookMethod(
+                    Activity.class,
+                    "onWindowFocusChanged",
+                    boolean.class,
+                    new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.thisObject instanceof Activity && Boolean.TRUE.equals(param.args[0])) {
+                                scheduleGlobal((Activity) param.thisObject);
                             }
                         }
                     });
@@ -89,6 +122,57 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
                     });
         } catch (Throwable error) {
             logHookError("Global Activities", error);
+        }
+    }
+
+    private static void hookKnownPackageLifecycle(final XC_LoadPackage.LoadPackageParam lpparam) {
+        String className = null;
+        if (BackgroundContract.PACKAGE_PHONE.equals(lpparam.packageName)) {
+            className = "com.android.phone.settings.BaseActivity";
+        } else if (BackgroundContract.PACKAGE_ACCOUNT.equals(lpparam.packageName)) {
+            className = "com.xiaomi.account.ui.BaseActivity";
+        } else if (BackgroundContract.PACKAGE_THEME_MANAGER.equals(lpparam.packageName)) {
+            className = "com.android.thememanager.basemodule.base.AbstractBaseActivity";
+        } else if (BackgroundContract.PACKAGE_HOME.equals(lpparam.packageName)) {
+            className = "com.miui.home.settings.MiuiHomeSettingActivity";
+        }
+        if (className == null) return;
+        try {
+            XposedHelpers.findAndHookMethod(
+                    className,
+                    lpparam.classLoader,
+                    "onCreate",
+                    Bundle.class,
+                    new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.thisObject instanceof Activity) scheduleGlobal((Activity) param.thisObject);
+                        }
+                    });
+            XposedBridge.log("[HyperBackground] precise lifecycle hook=" + className);
+        } catch (Throwable error) {
+            // The launcher settings class can be supplied by a shared native runtime and
+            // may not declare onCreate itself. Framework lifecycle hooks remain active.
+            logHookError("precise lifecycle " + className, error);
+        }
+    }
+
+    private static void scheduleGlobal(final Activity activity) {
+        if (activity == null || activity.isFinishing()) return;
+        BackgroundApplier.applyGlobal(activity);
+        try {
+            android.view.View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
+            if (decor == null) return;
+            decor.post(() -> {
+                if (!activity.isFinishing() && !activity.isDestroyed()) BackgroundApplier.applyGlobal(activity);
+            });
+            decor.postOnAnimation(() -> {
+                if (!activity.isFinishing() && !activity.isDestroyed()) BackgroundApplier.applyGlobal(activity);
+            });
+            decor.postDelayed(() -> {
+                if (!activity.isFinishing() && !activity.isDestroyed()) BackgroundApplier.applyGlobal(activity);
+            }, 180L);
+        } catch (Throwable ignored) {
+            BackgroundApplier.applyGlobal(activity);
         }
     }
 

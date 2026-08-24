@@ -5,6 +5,11 @@ on:
     workflows: ["构建并发布 LSPosed 模块"]
     types: [completed]
   workflow_dispatch:
+    inputs:
+      source_tag:
+        description: 要补同步的主仓库正式版 Tag，例如 v1.3.8；留空则使用 main
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -22,12 +27,24 @@ jobs:
       LSP_REPO: Xposed-Modules-Repo/com.ciallo.hyperbackground
 
     steps:
+      - name: 选择同步来源
+        id: source
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.source_tag }}" ]]; then
+            echo "ref=${{ inputs.source_tag }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            echo "ref=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: 检出对应源码
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || 'main' }}
+          ref: ${{ steps.source.outputs.ref }}
 
       - name: 读取版本信息并判断是否正式版
         id: version
@@ -78,7 +95,7 @@ jobs:
           fi
 
       - name: 等待主仓库正式版 Release 可读取
-        if: github.event_name == 'workflow_run' && steps.version.outputs.stable == 'true'
+        if: steps.version.outputs.stable == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -94,7 +111,7 @@ jobs:
           exit 1
 
       - name: 下载主仓库正式版 APK 与说明
-        if: github.event_name == 'workflow_run' && steps.version.outputs.stable == 'true'
+        if: steps.version.outputs.stable == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -112,7 +129,7 @@ jobs:
           test -n "$(find "$RUNNER_TEMP/lsp-release" -maxdepth 1 -type f -name '*.apk' -print -quit)"
 
       - name: 创建或更新 LSPosed 正式版 Release
-        if: github.event_name == 'workflow_run' && steps.version.outputs.stable == 'true'
+        if: steps.version.outputs.stable == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.LSP_REPO_TOKEN }}
@@ -152,7 +169,4 @@ jobs:
         if: steps.version.outputs.stable == 'true'
         shell: bash
         run: |
-          echo "正式版源码已同步到 $LSP_REPO（未同步 .github/workflows）"
-          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            echo "正式版 Release 已同步：${{ steps.version.outputs.lsp_tag }}"
-          fi
+          echo "正式版源码与 Release 已同步到 $LSP_REPO"

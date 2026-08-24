@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.app.Instrumentation;
 import android.os.Bundle;
 import android.view.View;
-import android.view.ViewTreeObserver;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -160,48 +159,13 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
 
     private static void scheduleGlobal(final Activity activity) {
         if (activity == null || activity.isFinishing()) return;
-
-        // Try synchronously first so the background can be installed before the first frame.
         BackgroundApplier.applyGlobal(activity);
-
         try {
             final View decor = activity.getWindow() == null
                     ? null
                     : activity.getWindow().getDecorView();
             if (decor == null) return;
 
-            // HyperOS may draw the stock page for one or two frames before the Xposed
-            // background layer is attached. Gate only the initial draw for a very small
-            // number of attempts; failure always falls through so a bad hook cannot freeze UI.
-            final ViewTreeObserver observer = decor.getViewTreeObserver();
-            if (observer.isAlive()) {
-                observer.addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
-                    int attempts = 0;
-
-                    @Override
-                    public boolean onPreDraw() {
-                        attempts++;
-
-                        boolean ready = BackgroundApplier.ensureGlobalBeforeDraw(activity);
-                        if (ready
-                                || attempts >= 3
-                                || activity.isFinishing()
-                                || activity.isDestroyed()) {
-                            try {
-                                ViewTreeObserver current = decor.getViewTreeObserver();
-                                if (current.isAlive()) current.removeOnPreDrawListener(this);
-                            } catch (Throwable ignored) {}
-                            return true;
-                        }
-
-                        decor.postInvalidateOnAnimation();
-                        return false;
-                    }
-                });
-            }
-
-            // Keep the existing lifecycle/layout fallbacks for pages that rebuild their
-            // Miuix hierarchy after the first frame.
             decor.post(() -> {
                 if (!activity.isFinishing() && !activity.isDestroyed()) {
                     BackgroundApplier.applyGlobal(activity);

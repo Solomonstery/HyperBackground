@@ -49,34 +49,21 @@ final class BackgroundApplier {
 
     static void stopGlobal(Activity activity) { stopLayer(activity, GLOBAL_SESSION); }
 
-    static void pauseGlobalForTransition(Activity activity) {
-        if (activity == null || isSettingsPackage(activity)) return;
+    static boolean ensureGlobalBeforeDraw(Activity activity) {
+        if (activity == null || activity.isFinishing()) return true;
         try {
-            LayerSession session = (LayerSession) XposedHelpers.getAdditionalInstanceField(activity, GLOBAL_SESSION);
-            if (session != null) session.media.setVisibility(View.INVISIBLE);
-        } catch (Throwable error) {
-            log("pauseGlobalForTransition", error);
-        }
-    }
+            if (shouldSkipGlobal(activity)) return true;
 
-    static void resumeGlobalAfterTransition(Activity activity) {
-        if (activity == null || isSettingsPackage(activity)) return;
-        try {
-            LayerSession session = (LayerSession) XposedHelpers.getAdditionalInstanceField(activity, GLOBAL_SESSION);
-            if (session != null) {
-                session.media.setVisibility(View.VISIBLE);
-                session.media.onHostResume();
-            }
-        } catch (Throwable error) {
-            log("resumeGlobalAfterTransition", error);
-        }
-    }
+            BackgroundContract.Source source =
+                    BackgroundContract.query(activity, BackgroundContract.GLOBAL);
+            if (!source.exists) return true;
 
-    private static boolean isSettingsPackage(Activity activity) {
-        try {
-            return BackgroundContract.PACKAGE_SETTINGS.equals(activity.getPackageName());
-        } catch (Throwable ignored) {
-            return false;
+            applyGlobal(activity);
+            return XposedHelpers.getAdditionalInstanceField(activity, GLOBAL_SESSION) instanceof LayerSession;
+        } catch (Throwable error) {
+            log("ensureGlobalBeforeDraw", error);
+            // Never block rendering indefinitely if a vendor page behaves unexpectedly.
+            return true;
         }
     }
 

@@ -315,11 +315,6 @@ final class BackgroundApplier {
                 clearNamed(activity, session, "area_content");
                 clearNamed(activity, session, "auto_content");
             }
-            try {
-                if (!home && activity.getWindow() != null) {
-                    activity.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
-                }
-            } catch (Throwable ignored) {}
             host.addView(media, 0, mediaParams);
             session.attach(activity, host, home, transparentTopBar);
             XposedHelpers.setAdditionalInstanceField(activity, fieldKey, session);

@@ -8,6 +8,7 @@ import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.view.Window;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 import android.widget.TextView;
@@ -48,24 +49,6 @@ final class BackgroundApplier {
     }
 
     static void stopGlobal(Activity activity) { stopLayer(activity, GLOBAL_SESSION); }
-
-    static boolean ensureGlobalBeforeDraw(Activity activity) {
-        if (activity == null || activity.isFinishing()) return true;
-        try {
-            if (shouldSkipGlobal(activity)) return true;
-
-            BackgroundContract.Source source =
-                    BackgroundContract.query(activity, BackgroundContract.GLOBAL);
-            if (!source.exists) return true;
-
-            applyGlobal(activity);
-            return XposedHelpers.getAdditionalInstanceField(activity, GLOBAL_SESSION) instanceof LayerSession;
-        } catch (Throwable error) {
-            log("ensureGlobalBeforeDraw", error);
-            // Never block rendering indefinitely if a vendor page behaves unexpectedly.
-            return true;
-        }
-    }
 
     static void destroyGlobal(Activity activity) { removeGlobal(activity); }
 
@@ -346,6 +329,30 @@ final class BackgroundApplier {
     }
 
     private static ViewGroup selectLayerHost(Activity activity, ViewGroup content, boolean home) {
+        // MobileNetworkSettings uses MIUIX ActionBarOverlayLayout for page animation.
+        // Keep the custom background outside that animated container so it does not
+        // slide together with the page and create a ghost/double-background frame.
+        if (activity != null
+                && "com.android.phone".equals(activity.getPackageName())
+                && "com.android.phone.settings.MobileNetworkSettings".equals(
+                        activity.getClass().getName())) {
+            try {
+                View windowContent = activity.findViewById(android.R.id.content);
+                if (windowContent instanceof ViewGroup) {
+                    ViewGroup windowHost = (ViewGroup) windowContent;
+                    ViewParent parent = windowHost.getParent();
+
+                    if (windowHost.getClass().getName().contains("ActionBarOverlayLayout")
+                            && parent instanceof ViewGroup) {
+                        return (ViewGroup) parent;
+                    }
+                    return windowHost;
+                }
+            } catch (Throwable error) {
+                log("selectLayerHost/MobileNetworkSettings", error);
+            }
+        }
+
         if (home || activity == null || content == null) return content;
         try {
             Object parent = content.getParent();

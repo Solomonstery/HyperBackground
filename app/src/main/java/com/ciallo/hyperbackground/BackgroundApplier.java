@@ -49,21 +49,34 @@ final class BackgroundApplier {
 
     static void stopGlobal(Activity activity) { stopLayer(activity, GLOBAL_SESSION); }
 
-    static boolean ensureGlobalBeforeDraw(Activity activity) {
-        if (activity == null || activity.isFinishing()) return true;
+    static void pauseGlobalForTransition(Activity activity) {
+        if (activity == null || isSettingsPackage(activity)) return;
         try {
-            if (shouldSkipGlobal(activity)) return true;
-
-            BackgroundContract.Source source =
-                    BackgroundContract.query(activity, BackgroundContract.GLOBAL);
-            if (!source.exists) return true;
-
-            applyGlobal(activity);
-            return XposedHelpers.getAdditionalInstanceField(activity, GLOBAL_SESSION) instanceof LayerSession;
+            LayerSession session = (LayerSession) XposedHelpers.getAdditionalInstanceField(activity, GLOBAL_SESSION);
+            if (session != null) session.media.setVisibility(View.INVISIBLE);
         } catch (Throwable error) {
-            log("ensureGlobalBeforeDraw", error);
-            // Never block rendering indefinitely if a vendor page behaves unexpectedly.
-            return true;
+            log("pauseGlobalForTransition", error);
+        }
+    }
+
+    static void resumeGlobalAfterTransition(Activity activity) {
+        if (activity == null || isSettingsPackage(activity)) return;
+        try {
+            LayerSession session = (LayerSession) XposedHelpers.getAdditionalInstanceField(activity, GLOBAL_SESSION);
+            if (session != null) {
+                session.media.setVisibility(View.VISIBLE);
+                session.media.onHostResume();
+            }
+        } catch (Throwable error) {
+            log("resumeGlobalAfterTransition", error);
+        }
+    }
+
+    private static boolean isSettingsPackage(Activity activity) {
+        try {
+            return BackgroundContract.PACKAGE_SETTINGS.equals(activity.getPackageName());
+        } catch (Throwable ignored) {
+            return false;
         }
     }
 

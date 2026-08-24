@@ -42,18 +42,28 @@ jobs:
           echo "source_tag=v$VERSION" >> "$GITHUB_OUTPUT"
           echo "lsp_tag=$VERSION_CODE-$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: 同步 main 源码到 LSPosed 仓库
+      - name: 同步源码到 LSPosed 仓库（排除 Actions 工作流）
         shell: bash
         env:
           LSP_REPO_TOKEN: ${{ secrets.LSP_REPO_TOKEN }}
         run: |
           test -n "$LSP_REPO_TOKEN"
+          rm -rf "$RUNNER_TEMP/lsp-sync"
+          git clone "https://x-access-token:${LSP_REPO_TOKEN}@github.com/${LSP_REPO}.git" "$RUNNER_TEMP/lsp-sync"
+          rsync -a --delete \
+            --exclude='.git/' \
+            --exclude='.github/workflows/' \
+            ./ "$RUNNER_TEMP/lsp-sync/"
+          cd "$RUNNER_TEMP/lsp-sync"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config --unset-all http.https://github.com/.extraheader 2>/dev/null || true
-          git remote remove lsp 2>/dev/null || true
-          git remote add lsp "https://x-access-token:${LSP_REPO_TOKEN}@github.com/${LSP_REPO}.git"
-          git push lsp HEAD:main
+          git add -A
+          if git diff --cached --quiet; then
+            echo "LSPosed 仓库源码已是最新，无需提交。"
+          else
+            git commit -m "sync: HyperBackground ${{ steps.version.outputs.version }}"
+            git push origin HEAD:main
+          fi
 
       - name: 等待主仓库 Release 可读取
         if: github.event_name == 'workflow_run'
@@ -131,7 +141,7 @@ jobs:
       - name: 完成
         shell: bash
         run: |
-          echo "源码已同步到 $LSP_REPO"
+          echo "源码已同步到 $LSP_REPO（未同步 .github/workflows）"
           if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
             echo "Release 已同步：${{ steps.version.outputs.lsp_tag }}"
           fi

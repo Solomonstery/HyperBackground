@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   sync:
-    name: 同步源码与 Release
+    name: 仅同步正式版源码与 Release
     if: >-
       ${{
         github.event_name == 'workflow_dispatch' ||
@@ -29,7 +29,7 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || 'main' }}
 
-      - name: 读取版本信息
+      - name: 读取版本信息并判断是否正式版
         id: version
         shell: bash
         run: |
@@ -37,12 +37,24 @@ jobs:
           VERSION_CODE="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
           test -n "$VERSION"
           test -n "$VERSION_CODE"
+
+          LOWER="${VERSION,,}"
+          if [[ "$LOWER" =~ (test|alpha|beta|rc|dev) ]]; then
+            STABLE=false
+            echo "检测到测试/预发布版本：$VERSION，本次不会同步到 LSPosed 官方仓库。"
+          else
+            STABLE=true
+            echo "检测到正式版本：$VERSION，将同步到 LSPosed 官方仓库。"
+          fi
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "source_tag=v$VERSION" >> "$GITHUB_OUTPUT"
           echo "lsp_tag=$VERSION_CODE-$VERSION" >> "$GITHUB_OUTPUT"
+          echo "stable=$STABLE" >> "$GITHUB_OUTPUT"
 
-      - name: 同步源码到 LSPosed 仓库（排除 Actions 工作流）
+      - name: 同步正式版源码到 LSPosed 仓库（排除 Actions 工作流）
+        if: steps.version.outputs.stable == 'true'
         shell: bash
         env:
           LSP_REPO_TOKEN: ${{ secrets.LSP_REPO_TOKEN }}
@@ -65,8 +77,8 @@ jobs:
             git push origin HEAD:main
           fi
 
-      - name: 等待主仓库 Release 可读取
-        if: github.event_name == 'workflow_run'
+      - name: 等待主仓库正式版 Release 可读取
+        if: github.event_name == 'workflow_run' && steps.version.outputs.stable == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,8 +93,8 @@ jobs:
           echo "未找到主仓库 Release: $SOURCE_TAG"
           exit 1
 
-      - name: 下载主仓库 Release APK 与说明
-        if: github.event_name == 'workflow_run'
+      - name: 下载主仓库正式版 APK 与说明
+        if: github.event_name == 'workflow_run' && steps.version.outputs.stable == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -99,8 +111,8 @@ jobs:
             --jq '.body' > "$RUNNER_TEMP/lsp-release/notes.md"
           test -n "$(find "$RUNNER_TEMP/lsp-release" -maxdepth 1 -type f -name '*.apk' -print -quit)"
 
-      - name: 创建或更新 LSPosed Release
-        if: github.event_name == 'workflow_run'
+      - name: 创建或更新 LSPosed 正式版 Release
+        if: github.event_name == 'workflow_run' && steps.version.outputs.stable == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.LSP_REPO_TOKEN }}
@@ -110,38 +122,37 @@ jobs:
           test -n "$GH_TOKEN"
           NOTES="$RUNNER_TEMP/lsp-release/notes.md"
           APK="$(find "$RUNNER_TEMP/lsp-release" -maxdepth 1 -type f -name '*.apk' | head -n 1)"
-          LOWER="${VERSION,,}"
-          if [[ "$LOWER" =~ (test|alpha|beta|rc|dev) ]]; then
-            PRERELEASE=true
-            MAKE_LATEST=false
-          else
-            PRERELEASE=false
-            MAKE_LATEST=true
-          fi
 
           if gh release view "$LSP_TAG" --repo "$LSP_REPO" >/dev/null 2>&1; then
             RELEASE_ID="$(gh api "repos/$LSP_REPO/releases/tags/$LSP_TAG" --jq '.id')"
             gh api --method PATCH "repos/$LSP_REPO/releases/$RELEASE_ID" \
               -f name="$VERSION" \
               -F "body=@$NOTES" \
-              -F prerelease="$PRERELEASE" \
-              -f make_latest="$MAKE_LATEST" >/dev/null
+              -F prerelease=false \
+              -f make_latest=true >/dev/null
           else
             gh api --method POST "repos/$LSP_REPO/releases" \
               -f tag_name="$LSP_TAG" \
               -f target_commitish="main" \
               -f name="$VERSION" \
               -F "body=@$NOTES" \
-              -F prerelease="$PRERELEASE" \
-              -f make_latest="$MAKE_LATEST" >/dev/null
+              -F prerelease=false \
+              -f make_latest=true >/dev/null
           fi
 
           gh release upload "$LSP_TAG" "$APK" --repo "$LSP_REPO" --clobber
 
-      - name: 完成
+      - name: 跳过预发布版本
+        if: steps.version.outputs.stable != 'true'
         shell: bash
         run: |
-          echo "源码已同步到 $LSP_REPO（未同步 .github/workflows）"
+          echo "${{ steps.version.outputs.version }} 不是正式版，已跳过 LSPosed 仓库同步。"
+
+      - name: 完成
+        if: steps.version.outputs.stable == 'true'
+        shell: bash
+        run: |
+          echo "正式版源码已同步到 $LSP_REPO（未同步 .github/workflows）"
           if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            echo "Release 已同步：${{ steps.version.outputs.lsp_tag }}"
+            echo "正式版 Release 已同步：${{ steps.version.outputs.lsp_tag }}"
           fi

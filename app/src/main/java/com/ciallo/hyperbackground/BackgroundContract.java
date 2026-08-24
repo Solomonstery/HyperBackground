@@ -6,6 +6,26 @@ import android.database.Cursor;
 import android.net.Uri;
 
 final class BackgroundContract {
+    static final String PACKAGE_SETTINGS = "com.android.settings";
+    static final String PACKAGE_MILINK = "com.milink.service";
+    static final String PACKAGE_PHONE = "com.android.phone";
+    static final String PACKAGE_ACCOUNT = "com.xiaomi.account";
+    static final String PACKAGE_THEME_MANAGER = "com.android.thememanager";
+    static final String PACKAGE_HOME = "com.miui.home";
+    static final String PACKAGE_SECURITY_CENTER = "com.miui.securitycenter";
+    static final String PACKAGE_POWER_KEEPER = "com.miui.powerkeeper";
+
+    private static final String[] SUPPORTED_PACKAGES = new String[] {
+            PACKAGE_SETTINGS,
+            PACKAGE_MILINK,
+            PACKAGE_PHONE,
+            PACKAGE_ACCOUNT,
+            PACKAGE_THEME_MANAGER,
+            PACKAGE_HOME,
+            PACKAGE_SECURITY_CENTER,
+            PACKAGE_POWER_KEEPER
+    };
+
     static final String AUTHORITY = "com.ciallo.hyperbackground.provider";
     static final String HOME = "home";
     static final String DEVICE = "device";
@@ -62,6 +82,14 @@ final class BackgroundContract {
     static final String COLUMN_SETTINGS_THEME_MODE = "settings_theme_mode";
 
     private BackgroundContract() {}
+
+    static boolean isSupportedPackage(String packageName) {
+        if (packageName == null) return false;
+        for (String supported : SUPPORTED_PACKAGES) {
+            if (supported.equals(packageName)) return true;
+        }
+        return false;
+    }
 
     static Uri uri(String slot) {
         return new Uri.Builder().scheme(ContentResolver.SCHEME_CONTENT)

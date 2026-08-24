@@ -2,6 +2,7 @@ package com.ciallo.hyperbackground
 
 import android.content.Intent
 import android.content.SharedPreferences
+import android.graphics.Color as AndroidColor
 import android.graphics.ImageDecoder
 import android.graphics.RenderEffect
 import android.graphics.Shader
@@ -16,8 +17,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.drawable.toBitmap
@@ -141,15 +144,20 @@ class ConfigActivity : ComponentActivity() {
         val systemDark = isSystemInDarkTheme()
         val dark = themeMode == BackgroundContract.UI_THEME_DARK ||
             (themeMode == BackgroundContract.UI_THEME_FOLLOW && systemDark)
-        val mode = when {
-            monet && themeMode == BackgroundContract.UI_THEME_LIGHT -> ColorSchemeMode.MonetLight
-            monet && themeMode == BackgroundContract.UI_THEME_DARK -> ColorSchemeMode.MonetDark
-            monet -> ColorSchemeMode.MonetSystem
-            themeMode == BackgroundContract.UI_THEME_LIGHT -> ColorSchemeMode.Light
-            themeMode == BackgroundContract.UI_THEME_DARK -> ColorSchemeMode.Dark
-            else -> ColorSchemeMode.System
+        // Miuix 只有 Monet* 模式才会消费 keyColor。
+        // 自定义调色盘关闭 Monet 后仍要走 Monet*，只是把壁纸色换成用户选择的 seed color。
+        val mode = when (themeMode) {
+            BackgroundContract.UI_THEME_LIGHT -> ColorSchemeMode.MonetLight
+            BackgroundContract.UI_THEME_DARK -> ColorSchemeMode.MonetDark
+            else -> ColorSchemeMode.MonetSystem
         }
-        val controller = ThemeController(mode, keyColor = if (monet) null else Color(accent), isDark = dark)
+        val controller = remember(mode, monet, accent, dark) {
+            ThemeController(
+                colorSchemeMode = mode,
+                keyColor = if (monet) null else Color(accent),
+                isDark = dark,
+            )
+        }
 
         MiuixTheme(controller = controller) {
             LaunchedEffect(dark) {
@@ -336,46 +344,25 @@ class ConfigActivity : ComponentActivity() {
             item { Spacer(Modifier.height(2.dp)) }
             when (page) {
                 0 -> {
-                    item { HeroCard() }
                     item { BackgroundCard(BackgroundContract.HOME, "设置主页", "独立控制 HyperOS 设置首页", MiuixIcons.Settings, false, revision) }
                     item { BackgroundCard(BackgroundContract.DEVICE, "我的设备", "图片 / GIF / WebP / MP4 / WebM", MiuixIcons.Phone, true, revision) }
-                    item { BackgroundCard(BackgroundContract.GLOBAL, "全局背景", "普通 Settings 页面 + 设备互联", MiuixIcons.Background, false, revision) }
+                    item { BackgroundCard(BackgroundContract.GLOBAL, "全局背景", "设置二级页 + 系统设置组件", MiuixIcons.Background, false, revision) }
                 }
                 1 -> item { TextAndSettingsAppearanceCard() }
                 2 -> {
                     item { ModuleAppearanceCard(themeMode, monet, accent, onThemeMode, onMonet, onAccent, revision) }
                     item { SayingSettingsCard(sayingApi, sayingKey, onSayingApi, onSayingKey) }
                 }
-                3 -> item { AuthorCard() }
+                3 -> {
+                    item { VersionCheckCard() }
+                    item { CurrentReleaseNotesCard() }
+                    item { AuthorCard() }
+                }
             }
             item { Spacer(Modifier.height(28.dp)) }
         }
     }
 
-    @Composable
-    private fun HeroCard() {
-        UiCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("HyperOS 背景与外观", style = MiuixTheme.textStyles.title2)
-                Text("主页 / 我的设备 / 全局三通道 · LSPosed", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
-                    MiniPill("Compose")
-                    MiniPill("MIUIX")
-                    MiniPill("1.3.3-test")
-                }
-            }
-        }
-    }
-
-    @Composable
-    private fun MiniPill(label: String) {
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(MiuixTheme.colorScheme.secondaryContainer)
-                .padding(horizontal = 10.dp, vertical = 5.dp)
-        ) { Text(label, color = MiuixTheme.colorScheme.onSecondaryContainer) }
-    }
 
     @Composable
     private fun BackgroundCard(slot: String, title: String, summary: String, icon: ImageVector, allowVideo: Boolean, revision: Int) {
@@ -540,7 +527,7 @@ class ConfigActivity : ComponentActivity() {
                     checked = monet,
                     onCheckedChange = onMonet
                 )
-                AccentPresets(accent, onAccent)
+                ModernAccentPicker(accent, onAccent)
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     TextButton(
                         modifier = Modifier.weight(1f),
@@ -588,22 +575,143 @@ class ConfigActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun AccentPresets(current: Int, onAccent: (Int) -> Unit) {
-        val colors = listOf(0xFF7C8CFF, 0xFF5E8BFF, 0xFF45B6FE, 0xFF36C9A7, 0xFF7EC855, 0xFFFFB84D, 0xFFFF7A59, 0xFFFF6B9A).map { it.toInt() }
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("自定义主题色", color = MiuixTheme.colorScheme.onSurface)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                colors.forEach { c ->
-                    Box(
-                        Modifier
-                            .size(if (c == current) 34.dp else 30.dp)
-                            .clip(CircleShape)
-                            .background(Color(c))
-                            .clickable { onAccent(c) }
-                    )
+    private fun ModernAccentPicker(current: Int, onAccent: (Int) -> Unit) {
+        val defaultAccent = 0xFF6980FF.toInt()
+        val presets = listOf(
+            0xFF6980FF, 0xFF5E8BFF, 0xFF45B6FE, 0xFF22B8A7,
+            0xFF45C46B, 0xFF98C93C, 0xFFF0C24D, 0xFFF79A47,
+            0xFFF46F56, 0xFFEA5A89, 0xFFCA67E8, 0xFF8D6BE8,
+        ).map { it.toInt() }
+        val initialHsv = remember(current) {
+            FloatArray(3).also { AndroidColor.colorToHSV(current, it) }
+        }
+        var hue by remember(current) { mutableFloatStateOf(initialHsv[0]) }
+        var saturation by remember(current) { mutableFloatStateOf(initialHsv[1] * 100f) }
+        var brightness by remember(current) { mutableFloatStateOf(initialHsv[2] * 100f) }
+        var hexText by remember(current) { mutableStateOf(formatHexColor(current)) }
+        val parsedHex = remember(hexText) { parseHexColor(hexText) }
+
+        fun applyHsv(nextHue: Float = hue, nextSaturation: Float = saturation, nextBrightness: Float = brightness) {
+            val alpha = AndroidColor.alpha(current)
+            onAccent(
+                AndroidColor.HSVToColor(
+                    alpha,
+                    floatArrayOf(
+                        nextHue.coerceIn(0f, 360f),
+                        (nextSaturation / 100f).coerceIn(0f, 1f),
+                        (nextBrightness / 100f).coerceIn(0f, 1f),
+                    ),
+                ),
+            )
+        }
+
+        Column(
+            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("主题调色盘", color = MiuixTheme.colorScheme.onSurface)
+            presets.chunked(6).forEach { rowColors ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    rowColors.forEach { color ->
+                        Box(
+                            Modifier
+                                .size(if ((color and 0xFFFFFF) == (current and 0xFFFFFF)) 36.dp else 32.dp)
+                                .clip(CircleShape)
+                                .background(Color(color))
+                                .clickable { onAccent(color) },
+                        )
+                    }
                 }
             }
+
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(
+                    Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(Color(current)),
+                )
+                Text(formatHexColor(current), color = MiuixTheme.colorScheme.onSurfaceVariantActions)
+            }
+
+            SliderPreference("色相", hue, 0f..360f, "°") {
+                hue = it
+                applyHsv(nextHue = it)
+            }
+            SliderPreference("饱和度", saturation, 0f..100f, "%") {
+                saturation = it
+                applyHsv(nextSaturation = it)
+            }
+            SliderPreference("明度", brightness, 0f..100f, "%") {
+                brightness = it
+                applyHsv(nextBrightness = it)
+            }
+
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MiuixTheme.colorScheme.surfaceContainer)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+            ) {
+                BasicTextField(
+                    value = hexText,
+                    onValueChange = { raw ->
+                        hexText = sanitizeHexInput(raw)
+                        parseHexColor(hexText)?.let(onAccent)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+                    textStyle = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
+                )
+            }
+            Text(
+                if (parsedHex != null) "支持 #RRGGBB 或 #AARRGGBB" else "请输入 6 位或 8 位 HEX 颜色代码",
+                color = if (parsedHex != null) MiuixTheme.colorScheme.onSurfaceVariantSummary else Color(0xFFFF6B6B),
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    text = "应用 HEX",
+                    onClick = { parsedHex?.let(onAccent) },
+                )
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    text = "恢复默认",
+                    onClick = { onAccent(defaultAccent) },
+                )
+            }
         }
+    }
+
+    private fun formatHexColor(color: Int): String {
+        return if (AndroidColor.alpha(color) == 0xFF) {
+            String.format("#%06X", color and 0xFFFFFF)
+        } else {
+            String.format("#%08X", color)
+        }
+    }
+
+    private fun sanitizeHexInput(raw: String): String {
+        val digits = raw.trim().removePrefix("#")
+            .filter { it.isDigit() || it.lowercaseChar() in 'a'..'f' }
+            .take(8)
+            .uppercase()
+        return "#$digits"
+    }
+
+    private fun parseHexColor(text: String): Int? {
+        val digits = text.trim().removePrefix("#")
+        if (digits.length != 6 && digits.length != 8) return null
+        return runCatching {
+            val value = digits.toLong(16)
+            if (digits.length == 6) (0xFF000000L or value).toInt() else value.toInt()
+        }.getOrNull()
     }
 
     @Composable
@@ -713,7 +821,7 @@ class ConfigActivity : ComponentActivity() {
             readTimeout = 6000
             requestMethod = "GET"
             setRequestProperty("Accept", "application/json, text/plain, */*")
-            setRequestProperty("User-Agent", "HyperBG/1.3.3-test")
+            setRequestProperty("User-Agent", "HyperBG/${BuildConfig.VERSION_NAME}")
         }
         try {
             val code = connection.responseCode
@@ -741,6 +849,99 @@ class ConfigActivity : ComponentActivity() {
     }
 
     @Composable
+    private fun VersionCheckCard() {
+        var refresh by rememberSaveable { mutableIntStateOf(0) }
+        var latest by remember { mutableStateOf<String?>(null) }
+        var message by remember { mutableStateOf("正在检查正式版…") }
+        var checking by remember { mutableStateOf(true) }
+        val current = BuildConfig.VERSION_NAME
+
+        LaunchedEffect(refresh) {
+            checking = true
+            val result = runCatching { fetchLatestStableVersion() }
+            result.onSuccess { remote ->
+                latest = remote
+                val isPreview = current.contains(Regex("(?i)(test|alpha|beta|rc|dev)"))
+                message = when {
+                    isPreview -> "当前为测试版 · 正式版最新 $remote"
+                    compareVersions(current, remote) < 0 -> "发现新正式版 $remote"
+                    else -> "当前已是最新正式版"
+                }
+            }.onFailure {
+                message = "版本检查失败 · ${it.message ?: "网络异常"}"
+            }
+            checking = false
+        }
+
+        UiCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("版本验证", style = MiuixTheme.textStyles.headline1)
+                Text("当前版本  $current", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                latest?.let { Text("最新正式版  $it", color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
+                Text(message, color = if (message.startsWith("发现新正式版")) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantActions)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    TextButton(
+                        modifier = Modifier.weight(1f),
+                        text = if (checking) "检查中…" else "重新检查",
+                        onClick = { if (!checking) refresh++ },
+                    )
+                    TextButton(
+                        modifier = Modifier.weight(1f),
+                        text = "GitHub Releases",
+                        onClick = { openUrl(RELEASES_URL) },
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun CurrentReleaseNotesCard() {
+        UiCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("本次版本说明", style = MiuixTheme.textStyles.headline1)
+                Text("HyperBG ${BuildConfig.VERSION_NAME}", color = MiuixTheme.colorScheme.primary)
+                Text("• 全局背景扩展到电话、账号、主题、桌面、手机管家与省电设置。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Text("• 调色盘新增 12 色预设、HSV 滑杆与 6/8 位 HEX 输入。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Text("• 登录、授权、凭据、支付、拨号等敏感窗口保持系统原样。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Text("• 从本版起使用固定私有签名；首次升级需要卸载旧签名版本。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            }
+        }
+    }
+
+    private suspend fun fetchLatestStableVersion(): String = withContext(Dispatchers.IO) {
+        val connection = (URL(LATEST_RELEASE_API).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 7000
+            readTimeout = 7000
+            requestMethod = "GET"
+            setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("User-Agent", "HyperBG/${BuildConfig.VERSION_NAME}")
+        }
+        try {
+            val code = connection.responseCode
+            if (code !in 200..299) error("GitHub HTTP $code")
+            val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val tag = JSONObject(body).optString("tag_name").trim().removePrefix("v")
+            if (tag.isBlank()) error("未找到正式版版本号")
+            tag
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun compareVersions(a: String, b: String): Int {
+        fun parts(v: String) = v.removePrefix("v").substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
+        val ap = parts(a)
+        val bp = parts(b)
+        for (i in 0 until maxOf(ap.size, bp.size)) {
+            val av = ap.getOrElse(i) { 0 }
+            val bv = bp.getOrElse(i) { 0 }
+            if (av != bv) return av.compareTo(bv)
+        }
+        return 0
+    }
+
+    @Composable
     private fun AuthorCard() {
         val context = LocalContext.current
         UiCard(Modifier.fillMaxWidth()) {
@@ -750,7 +951,7 @@ class ConfigActivity : ComponentActivity() {
                     if (bitmap != null) androidx.compose.foundation.Image(bitmap = bitmap, contentDescription = null, modifier = Modifier.size(58.dp).clip(RoundedCornerShape(18.dp)))
                     Column(Modifier.padding(start = 14.dp).weight(1f)) {
                         Text("制作者 · 苍簇", style = MiuixTheme.textStyles.headline1)
-                        Text("HyperBG 1.3.3-test", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        Text("HyperBG ${BuildConfig.VERSION_NAME}", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -808,6 +1009,8 @@ class ConfigActivity : ComponentActivity() {
     companion object {
         private const val DEFAULT_SAYING_API = "https://uapis.cn/api/v1/saying"
         private const val DEFAULT_SAYING_KEY = "text"
+        private const val LATEST_RELEASE_API = "https://api.github.com/repos/Solomonstery/HyperBackground/releases/latest"
+        private const val RELEASES_URL = "https://github.com/Solomonstery/HyperBackground/releases"
 
         private fun humanSize(b: Long): String = when {
             b >= 1048576L -> String.format("%.1f MB", b / 1048576f)
@@ -815,4 +1018,6 @@ class ConfigActivity : ComponentActivity() {
             else -> "$b B"
         }
     }
+
+
 }

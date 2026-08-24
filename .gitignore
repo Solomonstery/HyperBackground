@@ -1,8 +1,13 @@
 /build/
 /dist/
+/app/build/
+/.android-user-home/
 /.gradle/
-/.gradle-dist/
 /.gradle-user-home/
-/.idea/
-/local.properties
-*.idsig
+/.gradle-dist/
+/.kotlin/
+*.jks
+*.keystore
+*.p12
+*.pfx
+signing.properties

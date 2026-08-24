@@ -2,6 +2,25 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.3.6
+
+- 全局背景新增电话服务、小米账号、主题壁纸、系统桌面、手机管家与省电管理作用域。
+- Settings 普通二级页面继续使用全局通道，设置主页与“我的设备”保持独立。
+- 登录、授权、锁屏凭据、支付、拨号、紧急呼叫及浮动窗口保持系统原样。
+- 调色盘升级为 12 色预设、HSV 色相/饱和度/明度滑杆和可编辑 HEX 输入。
+- HEX 输入支持 `#RRGGBB` 与 `#AARRGGBB`，并使用 ASCII 键盘以便输入 A–F。
+- 修复本地构建产物文件名没有跟随 APK 实际版本的问题。
+- Release 构建改用 GitHub Actions Secrets 注入私有 PKCS#12 密钥；仓库不再保存签名文件或密码。
+- 1.3.6 是私有签名迁移起点，与 1.3.5 及更早公开签名不兼容；从本版起保持签名连续。
+
+## 1.3.5
+
+- 移除背景页冗余的 HyperOS / Compose / MIUIX 介绍卡片。
+- 关于页新增正式版版本验证、最新正式版状态和本次版本说明。
+- 修复 Miuix 自定义主题色没有进入 Monet seed 配色流程、导致调色盘始终呈蓝色的问题。
+- 正式版检查只读取 GitHub `releases/latest`，不会把 test / alpha / beta / rc 误判为正式更新。
+- 包名和固定签名保持不变，可覆盖安装旧版。
+
 ## 1.3.3-test
 
 - 完整移除失效的“主题通道实验”，包括配置界面、Provider 字段、Hook 入口与实现类。

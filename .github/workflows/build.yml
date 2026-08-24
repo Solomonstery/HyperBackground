@@ -21,22 +21,25 @@ permissions:
 
 jobs:
   build:
-    name: 自动构建最新版本
+    name: 私有签名构建与发布
     runs-on: ubuntu-latest
     steps:
-      - name: 检出项目
+      - name: 检出目录源码
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: 校验源码结构
+      - name: 校验源码与私钥隔离
         shell: bash
         run: |
           test -f app/src/main/AndroidManifest.xml
           test -f app/build.gradle.kts
           test -f build.sh
-          test -f signing/hyperbackground-debug.jks
-          echo '仓库根源码结构检查通过。'
+          if find . -type f \( -name '*.jks' -o -name '*.keystore' -o -name '*.p12' -o -name '*.pfx' \) -print -quit | grep -q .; then
+            echo '仓库中禁止包含签名密钥文件。'
+            exit 1
+          fi
+          echo '目录源码结构与私钥隔离检查通过。'
 
       - name: 配置 Java 17
         uses: actions/setup-java@v5
@@ -44,40 +47,75 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: 安装 Android SDK 组件
+      - name: 安装 Android SDK
         shell: bash
         run: |
           yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.1'
+          if ! "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.0' 'build-tools;36.0.0'; then
+            "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37' 'build-tools;36.0.0'
+          fi
 
-      - name: 构建 LSPosed 模块 APK
+      - name: 恢复私有 PKCS12 签名
+        id: signing
+        shell: bash
+        env:
+          HYPERBG_KEYSTORE_BASE64: ${{ secrets.HYPERBG_KEYSTORE_BASE64 }}
+          HYPERBG_KEYSTORE_PASSWORD: ${{ secrets.HYPERBG_KEYSTORE_PASSWORD }}
+          HYPERBG_KEY_ALIAS: ${{ secrets.HYPERBG_KEY_ALIAS }}
+        run: |
+          test -n "$HYPERBG_KEYSTORE_BASE64"
+          test -n "$HYPERBG_KEYSTORE_PASSWORD"
+          test -n "$HYPERBG_KEY_ALIAS"
+          SIGNING_DIR="$RUNNER_TEMP/hyperbackground-signing"
+          mkdir -p "$SIGNING_DIR"
+          KEYSTORE="$SIGNING_DIR/hyperbackground-release.p12"
+          printf '%s' "$HYPERBG_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+          keytool -list -storetype PKCS12 -keystore "$KEYSTORE" -storepass "$HYPERBG_KEYSTORE_PASSWORD" -alias "$HYPERBG_KEY_ALIAS" >/dev/null
+          echo "path=$KEYSTORE" >> "$GITHUB_OUTPUT"
+
+      - name: 构建 Release APK
         shell: bash
         env:
           JAVA_RUNTIME: ${{ env.JAVA_HOME }}
+          HYPERBG_KEYSTORE_PATH: ${{ steps.signing.outputs.path }}
+          HYPERBG_KEYSTORE_PASSWORD: ${{ secrets.HYPERBG_KEYSTORE_PASSWORD }}
+          HYPERBG_KEY_ALIAS: ${{ secrets.HYPERBG_KEY_ALIAS }}
+          HYPERBG_KEY_PASSWORD: ${{ secrets.HYPERBG_KEY_PASSWORD }}
         run: |
           chmod +x build.sh
           ./build.sh
 
-      - name: 校验版本与固定签名
+      - name: 校验版本、作用域与私有签名
         id: package
         shell: bash
         run: |
-          EXPECTED='8C:79:74:AD:4C:33:97:FB:23:11:F6:B4:E4:7B:F8:93:63:06:DB:F2:B7:97:C2:20:80:66:ED:F4:15:EC:40:A9'
+          EXPECTED='A1:75:5A:BE:D4:13:5A:38:17:B0:D8:76:0F:40:BE:A5:D3:B7:00:1B:08:A8:29:EA:1D:3C:DA:90:FB:D4:4F:4B'
+          BUILD_TOOLS="$ANDROID_SDK_ROOT/build-tools/36.0.0"
           APK="$(find dist -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          ACTUAL_VERSION="$($ANDROID_SDK_ROOT/build-tools/35.0.1/aapt2 dump badging "$APK" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -n 1)"
-          test -n "$ACTUAL_VERSION"
-          echo "APK 实际版本：$ACTUAL_VERSION"
-          RAW="$($ANDROID_SDK_ROOT/build-tools/35.0.1/apksigner verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          VERSION="$("$BUILD_TOOLS/aapt2" dump badging "$APK" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -n 1)"
+          VERSION_CODE="$("$BUILD_TOOLS/aapt2" dump badging "$APK" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -n 1)"
+          test -n "$VERSION"
+          test -n "$VERSION_CODE"
+          RAW="$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
           ACTUAL="$(printf '%s' "$RAW" | tr '[:lower:]' '[:upper:]' | sed 's/../&:/g;s/:$//')"
-          echo "签名指纹：$ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
-          TARGET="HyperBackground-v$ACTUAL_VERSION.apk"
-          if [ "$APK" != "$TARGET" ]; then
-            cp "$APK" "$TARGET"
-          fi
-          echo "version=$ACTUAL_VERSION" >> "$GITHUB_OUTPUT"
+          unzip -p "$APK" META-INF/xposed/scope.list > "$RUNNER_TEMP/scope.list"
+          test "$(wc -l < "$RUNNER_TEMP/scope.list")" -eq 8
+          for package_name in \
+            com.android.settings com.milink.service com.android.phone com.xiaomi.account \
+            com.android.thememanager com.miui.home com.miui.securitycenter com.miui.powerkeeper; do
+            grep -Fxq "$package_name" "$RUNNER_TEMP/scope.list"
+          done
+          TARGET="HyperBackground-v$VERSION.apk"
+          cp "$APK" "$TARGET"
+          SHA256="$(sha256sum "$TARGET" | awk '{print $1}')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "apk=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "certificate=$ACTUAL" >> "$GITHUB_OUTPUT"
 
       - name: 上传 Actions 产物
         uses: actions/upload-artifact@v4
@@ -91,86 +129,54 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ steps.package.outputs.version }}
+          VERSION_CODE: ${{ steps.package.outputs.version_code }}
           APK_NAME: ${{ steps.package.outputs.apk }}
-          SOURCE_ROOT: .
-          BUILD_CHAIN: main 分支仓库根目录源码
+          APK_SHA256: ${{ steps.package.outputs.sha256 }}
+          CERTIFICATE: ${{ steps.package.outputs.certificate }}
         run: |
-          set -euo pipefail
-
-          LOWER_VERSION="${VERSION,,}"
-          case "$LOWER_VERSION" in
-            *test*|*alpha*|*beta*|*rc*|*dev*)
-              CHANNEL='测试版'
-              PRERELEASE='true'
-              MAKE_LATEST='false'
-              ;;
-            *)
-              CHANNEL='正式版'
-              PRERELEASE='false'
-              MAKE_LATEST='true'
-              ;;
-          esac
-
-          CHANGELOG_FILE="$SOURCE_ROOT/CHANGELOG.md"
-          CHANGES=''
-          if [[ -f "$CHANGELOG_FILE" ]]; then
-            CHANGES="$(awk -v version="$VERSION" '
-              $0 == "## " version { found = 1; next }
-              found && /^## / { exit }
-              found { print }
-            ' "$CHANGELOG_FILE" | sed '/./,$!d')"
+          LOWER="${VERSION,,}"
+          if [[ "$LOWER" =~ (test|alpha|beta|rc|dev) ]]; then
+            PRERELEASE=true
+            MAKE_LATEST=false
+          else
+            PRERELEASE=false
+            MAKE_LATEST=true
           fi
-          if [[ -z "${CHANGES//[[:space:]]/}" ]]; then
-            CHANGES='- 本版本没有提供独立变更说明，请查看对应提交记录。'
-          fi
-
-          GRADLE_VERSION="$(sed -n 's/^GRADLE_VERSION="\([^"]*\)"/\1/p' "$SOURCE_ROOT/build.sh" | head -n 1)"
-          AGP_VERSION="$(sed -n 's/.*com.android.application") version "\([^"]*\)".*/\1/p' "$SOURCE_ROOT/build.gradle.kts" | head -n 1)"
-          KOTLIN_VERSION="$(sed -n 's/.*org.jetbrains.kotlin.android") version "\([^"]*\)".*/\1/p' "$SOURCE_ROOT/build.gradle.kts" | head -n 1)"
-          COMPILE_SDK="$(sed -n 's/^[[:space:]]*compileSdk = \([0-9]*\).*/\1/p' "$SOURCE_ROOT/app/build.gradle.kts" | head -n 1)"
-          COMPOSE_BOM="$(sed -n 's/.*compose-bom:\([^"]*\)".*/\1/p' "$SOURCE_ROOT/app/build.gradle.kts" | head -n 1)"
-          MIUIX_VERSION="$(sed -n 's/.*miuix-ui-android:\([^"]*\)".*/\1/p' "$SOURCE_ROOT/app/build.gradle.kts" | head -n 1)"
-          APK_SHA256="$(sha256sum "$APK_NAME" | awk '{print $1}')"
-
-          : "${GRADLE_VERSION:=未知}"
-          : "${AGP_VERSION:=未知}"
-          : "${KOTLIN_VERSION:=未知}"
-          : "${COMPILE_SDK:=未知}"
-          : "${COMPOSE_BOM:=未知}"
-          : "${MIUIX_VERSION:=未知}"
-
+          CHANGELOG_SECTION="$(awk -v target="$VERSION" '
+            $0 == "## " target { found=1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md)"
           NOTES_PATH="$RUNNER_TEMP/hyperbackground-release-notes.md"
           {
-            printf '# HyperBackground %s\n\n' "$VERSION"
-            if [[ "$PRERELEASE" == 'true' ]]; then
-              printf '%s\n%s\n\n' '> [!WARNING]' '> 此版本为测试版，可能包含尚未完成实机验证的功能，请保留上一正式版安装包。'
-            else
-              printf '%s\n%s\n\n' '> [!NOTE]' '> 此版本为正式版。'
+            echo "# HyperBackground v$VERSION"
+            echo
+            if [[ "$PRERELEASE" == true ]]; then
+              echo "> 测试版提示：该版本用于验证兼容性，可能存在 Hook 失效、界面异常或闪退；请保留上一正式版安装包。"
+              echo
             fi
-            printf '%s\n\n' '## 版本信息'
-            printf -- '- 版本：`%s`\n' "$VERSION"
-            printf -- '- 类型：**%s**\n' "$CHANNEL"
-            printf -- '- 构建来源：%s\n' "$BUILD_CHAIN"
-            printf -- '- 提交：[`%s`](%s/%s/commit/%s)\n' "${GITHUB_SHA:0:7}" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_SHA"
-            printf -- '- 构建记录：[GitHub Actions #%s](%s/%s/actions/runs/%s)\n\n' "$GITHUB_RUN_NUMBER" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
-            printf '%s\n\n' '## 本版变更'
-            printf '%s\n\n' "$CHANGES"
-            printf '%s\n\n' '## 构建链'
-            printf '%s\n' '- `main`：检出仓库根目录源码 → Java 17 → Android SDK → Gradle Release 构建 → 固定签名校验 → Actions 产物 → GitHub Release。'
-            printf '%s\n\n' '- `source-archives`：选择版本号最高的源码 ZIP → 校验并解压 → 使用同一构建与签名流程 → Actions 产物 → GitHub Release。'
-            printf '%s\n\n' '## 构建环境'
-            printf -- '- Java：`17`\n'
-            printf -- '- Android SDK：`%s`\n' "$COMPILE_SDK"
-            printf -- '- Gradle：`%s`\n' "$GRADLE_VERSION"
-            printf -- '- Android Gradle Plugin：`%s`\n' "$AGP_VERSION"
-            printf -- '- Kotlin：`%s`\n' "$KOTLIN_VERSION"
-            printf -- '- Compose BOM：`%s`\n' "$COMPOSE_BOM"
-            printf -- '- Miuix KMP：`%s`\n\n' "$MIUIX_VERSION"
-            printf '%s\n\n' '## 完整性信息'
-            printf -- '- APK SHA-256：`%s`\n' "$APK_SHA256"
-            printf '%s\n' '- 签名证书 SHA-256：`8C:79:74:AD:4C:33:97:FB:23:11:F6:B4:E4:7B:F8:93:63:06:DB:F2:B7:97:C2:20:80:66:ED:F4:15:EC:40:A9`'
+            if [[ -n "$CHANGELOG_SECTION" ]]; then
+              printf '%s\n' "$CHANGELOG_SECTION"
+              echo
+            fi
+            if [[ "$VERSION" == '1.3.6' ]]; then
+              echo "> 签名迁移：1.3.6 起改用固定私有签名，无法直接覆盖 1.3.5 及更早公开签名版本。请先备份配置并卸载旧版。"
+              echo
+            fi
+            echo "## 构建链"
+            echo
+            echo "- main：目录源码 → Java 17 → Android SDK 37 / Build Tools 36.0.0 → Gradle Release → Secrets 注入 PKCS12 私有签名 → 版本、作用域与证书校验 → Actions Artifact → GitHub Release。"
+            echo "- source-archives：历史源码 ZIP 独立分支，构建链按版本号选择最高归档；1.3.6 本次从 main 目录源码构建。"
+            echo
+            echo "## 构建信息"
+            echo
+            echo "- versionName：$VERSION"
+            echo "- versionCode：$VERSION_CODE"
+            echo "- APK：$APK_NAME"
+            echo "- SHA-256：$APK_SHA256"
+            echo "- 证书 SHA-256：$CERTIFICATE"
+            echo "- 构建提交：$GITHUB_SHA"
           } > "$NOTES_PATH"
-
           echo "path=$NOTES_PATH" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "make_latest=$MAKE_LATEST" >> "$GITHUB_OUTPUT"
@@ -185,64 +191,21 @@ jobs:
           PRERELEASE: ${{ steps.release_notes.outputs.prerelease }}
           MAKE_LATEST: ${{ steps.release_notes.outputs.make_latest }}
         run: |
-          set -euo pipefail
           TAG="v$VERSION"
-          BODY="$(cat "$NOTES_PATH")"
           if gh release view "$TAG" >/dev/null 2>&1; then
             RELEASE_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.id')"
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
-              -f name="HyperBackground $VERSION" \
-              -f body="$BODY" \
+              -f name="HyperBackground v$VERSION" \
+              -F "body=@$NOTES_PATH" \
               -F prerelease="$PRERELEASE" \
               -f make_latest="$MAKE_LATEST" >/dev/null
           else
             gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
               -f tag_name="$TAG" \
               -f target_commitish="$GITHUB_SHA" \
-              -f name="HyperBackground $VERSION" \
-              -f body="$BODY" \
-              -F draft=false \
-              -F prerelease="$PRERELEASE" >/dev/null
+              -f name="HyperBackground v$VERSION" \
+              -F "body=@$NOTES_PATH" \
+              -F prerelease="$PRERELEASE" \
+              -f make_latest="$MAKE_LATEST" >/dev/null
           fi
           gh release upload "$TAG" "$APK_NAME" --clobber
-
-          while IFS=$'\t' read -r OLD_ID OLD_TAG; do
-            test -n "$OLD_ID" || continue
-            test "$OLD_TAG" != "$TAG" || continue
-
-            LOWER_TAG="${OLD_TAG,,}"
-            case "$LOWER_TAG" in
-              *test*|*alpha*|*beta*|*rc*|*dev*) ;;
-              *) continue ;;
-            esac
-
-            OLD_VERSION="${OLD_TAG#v}"
-            OLD_CHANGES="$(awk -v version="$OLD_VERSION" '
-              $0 == "## " version { found = 1; next }
-              found && /^## / { exit }
-              found { print }
-            ' CHANGELOG.md | sed '/./,$!d')"
-            if [[ -z "${OLD_CHANGES//[[:space:]]/}" ]]; then
-              OLD_CHANGES='- 此历史测试版没有单独保存变更说明。'
-            fi
-
-            OLD_NOTES="$RUNNER_TEMP/hyperbackground-$OLD_VERSION-release-notes.md"
-            {
-              printf '# HyperBackground %s\n\n' "$OLD_VERSION"
-              printf '%s\n%s\n\n' '> [!WARNING]' '> 此版本为历史测试版，可能包含未完成实机验证的功能；建议优先使用当前正式版。'
-              printf '%s\n\n' '## 版本信息'
-              printf -- '- 版本：`%s`\n' "$OLD_VERSION"
-              printf -- '- 类型：**测试版**\n'
-              printf -- '- 状态：历史发行，原有 APK 与标签保持不变。\n\n'
-              printf '%s\n\n' '## 本版变更'
-              printf '%s\n\n' "$OLD_CHANGES"
-              printf '%s\n\n' '## 构建链'
-              printf '%s\n' '- `main`：从仓库根目录源码构建。'
-              printf '%s\n' '- `source-archives`：从版本号最高的源码 ZIP 构建。'
-            } > "$OLD_NOTES"
-
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$OLD_ID" \
-              -f body="$(cat "$OLD_NOTES")" \
-              -F prerelease=true \
-              -f make_latest=false >/dev/null
-          done < <(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | [.id, .tag_name] | @tsv')

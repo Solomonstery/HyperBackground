@@ -10,14 +10,10 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
-    private static final String SETTINGS = "com.android.settings";
-    private static final String MILINK = "com.milink.service";
-
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
-        boolean settings = SETTINGS.equals(lpparam.packageName);
-        boolean milink = MILINK.equals(lpparam.packageName);
-        if (!settings && !milink) return;
+        if (!BackgroundContract.isSupportedPackage(lpparam.packageName)) return;
+        boolean settings = BackgroundContract.PACKAGE_SETTINGS.equals(lpparam.packageName);
 
         hookGlobalActivities();
 

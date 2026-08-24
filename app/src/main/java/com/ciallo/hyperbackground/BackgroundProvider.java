@@ -54,8 +54,7 @@ public final class BackgroundProvider extends ContentProvider {
         int caller = Binder.getCallingUid(); if (caller == android.os.Process.myUid() || caller == 1000) return;
         PackageManager pm = getContext().getPackageManager(); String[] packages = pm.getPackagesForUid(caller);
         if (packages != null) for (String packageName : packages) {
-            if ("com.android.settings".equals(packageName)
-                    || "com.milink.service".equals(packageName)) return;
+            if (BackgroundContract.isSupportedPackage(packageName)) return;
         }
         throw new SecurityException("Only supported system settings packages may read backgrounds");
     }

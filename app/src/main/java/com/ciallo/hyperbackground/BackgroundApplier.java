@@ -68,17 +68,42 @@ final class BackgroundApplier {
         // Keep permission / authorization / transient confirmation windows fully native.
         if (isSensitiveTransientActivity(className) || isSensitiveTransientWindow(activity)) return true;
 
-        if ("com.android.settings".equals(packageName)) {
+        if (BackgroundContract.PACKAGE_SETTINGS.equals(packageName)) {
             if ("com.android.settings.MiuiSettings".equals(className)) return true;
             return Boolean.TRUE.equals(XposedHelpers.getAdditionalInstanceField(activity, DEVICE_ACTIVE));
         }
 
-        // Device interconnection is the only retained cross-package extension because it has
-        // been verified to render the global background correctly. Pairing/permission popups stay native.
-        if ("com.milink.service".equals(packageName)) {
+        // Only known full-screen settings surfaces are accepted in cross-package processes.
+        // Pairing, login, permission, payment and other transient/sensitive windows stay native.
+        if (BackgroundContract.PACKAGE_MILINK.equals(packageName)) {
             return !(className.contains(".ui.connectivitysettings.")
                     || className.equals("com.milink.ui.setting.SettingActivity")
                     || className.endsWith(".NetWorkingActivity"));
+        }
+
+        if (BackgroundContract.PACKAGE_PHONE.equals(packageName)) {
+            return !matchesPhoneSettings(className);
+        }
+
+        if (BackgroundContract.PACKAGE_ACCOUNT.equals(packageName)) {
+            return !matchesAccountSettings(className);
+        }
+
+        if (BackgroundContract.PACKAGE_THEME_MANAGER.equals(packageName)) {
+            return !matchesThemeSettings(className);
+        }
+
+        if (BackgroundContract.PACKAGE_HOME.equals(packageName)) {
+            return !matchesHomeSettings(className);
+        }
+
+        if (BackgroundContract.PACKAGE_SECURITY_CENTER.equals(packageName)) {
+            return !matchesSecurityCenterSettings(className);
+        }
+
+        if (BackgroundContract.PACKAGE_POWER_KEEPER.equals(packageName)) {
+            // PowerKeeper is scoped only after the full-screen/transient-window checks above.
+            return false;
         }
 
         return true;
@@ -117,11 +142,76 @@ final class BackgroundApplier {
                 || n.contains("authorize")
                 || n.contains("accesscheckactivity")
                 || n.contains("confirmcredential")
+                || n.contains("credential")
+                || n.contains("password")
+                || n.contains("pinactivity")
+                || n.contains("payment")
+                || n.contains("wallet")
+                || n.contains("login")
+                || n.contains("signin")
+                || n.contains("oauth")
+                || n.contains("passport")
+                || n.contains("emergency")
+                || n.contains("dialer")
+                || n.contains("incall")
                 || n.contains("confirmdialog")
                 || n.contains("grant")
                 || n.endsWith("ctaactivity")
                 || n.contains("transparentactivity")
                 || n.contains("dialogactivity");
+    }
+
+    private static boolean matchesPhoneSettings(String className) {
+        String n = className == null ? "" : className.toLowerCase();
+        return n.contains(".settings.")
+                || n.contains("setting")
+                || n.contains("calloptions")
+                || n.contains("callfeaturessetting")
+                || n.contains("callforwardtype")
+                || n.contains("callforwardoptions")
+                || n.contains("additionalcalloptions");
+    }
+
+    private static boolean matchesAccountSettings(String className) {
+        String n = className == null ? "" : className.toLowerCase();
+        return n.contains(".settings.")
+                || n.contains("accountsettings")
+                || n.contains("accountsecurity")
+                || n.contains("userdetailinfo")
+                || n.contains("userphoneinfo")
+                || n.contains("devicesettinglist")
+                || n.contains("devicedetailinfo");
+    }
+
+    private static boolean matchesThemeSettings(String className) {
+        String n = className == null ? "" : className.toLowerCase();
+        return n.contains(".settings.")
+                || n.contains("themesettings")
+                || n.contains("personalize")
+                || n.contains("aifromsettings");
+    }
+
+    private static boolean matchesHomeSettings(String className) {
+        String n = className == null ? "" : className.toLowerCase();
+        return n.contains(".settings.")
+                || n.contains("settingsactivity")
+                || n.contains("homesettings")
+                || n.contains("launchersettings");
+    }
+
+    private static boolean matchesSecurityCenterSettings(String className) {
+        String n = className == null ? "" : className.toLowerCase();
+        return n.contains(".settings.")
+                || n.contains("setting")
+                || n.contains("power")
+                || n.contains("battery")
+                || n.contains("autostart")
+                || n.contains("appmanager")
+                || n.contains("privacy")
+                || n.contains("permission")
+                || n.contains("networkassistant")
+                || n.contains("garbage")
+                || n.contains("optimiz");
     }
 
     private static void removeGlobal(Activity activity) {
@@ -246,7 +336,6 @@ final class BackgroundApplier {
         try {
             DeviceSession session = (DeviceSession) XposedHelpers.removeAdditionalInstanceField(fragment, DEVICE_SESSION);
             if (session != null) removeDeviceView(session, false);
-            Activity activity = activityFromFragment(fragment);
         } catch (Throwable error) { log("destroyDevice", error); }
     }
 

@@ -20,13 +20,18 @@ export GRADLE_USER_HOME="$PROJECT_DIR/.gradle-user-home"
 # Install the platform here as a fallback so CI does not depend on an older
 # workflow step that may still only preinstall android-35.
 if command -v sdkmanager >/dev/null 2>&1; then
-  echo "Ensuring Android SDK Platform 37 is installed..."
-  yes | sdkmanager --licenses >/dev/null 2>&1 || true
-  sdkmanager "platforms;android-37" >/dev/null
+    echo "Ensuring Android SDK Platform 37 is installed..."
+    yes | sdkmanager --licenses >/dev/null 2>&1 || true
+    if ! sdkmanager "platforms;android-37.0" "build-tools;36.0.0" >/dev/null; then
+        sdkmanager "platforms;android-37" "build-tools;36.0.0" >/dev/null
+    fi
 fi
 "$GRADLE_HOME/bin/gradle" --no-daemon :app:assembleRelease
 mkdir -p "$PROJECT_DIR/dist"
 APK="$(find "$PROJECT_DIR/app/build/outputs/apk/release" -maxdepth 1 -type f -name '*.apk' | head -n 1)"
 test -n "$APK"
-cp "$APK" "$PROJECT_DIR/dist/HyperBackground-v1.3.3-test.apk"
-echo "Built: $PROJECT_DIR/dist/HyperBackground-v1.3.3-test.apk"
+VERSION="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)"/\1/p' "$PROJECT_DIR/app/build.gradle.kts" | head -n 1)"
+test -n "$VERSION"
+TARGET="$PROJECT_DIR/dist/HyperBackground-v$VERSION.apk"
+cp "$APK" "$TARGET"
+echo "Built: $TARGET"

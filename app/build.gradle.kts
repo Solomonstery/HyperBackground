@@ -3,6 +3,15 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val releaseKeystorePath = providers.environmentVariable("HYPERBG_KEYSTORE_PATH").orNull
+    ?: error("Missing required private signing environment variable: HYPERBG_KEYSTORE_PATH")
+val releaseKeystorePassword = providers.environmentVariable("HYPERBG_KEYSTORE_PASSWORD").orNull
+    ?: error("Missing required private signing environment variable: HYPERBG_KEYSTORE_PASSWORD")
+val releaseKeyAlias = providers.environmentVariable("HYPERBG_KEY_ALIAS").orNull
+    ?: error("Missing required private signing environment variable: HYPERBG_KEY_ALIAS")
+val releaseKeyPassword = providers.environmentVariable("HYPERBG_KEY_PASSWORD").orNull
+    ?: error("Missing required private signing environment variable: HYPERBG_KEY_PASSWORD")
+
 android {
     namespace = "com.ciallo.hyperbackground"
     compileSdk = 37
@@ -11,8 +20,8 @@ android {
         applicationId = "com.ciallo.hyperbackground"
         minSdk = 33
         targetSdk = 35
-        versionCode = 16
-        versionName = "1.3.3-test"
+        versionCode = 20
+        versionName = "1.3.6"
     }
 
     buildFeatures {
@@ -27,10 +36,11 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("../signing/hyperbackground-debug.jks")
-            storePassword = "hyperbackground"
-            keyAlias = "hyperbackground"
-            keyPassword = "hyperbackground"
+            storeFile = file(releaseKeystorePath)
+            storePassword = releaseKeystorePassword
+            keyAlias = releaseKeyAlias
+            keyPassword = releaseKeyPassword
+            storeType = "PKCS12"
         }
     }
 

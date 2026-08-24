@@ -49,6 +49,24 @@ final class BackgroundApplier {
 
     static void stopGlobal(Activity activity) { stopLayer(activity, GLOBAL_SESSION); }
 
+    static boolean ensureGlobalBeforeDraw(Activity activity) {
+        if (activity == null || activity.isFinishing()) return true;
+        try {
+            if (shouldSkipGlobal(activity)) return true;
+
+            BackgroundContract.Source source =
+                    BackgroundContract.query(activity, BackgroundContract.GLOBAL);
+            if (!source.exists) return true;
+
+            applyGlobal(activity);
+            return XposedHelpers.getAdditionalInstanceField(activity, GLOBAL_SESSION) instanceof LayerSession;
+        } catch (Throwable error) {
+            log("ensureGlobalBeforeDraw", error);
+            // Never block rendering indefinitely if a vendor page behaves unexpectedly.
+            return true;
+        }
+    }
+
     static void destroyGlobal(Activity activity) { removeGlobal(activity); }
 
     static void enterDevice(Activity activity) {

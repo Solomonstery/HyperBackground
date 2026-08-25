@@ -352,7 +352,7 @@ final class BackgroundApplier {
             }
         }
 
-        if (activity == null || content == null) return content;
+        if (home || activity == null || content == null) return content;
         try {
             Object parent = content.getParent();
             if (parent instanceof ViewGroup && isMiuixActionBarHost(activity, (ViewGroup) parent)) {
@@ -551,7 +551,7 @@ final class BackgroundApplier {
         }
 
         void refresh(Activity activity, boolean home) {
-            if (activity == null || observedRoot == null) return;
+            if (home || activity == null || observedRoot == null) return;
             clearPageSurfaces(activity, observedRoot, observedRoot, 0);
             if (transparentTopBar) clearActionBarSurfaces(activity, observedRoot, 0);
         }

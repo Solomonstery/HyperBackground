@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">HyperBG</string>
-    <string name="app_description">HyperOS 设置背景：主页 / 我的设备独立通道 + 系统设置组件全局背景</string>
+    <string name="app_description">HyperOS 设置背景与外观自定义模块</string>
     <string-array name="xposed_scope">
         <item>com.android.settings</item>
         <item>com.milink.service</item>

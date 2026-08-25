@@ -4,6 +4,9 @@ import android.app.Activity;
 import android.app.Instrumentation;
 import android.os.Bundle;
 import android.view.View;
+import java.util.Collections;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -12,6 +15,7 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
+    private static final Map<Activity, Runnable> PENDING_GLOBAL = Collections.synchronizedMap(new WeakHashMap<>());
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if (!BackgroundContract.isSupportedPackage(lpparam.packageName)) return;
@@ -159,28 +163,21 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
 
     private static void scheduleGlobal(final Activity activity) {
         if (activity == null || activity.isFinishing()) return;
-        BackgroundApplier.applyGlobal(activity);
+        final View decor;
         try {
-            final View decor = activity.getWindow() == null
-                    ? null
-                    : activity.getWindow().getDecorView();
+            decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
             if (decor == null) return;
-
-            decor.post(() -> {
-                if (!activity.isFinishing() && !activity.isDestroyed()) {
-                    BackgroundApplier.applyGlobal(activity);
-                }
-            });
-            decor.postOnAnimation(() -> {
-                if (!activity.isFinishing() && !activity.isDestroyed()) {
-                    BackgroundApplier.applyGlobal(activity);
-                }
-            });
-            decor.postDelayed(() -> {
-                if (!activity.isFinishing() && !activity.isDestroyed()) {
-                    BackgroundApplier.applyGlobal(activity);
-                }
-            }, 180L);
+            synchronized (PENDING_GLOBAL) {
+                if (PENDING_GLOBAL.containsKey(activity)) return;
+                Runnable task = () -> {
+                    synchronized (PENDING_GLOBAL) { PENDING_GLOBAL.remove(activity); }
+                    if (!activity.isFinishing() && !activity.isDestroyed()) {
+                        BackgroundApplier.applyGlobal(activity);
+                    }
+                };
+                PENDING_GLOBAL.put(activity, task);
+                decor.post(task);
+            }
         } catch (Throwable ignored) {
             BackgroundApplier.applyGlobal(activity);
         }

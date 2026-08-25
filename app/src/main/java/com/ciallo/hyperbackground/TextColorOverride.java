@@ -12,6 +12,8 @@ import de.robv.android.xposed.XposedHelpers;
 /** Keeps the user-selected Settings text mode stable when MIUIX/Preference rebinds views. */
 final class TextColorOverride {
     private static final ThreadLocal<Boolean> INTERNAL = new ThreadLocal<>();
+    private static volatile boolean modeLoaded;
+    private static volatile int cachedMode = BackgroundContract.FONT_FOLLOW;
     private TextColorOverride() {}
 
     static void install() {
@@ -37,6 +39,8 @@ final class TextColorOverride {
     }
 
     static void apply(TextView view, int mode) {
+        cachedMode = mode;
+        modeLoaded = true;
         if (mode == BackgroundContract.FONT_FOLLOW) return;
         try {
             INTERNAL.set(Boolean.TRUE);
@@ -47,10 +51,13 @@ final class TextColorOverride {
     }
 
     private static int readMode(TextView view) {
+        if (modeLoaded) return cachedMode;
         try {
             Context context = view.getContext();
             if (context == null || !"com.android.settings".equals(context.getPackageName())) return BackgroundContract.FONT_FOLLOW;
-            return BackgroundContract.query(context, BackgroundContract.HOME).fontMode;
+            cachedMode = BackgroundContract.query(context, BackgroundContract.HOME).fontMode;
+            modeLoaded = true;
+            return cachedMode;
         } catch (Throwable ignored) {
             return BackgroundContract.FONT_FOLLOW;
         }

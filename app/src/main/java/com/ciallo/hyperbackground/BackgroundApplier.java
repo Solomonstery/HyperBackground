@@ -527,6 +527,7 @@ final class BackgroundApplier {
         final List<ActionBarSurface> actionBarSurfaces = new ArrayList<>();
         ViewGroup observedRoot;
         ViewTreeObserver.OnGlobalLayoutListener layoutListener;
+        boolean refreshPosted;
         boolean homeMode;
         boolean transparentTopBar;
         Window statusBarWindow;
@@ -541,9 +542,7 @@ final class BackgroundApplier {
                 clearedViews.add(view);
                 originalBackgrounds.add(view.getBackground());
             }
-            // Miuix can re-apply theme backgrounds after the first lifecycle callback.
-            // Always null the current value while preserving only the first original value.
-            view.setBackground(null);
+            if (view.getBackground() != null) view.setBackground(null);
         }
 
         void attach(final Activity activity, ViewGroup root, boolean home, boolean transparentTopBar) {
@@ -554,7 +553,16 @@ final class BackgroundApplier {
             refresh(activity, home);
             layoutListener = new ViewTreeObserver.OnGlobalLayoutListener() {
                 @Override public void onGlobalLayout() {
-                    try { refresh(activity, homeMode); } catch (Throwable ignored) {}
+                    if (refreshPosted) return;
+                    refreshPosted = true;
+                    try {
+                        observedRoot.postOnAnimation(() -> {
+                            refreshPosted = false;
+                            try { refresh(activity, homeMode); } catch (Throwable ignored) {}
+                        });
+                    } catch (Throwable ignored) {
+                        refreshPosted = false;
+                    }
                 }
             };
             try { root.getViewTreeObserver().addOnGlobalLayoutListener(layoutListener); } catch (Throwable ignored) {}
@@ -575,6 +583,7 @@ final class BackgroundApplier {
             }
             observedRoot = null;
             layoutListener = null;
+            refreshPosted = false;
         }
 
         void restore() {

@@ -27,8 +27,8 @@ android {
         applicationId = "com.ciallo.hyperbackground"
         minSdk = 33
         targetSdk = 35
-        versionCode = 29
-        versionName = "1.3.8-test5"
+        versionCode = 30
+        versionName = "1.3.8-test6"
     }
 
     buildFeatures {

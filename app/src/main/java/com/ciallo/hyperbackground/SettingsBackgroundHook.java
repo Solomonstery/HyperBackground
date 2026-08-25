@@ -79,7 +79,7 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
         }
     }
 
-
+    private static void hookInstrumentationLifecycle() {
         try {
             XposedHelpers.findAndHookMethod(
                     Instrumentation.class,

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">HyperBG</string>
-    <string name="app_description">HyperOS 设置背景与外观自定义模块</string>
+    <string name="app_description">为 HyperOS 系统设置及设备互联、电话、小米账号、主题壁纸、桌面、手机管家、省电与健康使用手机等页面注入统一可配置的自定义背景。支持图片/GIF/动图/视频、透明度与模糊调节、文字明暗强制及外观自定义。</string>
     <string-array name="xposed_scope">
         <item>com.android.settings</item>
         <item>com.milink.service</item>

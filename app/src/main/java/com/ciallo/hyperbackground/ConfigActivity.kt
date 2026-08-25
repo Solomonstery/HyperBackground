@@ -964,35 +964,53 @@ class ConfigActivity : ComponentActivity() {
 
     // 解析打包进 assets 的 CHANGELOG.md：优先返回与 versionName 精确匹配的章节，
     // 匹配不到时回退到文件中最新（第一个）章节，保证卡片始终有合理内容。
+    // 兼容 `-`/`*`/`+` 列表符号，跳过代码块围栏，并对版本号做归一化匹配。
     private fun loadReleaseNotes(context: android.content.Context, version: String): ReleaseNotesEntry? {
         val text = runCatching {
             context.assets.open("CHANGELOG.md").bufferedReader(Charsets.UTF_8).use { it.readText() }
         }.getOrNull() ?: return null
 
+        val headingRegex = Regex("""^##\s+(.+)$""")
+        val bulletRegex = Regex("""^[-*+]\s+(.+)$""")
+
         val sections = mutableListOf<ReleaseNotesEntry>()
         var currentVersion: String? = null
         val currentNotes = mutableListOf<String>()
+        var inFence = false
         fun flush() {
             currentVersion?.let { sections.add(ReleaseNotesEntry(it, currentNotes.toList())) }
             currentNotes.clear()
         }
         for (raw in text.lineSequence()) {
             val line = raw.trim()
-            when {
-                line.startsWith("## ") -> {
-                    flush()
-                    currentVersion = line.removePrefix("## ").trim()
-                }
-                line.startsWith("- ") && currentVersion != null -> {
-                    currentNotes.add(line.removePrefix("- ").trim())
-                }
+            if (line.startsWith("```") || line.startsWith("~~~")) {
+                inFence = !inFence
+                continue
+            }
+            if (inFence) continue
+            val heading = headingRegex.matchEntire(line)
+            if (heading != null) {
+                flush()
+                currentVersion = heading.groupValues[1].trim()
+                continue
+            }
+            val bullet = bulletRegex.matchEntire(line)
+            if (bullet != null && currentVersion != null) {
+                val note = bullet.groupValues[1].trim()
+                if (note.isNotEmpty()) currentNotes.add(note)
             }
         }
         flush()
 
         if (sections.isEmpty()) return null
-        return sections.firstOrNull { it.version == version } ?: sections.first()
+        return sections.firstOrNull { normalizeVersion(it.version) == normalizeVersion(version) }
+            ?: sections.first()
     }
+
+    // 归一化版本号：去掉可能的 `v` 前缀，并只取首个空白/括号前的版本段，
+    // 兼容 `## v1.3.9`、`## 1.3.9 (2026-08-26)` 等标题写法。
+    private fun normalizeVersion(raw: String): String =
+        raw.trim().substringBefore(' ').substringBefore('(').removePrefix("v").removePrefix("V")
 
     private suspend fun fetchLatestStableVersion(): String = withContext(Dispatchers.IO) {
         val connection = (URL(LATEST_RELEASE_API).openConnection() as HttpURLConnection).apply {

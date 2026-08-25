@@ -925,16 +925,73 @@ class ConfigActivity : ComponentActivity() {
 
     @Composable
     private fun CurrentReleaseNotesCard() {
+        val context = LocalContext.current
+        val current = BuildConfig.VERSION_NAME
+        var title by remember { mutableStateOf(current) }
+        var notes by remember { mutableStateOf<List<String>>(emptyList()) }
+        var loading by remember { mutableStateOf(true) }
+
+        LaunchedEffect(current) {
+            val entry = runCatching {
+                withContext(Dispatchers.IO) { loadReleaseNotes(context, current) }
+            }.getOrNull()
+            if (entry != null) {
+                title = entry.version
+                notes = entry.notes
+            }
+            loading = false
+        }
+
         UiCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("本次版本说明", style = MiuixTheme.textStyles.headline1)
-                Text("HyperBG ${BuildConfig.VERSION_NAME}", color = MiuixTheme.colorScheme.primary)
-                Text("• MIUIX 二级页面的状态栏、返回栏与大标题背景改为透明。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                Text("• 应用设置功能卡、隐私切换条和正文卡片保持原生半透明样式。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                Text("• 设备互联与省电管理继续使用已验证的内容层挂载，不受顶栏改动影响。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                Text("• 测试版使用正式包名与同一私有签名，通过 GitHub Pre-release 发布。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Text("HyperBG $title", color = MiuixTheme.colorScheme.primary)
+                if (title != current) {
+                    Text("（当前运行 $current，以下为最新说明）", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                }
+                when {
+                    loading -> Text("正在读取版本说明…", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    notes.isEmpty() -> Text("暂无版本说明。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    else -> notes.forEach { line ->
+                        Text("• $line", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    }
+                }
             }
         }
+    }
+
+    private data class ReleaseNotesEntry(val version: String, val notes: List<String>)
+
+    // 解析打包进 assets 的 CHANGELOG.md：优先返回与 versionName 精确匹配的章节，
+    // 匹配不到时回退到文件中最新（第一个）章节，保证卡片始终有合理内容。
+    private fun loadReleaseNotes(context: android.content.Context, version: String): ReleaseNotesEntry? {
+        val text = runCatching {
+            context.assets.open("CHANGELOG.md").bufferedReader(Charsets.UTF_8).use { it.readText() }
+        }.getOrNull() ?: return null
+
+        val sections = mutableListOf<ReleaseNotesEntry>()
+        var currentVersion: String? = null
+        val currentNotes = mutableListOf<String>()
+        fun flush() {
+            currentVersion?.let { sections.add(ReleaseNotesEntry(it, currentNotes.toList())) }
+            currentNotes.clear()
+        }
+        for (raw in text.lineSequence()) {
+            val line = raw.trim()
+            when {
+                line.startsWith("## ") -> {
+                    flush()
+                    currentVersion = line.removePrefix("## ").trim()
+                }
+                line.startsWith("- ") && currentVersion != null -> {
+                    currentNotes.add(line.removePrefix("- ").trim())
+                }
+            }
+        }
+        flush()
+
+        if (sections.isEmpty()) return null
+        return sections.firstOrNull { it.version == version } ?: sections.first()
     }
 
     private suspend fun fetchLatestStableVersion(): String = withContext(Dispatchers.IO) {

@@ -20,7 +20,6 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if (!BackgroundContract.isSupportedPackage(lpparam.packageName)) return;
         boolean settings = BackgroundContract.PACKAGE_SETTINGS.equals(lpparam.packageName);
-        boolean home = BackgroundContract.PACKAGE_HOME.equals(lpparam.packageName);
 
         XposedBridge.log("[HyperBackground] injected package=" + lpparam.packageName
                 + " process=" + lpparam.processName + " version=" + BuildConfig.VERSION_NAME);
@@ -32,50 +31,9 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
             SettingsThemeOverride.install();
             TextColorOverride.install();
             SettingsSearchMaskOverride.install(lpparam.classLoader);
-            hookSettingsHomeActivity(lpparam.classLoader);
-            hookSettingsHomeFragment(lpparam.classLoader);
+            hookHomeActivity(lpparam.classLoader);
+            hookHomeFragment(lpparam.classLoader);
             hookDeviceFragment(lpparam.classLoader);
-        } else if (home) {
-            hookHomePackageLifecycle(lpparam.classLoader);
-            XposedBridge.log("[HyperBackground] desktop settings lifecycle hooks installed");
-        }
-    }
-
-    private static void hookHomePackageLifecycle(ClassLoader classLoader) {
-        String[] activityClasses = new String[] {
-                "com.miui.home.settings.MiuiHomeSettingActivity",
-                "com.miui.home.settings.HomeSettingsActivity",
-                "com.miui.home.settings.LauncherSettingsActivity"
-        };
-        for (String className : activityClasses) {
-            try {
-                XposedHelpers.findAndHookMethod(
-                        className,
-                        classLoader,
-                        "onCreate",
-                        Bundle.class,
-                        new XC_MethodHook() {
-                            @Override protected void afterHookedMethod(MethodHookParam param) {
-                                if (param.thisObject instanceof Activity) {
-                                    BackgroundApplier.applyGlobal((Activity) param.thisObject);
-                                }
-                            }
-                        });
-                XposedHelpers.findAndHookMethod(
-                        className,
-                        classLoader,
-                        "onResume",
-                        new XC_MethodHook() {
-                            @Override protected void afterHookedMethod(MethodHookParam param) {
-                                if (param.thisObject instanceof Activity) {
-                                    BackgroundApplier.applyGlobal((Activity) param.thisObject);
-                                }
-                            }
-                        });
-                XposedBridge.log("[HyperBackground] desktop lifecycle hook=" + className);
-            } catch (Throwable error) {
-                logHookError("desktop lifecycle " + className, error);
-            }
         }
     }
 
@@ -215,7 +173,7 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
         }
     }
 
-    private static void hookSettingsHomeActivity(ClassLoader classLoader) {
+    private static void hookHomeActivity(ClassLoader classLoader) {
         try {
             XposedHelpers.findAndHookMethod(
                     "com.android.settings.MiuiSettings",
@@ -248,7 +206,7 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
         } catch (Throwable error) { logHookError("MiuiSettings", error); }
     }
 
-    private static void hookSettingsHomeFragment(ClassLoader classLoader) {
+    private static void hookHomeFragment(ClassLoader classLoader) {
         try {
             XposedHelpers.findAndHookMethod(
                     "com.android.settings.SettingsFragment",

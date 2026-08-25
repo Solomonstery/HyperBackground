@@ -31,8 +31,6 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
             SettingsThemeOverride.install();
             TextColorOverride.install();
             SettingsSearchMaskOverride.install(lpparam.classLoader);
-            hookHomeActivity(lpparam.classLoader);
-            hookHomeFragment(lpparam.classLoader);
             hookDeviceFragment(lpparam.classLoader);
         }
     }
@@ -128,8 +126,6 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
             className = "com.xiaomi.account.ui.BaseActivity";
         } else if (BackgroundContract.PACKAGE_THEME_MANAGER.equals(lpparam.packageName)) {
             className = "com.android.thememanager.basemodule.base.AbstractBaseActivity";
-        } else if (BackgroundContract.PACKAGE_HOME.equals(lpparam.packageName)) {
-            className = "com.miui.home.settings.MiuiHomeSettingActivity";
         }
         if (className == null) return;
         try {
@@ -171,59 +167,6 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
         } catch (Throwable ignored) {
             BackgroundApplier.applyGlobal(activity);
         }
-    }
-
-    private static void hookHomeActivity(ClassLoader classLoader) {
-        try {
-            XposedHelpers.findAndHookMethod(
-                    "com.android.settings.MiuiSettings",
-                    classLoader,
-                    "onCreate",
-                    Bundle.class,
-                    new XC_MethodHook() {
-                        @Override protected void afterHookedMethod(MethodHookParam param) {
-                            if (param.thisObject instanceof Activity) BackgroundApplier.applyHome((Activity) param.thisObject);
-                        }
-                    });
-            XposedHelpers.findAndHookMethod(
-                    "com.android.settings.MiuiSettings",
-                    classLoader,
-                    "onResume",
-                    new XC_MethodHook() {
-                        @Override protected void afterHookedMethod(MethodHookParam param) {
-                            if (param.thisObject instanceof Activity) BackgroundApplier.applyHome((Activity) param.thisObject);
-                        }
-                    });
-            XposedHelpers.findAndHookMethod(
-                    "com.android.settings.MiuiSettings",
-                    classLoader,
-                    "onStop",
-                    new XC_MethodHook() {
-                        @Override protected void afterHookedMethod(MethodHookParam param) {
-                            if (param.thisObject instanceof Activity) BackgroundApplier.stopHome((Activity) param.thisObject);
-                        }
-                    });
-        } catch (Throwable error) { logHookError("MiuiSettings", error); }
-    }
-
-    private static void hookHomeFragment(ClassLoader classLoader) {
-        try {
-            XposedHelpers.findAndHookMethod(
-                    "com.android.settings.SettingsFragment",
-                    classLoader,
-                    "onViewCreated",
-                    android.view.View.class,
-                    Bundle.class,
-                    new XC_MethodHook() {
-                        @Override protected void afterHookedMethod(MethodHookParam param) {
-                            Object activity = XposedHelpers.callMethod(param.thisObject, "getActivity");
-                            if (activity instanceof Activity
-                                    && "com.android.settings.MiuiSettings".equals(activity.getClass().getName())) {
-                                BackgroundApplier.applyHome((Activity) activity);
-                            }
-                        }
-                    });
-        } catch (Throwable error) { logHookError("SettingsFragment", error); }
     }
 
     private static void hookDeviceFragment(ClassLoader classLoader) {

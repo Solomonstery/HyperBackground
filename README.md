@@ -2,7 +2,7 @@
 
 HyperBackground 是一个面向 HyperOS 的 LSPosed 背景与外观自定义模块，用于为系统设置及部分 HyperOS 系统应用提供统一、可配置的自定义背景体验。
 
-> 当前最新发行版：**1.3.8-test1**（Pre-release）
+> 当前最新发行版：**1.3.8-test2**（Pre-release）
 >
 > 包名：`com.ciallo.hyperbackground`
 >
@@ -28,17 +28,15 @@ HyperBackground 是一个面向 HyperOS 的 LSPosed 背景与外观自定义模�
 - 提供 Hook 读取记录，用于确认目标进程是否已执行 Hook 并读取全局背景。
 - 关于页提供版本检查、版本说明、制作者信息、酷安和 GitHub 入口。
 
-## 1.3.8-test1
+## 1.3.8-test2
 
-本版本继续验证 HyperOS 二级页面与跨应用页面的背景兼容性：
+本版本集中验证移动数据二级页面的背景转场修复：
 
-- 回退会导致部分 HyperOS 3 设置页面卡住的 PreDraw 首帧阻塞方案。
-- 保留非阻塞式延迟重试，在 MIUIX 重建页面层级后重新应用背景。
-- 优化移动网络页面的背景宿主选择，使自定义背景脱离 `ActionBarOverlayLayout` 转场层。
-- 继续优化跨 Activity 页面切换时的背景生命周期和转场表现。
-- 保留已经正常工作的 Settings 二级页面及跨包背景适配逻辑。
+- 修正 `MobileNetworkSettings` 的背景宿主判断，检查 `android.R.id.content` 的父级是否为 `ActionBarOverlayLayout`。
+- 命中 MIUIX 转场容器时将自定义背景挂载到父级，避免背景随页面动画移动并产生虚影。
+- 未命中已知层级时保留内容层回退，兼容不同 HyperOS 版本的页面结构。
 
-> `1.3.8-test1` 为测试发行版，建议在升级前保留现有配置。测试重点为 HyperOS 3/4 的二级页面、移动网络页面以及进入/返回时的背景转场。
+> `1.3.8-test2` 为测试发行版。测试重点为进入、返回移动数据页面时的滑动转场、背景连续性和虚影表现。
 
 ## 当前作用域
 

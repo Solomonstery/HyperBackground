@@ -342,8 +342,8 @@ final class BackgroundApplier {
                     ViewGroup windowHost = (ViewGroup) windowContent;
                     ViewParent parent = windowHost.getParent();
 
-                    if (windowHost.getClass().getName().contains("ActionBarOverlayLayout")
-                            && parent instanceof ViewGroup) {
+                    if (parent instanceof ViewGroup
+                            && parent.getClass().getName().contains("ActionBarOverlayLayout")) {
                         return (ViewGroup) parent;
                     }
                     return windowHost;

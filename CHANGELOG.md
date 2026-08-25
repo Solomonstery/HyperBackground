@@ -2,6 +2,13 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.3.8-test2
+
+- 修复电话服务“移动数据”二级页面的背景宿主判断，改为检查 `android.R.id.content` 的父级是否为 `ActionBarOverlayLayout`。
+- 命中 MIUIX 转场容器时将自定义背景挂载到父级，避免背景跟随页面滑动并与旧页面短暂叠加形成虚影。
+- 未命中已知层级时继续使用内容层宿主，保留不同 HyperOS 版本的兼容回退。
+- 测试重点为进入和退出移动数据页面时的滑动转场、背景连续性及返回后的页面显示。
+
 ## 1.3.7-test3
 
 - MIUIX 二级页面的全局背景仅在识别到 `ActionBarOverlayLayout` 时提升到其根层，不再触碰 DecorView。

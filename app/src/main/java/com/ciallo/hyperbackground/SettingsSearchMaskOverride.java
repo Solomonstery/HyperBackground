@@ -59,9 +59,10 @@ final class SettingsSearchMaskOverride {
         try {
             Object activity = XposedHelpers.callMethod(fragment, "getActivity");
             if (!(activity instanceof Activity)) return;
-            Window window = ((Activity) activity).getWindow();
+            Activity hostActivity = (Activity) activity;
+            Window window = hostActivity.getWindow();
             if (window == null) return;
-            int id = activity.getResources().getIdentifier("search_mask", "id", activity.getPackageName());
+            int id = hostActivity.getResources().getIdentifier("search_mask", "id", hostActivity.getPackageName());
             View mask = id == 0 ? null : window.findViewById(id);
             if (mask != null) mask.setBackgroundColor(Color.TRANSPARENT);
         } catch (Throwable ignored) {

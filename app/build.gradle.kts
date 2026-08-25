@@ -68,15 +68,13 @@ android {
     packaging {
         resources.excludes += setOf("META-INF/LICENSE*", "META-INF/NOTICE*")
     }
-
-    // 将仓库根目录的 CHANGELOG.md 作为唯一数据源打包进 assets，
-    // 供“本次版本说明”卡片按 versionName 动态读取，避免代码与文档两份内容。
-    sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/changelog_assets"))
 }
 
+// 构建前把仓库根目录的 CHANGELOG.md 同步进 assets，作为“本次版本说明”卡片的唯一数据源。
+// 直接写入默认 assets 源集目录，避免向 Android SourceSet 传入 Provider。
 val syncChangelogAsset by tasks.registering(Copy::class) {
     from(rootProject.file("CHANGELOG.md"))
-    into(layout.buildDirectory.dir("generated/changelog_assets"))
+    into(layout.projectDirectory.dir("src/main/assets"))
 }
 
 tasks.named("preBuild") {

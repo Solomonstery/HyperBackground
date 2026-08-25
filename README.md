@@ -2,7 +2,7 @@
 
 HyperBackground 是一个面向 HyperOS 的 LSPosed 背景与外观自定义模块，用于为系统设置及部分 HyperOS 系统应用提供统一、可配置的自定义背景体验。
 
-> 当前最新发行版：**1.3.8-test2**（Pre-release）
+> 当前最新发行版：**1.3.8-test4**（Pre-release）
 >
 > 包名：`com.ciallo.hyperbackground`
 >

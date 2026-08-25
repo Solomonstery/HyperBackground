@@ -9,7 +9,6 @@ import android.view.View;
 import android.view.Window;
 import android.view.ViewGroup;
 import android.view.ViewParent;
-import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 import java.util.ArrayList;
@@ -526,8 +525,6 @@ final class BackgroundApplier {
         final List<Drawable> originalBackgrounds = new ArrayList<>();
         final List<ActionBarSurface> actionBarSurfaces = new ArrayList<>();
         ViewGroup observedRoot;
-        ViewTreeObserver.OnGlobalLayoutListener layoutListener;
-        boolean refreshPosted;
         boolean homeMode;
         boolean transparentTopBar;
         Window statusBarWindow;
@@ -551,21 +548,6 @@ final class BackgroundApplier {
             this.transparentTopBar = transparentTopBar;
             if (transparentTopBar) prepareTransparentStatusBar(activity);
             refresh(activity, home);
-            layoutListener = new ViewTreeObserver.OnGlobalLayoutListener() {
-                @Override public void onGlobalLayout() {
-                    if (refreshPosted) return;
-                    refreshPosted = true;
-                    try {
-                        observedRoot.postOnAnimation(() -> {
-                            refreshPosted = false;
-                            try { refresh(activity, homeMode); } catch (Throwable ignored) {}
-                        });
-                    } catch (Throwable ignored) {
-                        refreshPosted = false;
-                    }
-                }
-            };
-            try { root.getViewTreeObserver().addOnGlobalLayoutListener(layoutListener); } catch (Throwable ignored) {}
         }
 
         void refresh(Activity activity, boolean home) {
@@ -575,15 +557,7 @@ final class BackgroundApplier {
         }
 
         void detach() {
-            if (observedRoot != null && layoutListener != null) {
-                try {
-                    ViewTreeObserver observer = observedRoot.getViewTreeObserver();
-                    if (observer.isAlive()) observer.removeOnGlobalLayoutListener(layoutListener);
-                } catch (Throwable ignored) {}
-            }
             observedRoot = null;
-            layoutListener = null;
-            refreshPosted = false;
         }
 
         void restore() {

@@ -100,17 +100,6 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
                     });
             XposedHelpers.findAndHookMethod(
                     Activity.class,
-                    "onWindowFocusChanged",
-                    boolean.class,
-                    new XC_MethodHook() {
-                        @Override protected void afterHookedMethod(MethodHookParam param) {
-                            if (param.thisObject instanceof Activity && Boolean.TRUE.equals(param.args[0])) {
-                                scheduleGlobal((Activity) param.thisObject);
-                            }
-                        }
-                    });
-            XposedHelpers.findAndHookMethod(
-                    Activity.class,
                     "onStop",
                     new XC_MethodHook() {
                         @Override protected void afterHookedMethod(MethodHookParam param) {

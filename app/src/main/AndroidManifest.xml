@@ -30,7 +30,7 @@
             android:grantUriPermissions="true" />
 
         <meta-data android:name="xposedmodule" android:value="true" />
-        <meta-data android:name="xposeddescription" android:value="@string/app_description" />
+        <meta-data android:name="xposeddescription" android:value="为 HyperOS 系统设置、我的设备等页面注入自定义背景（图片/GIF/视频），支持模糊与透明度调节。" />
         <meta-data android:name="xposedminversion" android:value="93" />
         <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
     </application>

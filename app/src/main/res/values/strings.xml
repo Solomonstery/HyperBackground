@@ -59,6 +59,10 @@
     <string name="clear_background">Clear background</string>
     <string name="background_opacity">Background opacity</string>
     <string name="card_opacity">Component opacity</string>
+    <string name="bottom_bar_blur">Bottom bar blur</string>
+    <string name="bottom_bar_blur_summary">Blur module content behind the bottom bar</string>
+    <string name="floating_bottom_bar">Floating bottom bar</string>
+    <string name="floating_bottom_bar_summary">Use a rounded navigation bar with outer spacing</string>
     <string name="module_blur">Module background blur</string>
     <string name="blur">Blur</string>
     <string name="top_blur">Top blur</string>

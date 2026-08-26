@@ -211,6 +211,18 @@ private fun ModuleAppearanceCard(
                 onValueChange = { cardOpacity = it },
                 onValueChangeFinished = { activity.updateCardOpacity(it / 100f) },
             )
+            SwitchPreference(
+                title = stringResource(R.string.bottom_bar_blur),
+                summary = stringResource(R.string.bottom_bar_blur_summary),
+                checked = activity.bottomBarBlurEnabled,
+                onCheckedChange = activity::updateBottomBarBlur,
+            )
+            SwitchPreference(
+                title = stringResource(R.string.floating_bottom_bar),
+                summary = stringResource(R.string.floating_bottom_bar_summary),
+                checked = activity.floatingBottomBar,
+                onCheckedChange = activity::updateFloatingBottomBar,
+            )
         }
     }
 }

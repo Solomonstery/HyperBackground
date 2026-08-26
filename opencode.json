@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "skills": {
+    "paths": [
+      "C:/Users/1812z/Documents/GitHub/flutter_miuix/skill/payload"
+    ]
+  },
+  "mcp": {
+    "jadx": {
+      "type": "remote",
+      "url": "http://127.0.0.1:9999/mcp",
+      "enabled": true
+    }
+  }
+}

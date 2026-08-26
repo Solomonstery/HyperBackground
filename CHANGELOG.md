@@ -2,6 +2,11 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.4.0
+
+- 重构：使用 Miuix 风格重构 UI
+- 重构：迁移到 LibXposed API 101 实现
+
 ## 1.3.9-beta2
 
 - 修复：重启作用域对部分包名（如电话、安全中心）失效的问题。旧实现把所有包用 `;` 串成单条 `su -c` 命令、并在 `waitFor` 之后才读取输出流，当某包输出较多写满管道缓冲时子进程阻塞、`waitFor` 超时，导致排在其后的包无法结束。

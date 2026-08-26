@@ -58,7 +58,7 @@
     <string name="module_background">Module background</string>
     <string name="clear_background">Clear background</string>
     <string name="background_opacity">Background opacity</string>
-    <string name="card_opacity">Card opacity</string>
+    <string name="card_opacity">Component opacity</string>
     <string name="module_blur">Module background blur</string>
     <string name="language">Language</string>
     <string name="language_system">System default</string>

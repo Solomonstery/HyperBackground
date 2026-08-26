@@ -388,10 +388,17 @@ class MainActivity : ComponentActivity() {
         content: @Composable (PaddingValues, Modifier) -> Unit,
     ) {
         val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+        val hasUiBackground = remember(revision) { config.uiBackgroundFile.isFile }
+        val topBarColor = if (hasUiBackground) {
+            Color.Transparent
+        } else {
+            MiuixTheme.colorScheme.surface.copy(alpha = cardOpacity)
+        }
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
                 TopAppBar(
+                    color = topBarColor,
                     title = title,
                     largeTitle = title,
                     scrollBehavior = scrollBehavior,
@@ -412,6 +419,12 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun BackgroundDetailScreen(slot: String, onBack: () -> Unit) {
         val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+        val hasUiBackground = remember(revision) { config.uiBackgroundFile.isFile }
+        val topBarColor = if (hasUiBackground) {
+            Color.Transparent
+        } else {
+            MiuixTheme.colorScheme.surface.copy(alpha = cardOpacity)
+        }
         val title = when (slot) {
             BackgroundContract.HOME -> getString(R.string.background_home)
             BackgroundContract.DEVICE -> getString(R.string.background_device)
@@ -421,7 +434,7 @@ class MainActivity : ComponentActivity() {
             containerColor = Color.Transparent,
             topBar = {
                 TopAppBar(
-                    color = Color.Transparent,
+                    color = topBarColor,
                     title = title,
                     largeTitle = title,
                     scrollBehavior = scrollBehavior,

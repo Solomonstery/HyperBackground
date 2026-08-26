@@ -1,9 +1,14 @@
-# Xposed entry point is loaded by class name from assets/xposed_init, so R8 must not rename/remove it.
--keep class com.ciallo.hyperbackground.SettingsBackgroundHook { *; }
+# Loaded by libxposed from META-INF/xposed/java_init.list. Its class name must
+# remain exactly the same in release builds.
+-keep class com.ciallo.hyperbackground.HookEntry {
+    public <init>();
+    public void onPackageLoaded(io.github.libxposed.api.XposedModuleInterface$PackageLoadedParam);
+}
 
-# Android creates these from the manifest.
--keep class com.ciallo.hyperbackground.ConfigActivity { *; }
--keep class com.ciallo.hyperbackground.BackgroundProvider { *; }
+# Android instantiates these classes from the manifest. Keeping their names
+# explicitly also makes the service-binding and settings entry points stable.
+-keep class com.ciallo.hyperbackground.HyperBackgroundApp { *; }
+-keep class com.ciallo.hyperbackground.ui.MainActivity { *; }
 
-# Preserve annotations/signatures used by Compose and Android runtime metadata.
--keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+# Preserve metadata used by Compose, Android and libxposed API method shapes.
+-keepattributes RuntimeVisibleAnnotations,RuntimeInvisibleAnnotations,Signature,InnerClasses,EnclosingMethod

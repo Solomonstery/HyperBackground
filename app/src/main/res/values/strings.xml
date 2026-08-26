@@ -60,6 +60,9 @@
     <string name="background_opacity">Background opacity</string>
     <string name="card_opacity">Component opacity</string>
     <string name="module_blur">Module background blur</string>
+    <string name="blur">Blur</string>
+    <string name="top_blur">Top blur</string>
+    <string name="top_blur_summary">Use a progressive blur on the Settings home top bar</string>
     <string name="language">Language</string>
     <string name="language_system">System default</string>
     <string name="language_chinese">Simplified Chinese</string>

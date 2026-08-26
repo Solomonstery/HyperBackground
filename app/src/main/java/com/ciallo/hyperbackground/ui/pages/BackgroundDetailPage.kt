@@ -1,5 +1,11 @@
 package com.ciallo.hyperbackground.ui.pages
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -9,7 +15,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -20,8 +28,10 @@ import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.ui.MainActivity
 import com.ciallo.hyperbackground.ui.components.SectionTitle
 import com.ciallo.hyperbackground.ui.components.BackgroundPickerPreference
+import com.ciallo.hyperbackground.ui.components.SliderPreference
 import com.ciallo.hyperbackground.ui.components.UiCard
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 
 @Composable
 fun BackgroundDetailPage(
@@ -48,9 +58,61 @@ fun BackgroundDetailPage(
                 BackgroundPickerPreference(activity = activity, slot = slot)
             }
         }
+        if (slot == BackgroundContract.HOME) {
+            item { SectionTitle(stringResource(R.string.blur)) }
+            item { TopBlurCard(activity) }
+        }
         if (slot == BackgroundContract.GLOBAL) {
             item { SectionTitle(stringResource(R.string.settings_appearance)) }
             item { SettingsAppearanceCard(activity) }
+        }
+    }
+}
+
+@Composable
+private fun TopBlurCard(activity: MainActivity) {
+    val config = activity.config
+    var enabled by remember {
+        mutableStateOf(config.getBoolean(BackgroundContract.UI_TOP_BLUR_ENABLED, true))
+    }
+    var strength by remember {
+        mutableFloatStateOf(
+            config.getInt(BackgroundContract.UI_TOP_BLUR_STRENGTH, 10)
+                .coerceIn(0, 100)
+                .toFloat(),
+        )
+    }
+    UiCard(activity, Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            SwitchPreference(
+                title = stringResource(R.string.top_blur),
+                summary = stringResource(R.string.top_blur_summary),
+                checked = enabled,
+                onCheckedChange = {
+                    enabled = it
+                    config.edit().putBoolean(BackgroundContract.UI_TOP_BLUR_ENABLED, it).apply()
+                },
+            )
+            AnimatedVisibility(
+                visible = enabled,
+                enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(220)),
+                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(180)),
+            ) {
+                Column(Modifier.padding(bottom = 8.dp)) {
+                    SliderPreference(
+                        label = stringResource(R.string.blur_strength),
+                        value = strength,
+                        range = 0f..100f,
+                        suffix = "%",
+                        onValueChange = { strength = it },
+                        onValueChangeFinished = {
+                            config.edit()
+                                .putInt(BackgroundContract.UI_TOP_BLUR_STRENGTH, it.toInt())
+                                .apply()
+                        },
+                    )
+                }
+            }
         }
     }
 }

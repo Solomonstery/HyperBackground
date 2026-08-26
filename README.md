@@ -103,6 +103,10 @@ Release 本地构建需要提供：
 - GitHub：https://github.com/Solomonstery/HyperBackground
 - Issues：https://github.com/Solomonstery/HyperBackground/issues
 
+## 致谢
+
+本次 1.4.0 的 UI 与框架重构，得到了 **芥子**（[@1812z](https://github.com/1812z)）的大力支持，在此致以诚挚感谢。
+
 ## License
 
 本项目的许可证见仓库中的 [LICENSE](LICENSE) 文件。

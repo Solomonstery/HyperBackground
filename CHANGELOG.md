@@ -2,6 +2,14 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.3.9-beta2
+
+- 修复：重启作用域对部分包名（如电话、安全中心）失效的问题。旧实现把所有包用 `;` 串成单条 `su -c` 命令、并在 `waitFor` 之后才读取输出流，当某包输出较多写满管道缓冲时子进程阻塞、`waitFor` 超时，导致排在其后的包无法结束。
+- 重构：参照 HyperIsland 的 RootShell，新增 `RootShell`（`su -c` 执行 + 独立守护线程实时排空 stderr，主线程读 stdout 后再 `waitFor`），避免管道阻塞。
+- 改进：`forceStopScopes` 改为逐包独立执行并聚合结果，单个包失败不影响其余包；重启反馈区分“Root 不可用”与逐包成功/失败，提示“已重启 N 个，失败：xxx”。
+- 强制深浅色：将主题（`SettingsThemeOverride`）与文字色（`TextColorOverride`）强制从仅 `com.android.settings` 进程放开到所有作用域进程，使应用详情页等由其它进程提供的页面也能被模块自定义深浅色控制。
+- 测试重点为：作用域工具的常规/完整重启是否全部成功（失败会提示具体包名）；应用详情页及其它非设置进程页面在强制浅色/深色下配色是否跟随模块设置。
+
 ## 1.3.9-beta1
 
 - 修复：应用详情页（应用信息）不跟随模块自定义深浅色、只跟随系统的问题。该页 header 卡片由 miuix 组件绘制，走 `ViewUtils.isNightMode(context)` 读取 Activity 实际 Resources 的 `Configuration.isNightModeActive()`，此前仅替换 `attachBaseContext` 的 Context 无法覆盖到它。

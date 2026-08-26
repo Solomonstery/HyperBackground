@@ -2,7 +2,7 @@
 
 HyperBackground 是一个面向 HyperOS 的 LSPosed 背景与外观自定义模块，用于为系统设置及部分 HyperOS 系统应用提供统一、可配置的自定义背景体验。
 
-> 当前最新发行版：**1.3.9**
+> 当前最新发行版：**1.4.0**
 >
 > 包名：`com.ciallo.hyperbackground`
 >
@@ -11,6 +11,8 @@ HyperBackground 是一个面向 HyperOS 的 LSPosed 背景与外观自定义模�
 > 当前开发基线：**HyperOS 4 / Android 17**
 >
 > 配置界面：**Kotlin + Jetpack Compose + Miuix KMP**
+>
+> Hook 框架：**LibXposed API 101**
 
 ## 功能
 
@@ -28,16 +30,14 @@ HyperBackground 是一个面向 HyperOS 的 LSPosed 背景与外观自定义模�
 - 提供 Hook 读取记录，用于确认目标进程是否已执行 Hook 并读取全局背景。
 - 关于页提供版本检查、版本说明、制作者信息、酷安和 GitHub 入口。
 
-## 1.3.9
+## 1.4.0
 
-本版本汇总 1.3.8 测试线的修复，作为稳定版发布：
+本版本为一次结构性重构：
 
-- 修复设置搜索输入文字时整个页面短暂变黑，搜索加载层与窗口级搜索遮罩改为透明。
-- 还原桌面设置背景逻辑至已验证可用状态，保留旧版（OS3）桌面设置背景生效路径。
-- 清理针对桌面设置的无效 Hook 残留。
-- 关于页“本次版本说明”改为按当前版本从打包的 CHANGELOG.md 动态读取，解析更健壮。
+- 使用 Miuix 风格重构模块配置界面。
+- 迁移到 LibXposed API 101 实现 Hook 入口与运行时。
 
-> 当前 HyperOS 桌面二级设置页由 Flutter/Rust 渲染，模块的 View 树背景注入对其无效；本版仅确保旧版桌面设置背景原本能生效的路径不被破坏。
+> 完整历史更新记录见仓库中的 [CHANGELOG.md](CHANGELOG.md)。当前 HyperOS 桌面二级设置页由 Flutter/Rust 渲染，模块的 View 树背景注入对其无效；模块仅确保旧版桌面设置背景原本能生效的路径不被破坏。
 
 ## 当前作用域
 
@@ -102,6 +102,10 @@ Release 本地构建需要提供：
 - 酷安：https://www.coolapk.com/u/18795532
 - GitHub：https://github.com/Solomonstery/HyperBackground
 - Issues：https://github.com/Solomonstery/HyperBackground/issues
+
+## 致谢
+
+本次 1.4.0 的 UI 与框架重构，得到了 **芥子**（[@1812z](https://github.com/1812z)）的大力支持，在此致以诚挚感谢。
 
 ## License
 

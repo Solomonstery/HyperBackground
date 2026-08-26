@@ -2,6 +2,13 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.4.1-beta1
+
+- 修复：强制深浅色设为“跟随系统”后无法真正还原、导致设置等应用的系统深浅色开关被锁死、无法切换的问题。
+- 根因：旧逻辑在“跟随系统(FOLLOW)”时直接 return，从不撤销此前通过 `UiModeManager.setApplicationNightMode` 写入的 per-app 夜间模式覆盖，覆盖持久残留，即便停用模块或强杀进程也无法恢复。
+- 改进：`onResume` 时始终调用 `applyApplicationNightMode`；FOLLOW 显式设为 `MODE_NIGHT_AUTO` 主动撤销 per-app 覆盖，DARK/LIGHT 分别设为 `MODE_NIGHT_YES`/`NO`。
+- 恢复方法：启用模块并勾选作用域后，在 HyperBG 将强制深浅色设为“跟随系统”，逐个打开受影响的作用域应用（尤其是设置）触发 `onResume`，各进程会各自把 per-app 夜间模式还原为 AUTO。
+
 ## 1.4.0
 
 - 重构：使用 Miuix 风格重构 UI

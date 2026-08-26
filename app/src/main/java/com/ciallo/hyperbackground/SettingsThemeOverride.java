@@ -84,9 +84,13 @@ final class SettingsThemeOverride {
                             if (!(param.thisObject instanceof Activity)) return;
                             Activity activity = (Activity) param.thisObject;
                             int mode = resolveMode(activity);
-                            if (mode == BackgroundContract.SETTINGS_THEME_FOLLOW) return;
+                            // 注意：FOLLOW 时不能直接 return。必须调用 applyApplicationNightMode
+                            // 让它把 per-app 夜间模式还原为 AUTO，主动撤销此前写入的强制覆盖，
+                            // 否则设置等应用的系统深浅色开关会被残留覆盖锁死。
                             applyApplicationNightMode(activity, mode);
-                            forceActivityConfiguration(activity, mode);
+                            if (mode != BackgroundContract.SETTINGS_THEME_FOLLOW) {
+                                forceActivityConfiguration(activity, mode);
+                            }
                         }
                     });
         } catch (Throwable error) {
@@ -130,13 +134,30 @@ final class SettingsThemeOverride {
         }
     }
 
+    /**
+     * 用 {@link UiModeManager#setApplicationNightMode} 设置本进程（作用域应用自身）的
+     * per-app 夜间模式。
+     *
+     * <p>关键：FOLLOW 时必须显式设回 {@link UiModeManager#MODE_NIGHT_AUTO}，
+     * 主动撤销此前写入的强制覆盖——否则之前钉入的 per-app 覆盖会一直残留，
+     * 导致该应用（尤其是设置）的系统深浅色开关被锁死、无法切换。
+     */
     private static void applyApplicationNightMode(Context context, int mode) {
         try {
             UiModeManager manager = (UiModeManager) context.getSystemService(Context.UI_MODE_SERVICE);
             if (manager == null) return;
-            int target = mode == BackgroundContract.SETTINGS_THEME_DARK
-                    ? UiModeManager.MODE_NIGHT_YES
-                    : UiModeManager.MODE_NIGHT_NO;
+            final int target;
+            switch (mode) {
+                case BackgroundContract.SETTINGS_THEME_DARK:
+                    target = UiModeManager.MODE_NIGHT_YES;
+                    break;
+                case BackgroundContract.SETTINGS_THEME_LIGHT:
+                    target = UiModeManager.MODE_NIGHT_NO;
+                    break;
+                default: // SETTINGS_THEME_FOLLOW：还原为跟随系统，撤销 per-app 覆盖
+                    target = UiModeManager.MODE_NIGHT_AUTO;
+                    break;
+            }
             manager.setApplicationNightMode(target);
         } catch (Throwable error) {
             XposedBridge.log("[HyperBackground] setApplicationNightMode failed: " + error);

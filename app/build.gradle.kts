@@ -64,6 +64,11 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+        create("releaseFast") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
     }
 
     packaging {

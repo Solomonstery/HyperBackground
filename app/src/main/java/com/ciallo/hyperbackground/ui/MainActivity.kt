@@ -52,6 +52,7 @@ import com.ciallo.hyperbackground.BackgroundContract
 import com.ciallo.hyperbackground.ConfigManager
 import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.ui.pages.BackgroundDetailPage
+import com.ciallo.hyperbackground.ui.pages.ChangelogPage
 import com.ciallo.hyperbackground.ui.pages.HomePage
 import com.ciallo.hyperbackground.ui.pages.SettingsPage
 import com.ciallo.hyperbackground.ui.pages.RestartScopesDialog
@@ -293,8 +294,8 @@ class MainActivity : ComponentActivity() {
             },
             label = "screen-navigation",
         ) { slot ->
-            if (slot == null) {
-                MainTabs(
+            when (slot) {
+                null -> MainTabs(
                     themeMode = themeMode,
                     themeColorEnabled = themeColorEnabled,
                     monet = monet,
@@ -304,9 +305,13 @@ class MainActivity : ComponentActivity() {
                     onMonet = onMonet,
                     onAccent = onAccent,
                     onOpenBackground = { detailSlot = it },
+                    onOpenChangelog = { detailSlot = ROUTE_CHANGELOG },
                 )
-            } else {
-                Box(Modifier.fillMaxSize()) {
+                ROUTE_CHANGELOG -> Box(Modifier.fillMaxSize()) {
+                    ModuleBackground(revision)
+                    ChangelogScreen(onBack = { detailSlot = null })
+                }
+                else -> Box(Modifier.fillMaxSize()) {
                     ModuleBackground(revision)
                     BackgroundDetailScreen(slot = slot, onBack = { detailSlot = null })
                 }
@@ -325,6 +330,7 @@ class MainActivity : ComponentActivity() {
         onMonet: (Boolean) -> Unit,
         onAccent: (Int) -> Unit,
         onOpenBackground: (String) -> Unit,
+        onOpenChangelog: () -> Unit,
     ) {
         val pagerState = rememberPagerState(pageCount = { 2 })
         val scope = rememberCoroutineScope()
@@ -442,6 +448,7 @@ class MainActivity : ComponentActivity() {
                                 onThemeColorEnabled = onThemeColorEnabled,
                                 onMonet = onMonet,
                                 onAccent = onAccent,
+                                onOpenChangelog = onOpenChangelog,
                             )
                         }
                     }
@@ -532,6 +539,40 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
+    private fun ChangelogScreen(onBack: () -> Unit) {
+        val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+        val hasUiBackground = remember(revision) { config.uiBackgroundFile.isFile }
+        val topBarColor = if (hasUiBackground) {
+            Color.Transparent
+        } else {
+            MiuixTheme.colorScheme.surface.copy(alpha = cardOpacity)
+        }
+        val title = getString(R.string.changelog)
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    color = topBarColor,
+                    title = title,
+                    largeTitle = title,
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(MiuixIcons.Back, contentDescription = getString(R.string.back))
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            ChangelogPage(
+                activity = this@MainActivity,
+                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                padding = padding,
+            )
+        }
+    }
+
+    @Composable
     private fun ModuleBackground(revision: Int) {
         val file = remember(revision) { config.uiBackgroundFile }
         if (!file.isFile) return
@@ -557,5 +598,11 @@ class MainActivity : ComponentActivity() {
                 },
             )
         }
+    }
+
+    private companion object {
+        // 二级页导航哨兵：复用 detailSlot 的 AnimatedContent/返回动画承载更新日志页，
+        // 取一个不会与背景 slot（home/device/global）冲突的值。
+        const val ROUTE_CHANGELOG = "__changelog__"
     }
 }

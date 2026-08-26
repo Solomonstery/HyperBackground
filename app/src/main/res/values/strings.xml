@@ -85,6 +85,17 @@
     <string name="about">About</string>
     <string name="current_version">Current version %1$s</string>
     <string name="github_releases">GitHub Releases</string>
+    <string name="changelog">Changelog</string>
+    <string name="changelog_loading">Loading changelog…</string>
+    <string name="changelog_empty">No changelog available.</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_recheck">Check again</string>
+    <string name="update_available">New stable release %1$s available</string>
+    <string name="update_up_to_date">You are on the latest stable release</string>
+    <string name="update_preview">Preview build · latest stable</string>
+    <string name="update_latest_stable">Latest stable %1$s</string>
+    <string name="update_failed">Update check failed</string>
     <string name="author">Author · 苍簇</string>
     <string name="open_app_info">Open app info</string>
     <string name="coolapk">CoolApk</string>

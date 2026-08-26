@@ -2,6 +2,12 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.4.1-beta2
+
+- 新增：更新日志页面。从设置 → 关于 → “更新日志”进入，读取打包进 assets 的 CHANGELOG.md 动态展示全部历史版本。
+- 恢复：检查更新功能，放在更新日志页面顶部。请求 GitHub releases/latest 与当前版本比对，识别测试版并给出“发现新正式版 / 已是最新 / 检查失败”状态，可手动重新检查。
+- 改进：重启作用域在 `am force-stop` 之外，对常驻的 `com.android.phone` 追加一次 `pkill` 兜底，确保其被真正重启。
+
 ## 1.4.1-beta1
 
 - 修复：强制深浅色设为“跟随系统”后无法真正还原、导致设置等应用的系统深浅色开关被锁死、无法切换的问题。

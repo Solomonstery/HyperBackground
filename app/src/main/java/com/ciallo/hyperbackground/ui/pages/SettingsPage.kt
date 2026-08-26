@@ -76,6 +76,7 @@ fun SettingsPage(
     onThemeColorEnabled: (Boolean) -> Unit,
     onMonet: (Boolean) -> Unit,
     onAccent: (Int) -> Unit,
+    onOpenChangelog: () -> Unit = {},
 ) {
     LazyColumn(
         modifier.fillMaxSize(),
@@ -106,7 +107,7 @@ fun SettingsPage(
         item { SectionTitle(stringResource(R.string.saying_settings)) }
         item { SayingSettingsCard(activity) }
         item { SectionTitle(stringResource(R.string.about)) }
-        item { AboutCard(activity) }
+        item { AboutCard(activity, onOpenChangelog) }
     }
 }
 
@@ -386,7 +387,7 @@ fun RestartScopesDialog(
 }
 
 @Composable
-private fun AboutCard(activity: MainActivity) {
+private fun AboutCard(activity: MainActivity, onOpenChangelog: () -> Unit) {
     UiCard(activity, Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(R.string.author), style = MiuixTheme.textStyles.headline1)
@@ -405,8 +406,9 @@ private fun AboutCard(activity: MainActivity) {
             }
             TextButton(
                 modifier = Modifier.fillMaxWidth(),
-                text = stringResource(R.string.github_releases),
-                onClick = { activity.openUrl("https://github.com/Solomonstery/HyperBackground/releases") },
+                text = stringResource(R.string.changelog),
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+                onClick = onOpenChangelog,
             )
             TextButton(
                 modifier = Modifier.fillMaxWidth(),
@@ -423,6 +425,9 @@ private fun restartScopes(activity: MainActivity) {
     android.widget.Toast.makeText(activity, R.string.root_requested, android.widget.Toast.LENGTH_SHORT).show()
     thread {
         val success = SCOPE_PACKAGES.map { runCatching { RootShell.run("am force-stop $it").success }.getOrDefault(false) }.all { it }
+        // com.android.phone 是常驻电话进程，am force-stop 有时无法彻底结束，
+        // 追加一次按进程名 kill 兜底，确保它被真正重启以重新加载配置。
+        runCatching { RootShell.run("pkill -9 -f ${BackgroundContract.PACKAGE_PHONE}") }
         activity.runOnUiThread {
             android.widget.Toast.makeText(
                 activity,

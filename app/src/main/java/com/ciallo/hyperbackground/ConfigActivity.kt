@@ -87,7 +87,6 @@ import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 class ConfigActivity : ComponentActivity() {
     private lateinit var prefs: SharedPreferences
@@ -1169,36 +1168,57 @@ class ConfigActivity : ComponentActivity() {
         Thread {
             val result = forceStopScopes(includePhone)
             runOnUiThread {
-                if (result.first) {
-                    toast(if (includePhone) "完整作用域已重启" else "常规作用域已重启")
-                    runCatching {
-                        startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                when (result) {
+                    is RestartResult.RootUnavailable -> toast(result.message)
+                    is RestartResult.Done -> {
+                        val failed = result.failed
+                        if (failed.isEmpty()) {
+                            toast(if (includePhone) "完整作用域已重启" else "常规作用域已重启")
+                        } else {
+                            val names = failed.joinToString("、") { SCOPE_LABELS[it] ?: it }
+                            toast("已重启 ${result.stopped} 个，失败：$names")
+                        }
+                        runCatching {
+                            startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
                     }
-                } else {
-                    toast(result.second)
                 }
             }
         }.start()
     }
 
-    private fun forceStopScopes(includePhone: Boolean): Pair<Boolean, String> {
+    private sealed class RestartResult {
+        /** 无法调用 Root（未授权 / 未安装 su 等）。 */
+        data class RootUnavailable(val message: String) : RestartResult()
+
+        /** 已完成逐包处理；[failed] 为未能结束的包名列表。 */
+        data class Done(val stopped: Int, val failed: List<String>) : RestartResult()
+    }
+
+    /**
+     * 逐包 force-stop，单个包失败不影响其余包。
+     *
+     * 旧实现把所有包用 ";" 串成一条命令交给 su，一旦某个包（如电话/安全中心）
+     * 输出较多把管道写满，就会让整条命令阻塞、waitFor 超时，导致排在后面的包
+     * “看起来对某个包名失效”。这里改为逐包独立执行并聚合结果。
+     */
+    private fun forceStopScopes(includePhone: Boolean): RestartResult {
         val packages = if (includePhone) SCOPE_PACKAGES else SCOPE_PACKAGES.filterNot { it == BackgroundContract.PACKAGE_PHONE }
-        val command = packages.joinToString(separator = "; ") { "am force-stop $it" }
-        return runCatching {
-            val process = ProcessBuilder("su", "-c", command)
-                .redirectErrorStream(true)
-                .start()
-            val completed = process.waitFor(25, TimeUnit.SECONDS)
-            if (!completed) {
-                process.destroy()
-                false to "Root 操作超时，请检查授权"
-            } else if (process.exitValue() == 0) {
-                true to ""
-            } else {
-                val detail = process.inputStream.bufferedReader().use { it.readText() }.trim().take(80)
-                false to if (detail.isBlank()) "重启失败，请确认 Root 授权" else "重启失败：$detail"
-            }
-        }.getOrElse { false to "无法调用 Root：${it.message ?: "未知错误"}" }
+        val failed = mutableListOf<String>()
+        var stopped = 0
+
+        packages.forEachIndexed { index, pkg ->
+            val result = runCatching { RootShell.run("am force-stop $pkg") }.getOrNull()
+                ?: run {
+                    // 第一个包就无法拉起 su：判定 Root 不可用，直接返回。
+                    if (index == 0) return RestartResult.RootUnavailable("无法调用 Root，请确认已授予 Root 授权")
+                    failed.add(pkg)
+                    return@forEachIndexed
+                }
+            if (result.success) stopped++ else failed.add(pkg)
+        }
+
+        return RestartResult.Done(stopped = stopped, failed = failed)
     }
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()

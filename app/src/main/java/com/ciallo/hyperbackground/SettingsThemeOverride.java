@@ -12,7 +12,10 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 /**
- * 强制设置界面的深浅色。
+ * 强制作用域进程界面的深浅色。
+ *
+ * <p>对所有被注入的作用域进程生效（不仅是设置进程），这样应用详情页等由其它进程
+ * 提供的页面也能被强制控制。
  *
  * <p>普通设置页面走资源限定符（night 目录），只改 attachBaseContext 的 Context 就够；
  * 但应用详情页（InstalledAppDetailsTop）的 header 卡片由 miuix 组件绘制，miuix 通过

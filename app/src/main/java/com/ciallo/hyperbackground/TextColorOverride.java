@@ -54,7 +54,9 @@ final class TextColorOverride {
         if (modeLoaded) return cachedMode;
         try {
             Context context = view.getContext();
-            if (context == null || !"com.android.settings".equals(context.getPackageName())) return BackgroundContract.FONT_FOLLOW;
+            if (context == null || !BackgroundContract.isSupportedPackage(context.getPackageName())) {
+                return BackgroundContract.FONT_FOLLOW;
+            }
             cachedMode = BackgroundContract.query(context, BackgroundContract.HOME).fontMode;
             modeLoaded = true;
             return cachedMode;

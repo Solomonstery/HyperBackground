@@ -27,9 +27,12 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
         hookInstrumentationLifecycle();
         hookKnownPackageLifecycle(lpparam);
 
+        // 主题（深浅色）与文字色强制对所有支持的作用域进程生效，不再局限于设置进程，
+        // 这样应用详情页等由其它进程提供的页面也能被强制控制。
+        SettingsThemeOverride.install();
+        TextColorOverride.install();
+
         if (settings) {
-            SettingsThemeOverride.install();
-            TextColorOverride.install();
             SettingsSearchMaskOverride.install(lpparam.classLoader);
             hookHomeActivity(lpparam.classLoader);
             hookHomeFragment(lpparam.classLoader);

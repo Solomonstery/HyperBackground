@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -26,100 +25,13 @@ import com.ciallo.hyperbackground.ui.MainActivity
 import com.ciallo.hyperbackground.ui.components.UiCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private const val LATEST_RELEASE_API =
-    "https://api.github.com/repos/Solomonstery/HyperBackground/releases/latest"
-private const val RELEASES_URL = "https://github.com/Solomonstery/HyperBackground/releases"
-
-/** 一个版本章节：版本标题 + 该版本下的条目列表。 */
-private data class ReleaseNotesEntry(val version: String, val notes: List<String>)
-
-/**
- * 解析打包进 assets 的 CHANGELOG.md，返回文件中出现的全部版本章节（按文件顺序，即从新到旧）。
- * 兼容 `-`/`*`/`+` 列表符号，跳过代码块围栏。
- */
-private fun loadAllReleaseNotes(context: android.content.Context): List<ReleaseNotesEntry> {
-    val text = runCatching {
-        context.assets.open("CHANGELOG.md").bufferedReader(Charsets.UTF_8).use { it.readText() }
-    }.getOrNull() ?: return emptyList()
-
-    val headingRegex = Regex("""^##\s+(.+)$""")
-    val bulletRegex = Regex("""^[-*+]\s+(.+)$""")
-
-    val sections = mutableListOf<ReleaseNotesEntry>()
-    var currentVersion: String? = null
-    val currentNotes = mutableListOf<String>()
-    var inFence = false
-    fun flush() {
-        currentVersion?.let { sections.add(ReleaseNotesEntry(it, currentNotes.toList())) }
-        currentNotes.clear()
-    }
-    for (raw in text.lineSequence()) {
-        val line = raw.trim()
-        if (line.startsWith("```") || line.startsWith("~~~")) {
-            inFence = !inFence
-            continue
-        }
-        if (inFence) continue
-        val heading = headingRegex.matchEntire(line)
-        if (heading != null) {
-            flush()
-            currentVersion = heading.groupValues[1].trim()
-            continue
-        }
-        val bullet = bulletRegex.matchEntire(line)
-        if (bullet != null && currentVersion != null) {
-            val note = bullet.groupValues[1].trim()
-            if (note.isNotEmpty()) currentNotes.add(note)
-        }
-    }
-    flush()
-    return sections
-}
-
-/** 请求 GitHub releases/latest，返回最新正式版版本号（去掉 v 前缀）。 */
-private suspend fun fetchLatestStableVersion(): String = withContext(Dispatchers.IO) {
-    val connection = (URL(LATEST_RELEASE_API).openConnection() as HttpURLConnection).apply {
-        connectTimeout = 7000
-        readTimeout = 7000
-        requestMethod = "GET"
-        setRequestProperty("Accept", "application/vnd.github+json")
-        setRequestProperty("User-Agent", "HyperBG/${BuildConfig.VERSION_NAME}")
-    }
-    try {
-        val code = connection.responseCode
-        if (code !in 200..299) error("GitHub HTTP $code")
-        val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-        val tag = JSONObject(body).optString("tag_name").trim().removePrefix("v")
-        if (tag.isBlank()) error("empty tag")
-        tag
-    } finally {
-        connection.disconnect()
-    }
-}
-
-/** 比较两个语义化版本号，忽略 `v` 前缀与 `-` 之后的预发布后缀。 */
-private fun compareVersions(a: String, b: String): Int {
-    fun parts(v: String) = v.removePrefix("v").substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
-    val ap = parts(a)
-    val bp = parts(b)
-    for (i in 0 until maxOf(ap.size, bp.size)) {
-        val av = ap.getOrElse(i) { 0 }
-        val bv = bp.getOrElse(i) { 0 }
-        if (av != bv) return av.compareTo(bv)
-    }
-    return 0
-}
-
 @Composable
-private fun UpdateCheckCard(activity: MainActivity) {
+private fun UpdateCheckCard(activity: MainActivity, onLatest: (String) -> Unit) {
     val current = BuildConfig.VERSION_NAME
     var latest by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf("") }
@@ -139,7 +51,8 @@ private fun UpdateCheckCard(activity: MainActivity) {
         runCatching { fetchLatestStableVersion() }
             .onSuccess { remote ->
                 latest = remote
-                val isPreview = current.contains(Regex("(?i)(test|alpha|beta|rc|dev)"))
+                onLatest(remote)
+                val isPreview = isPreviewVersion(current)
                 hasUpdate = !isPreview && compareVersions(current, remote) < 0
                 message = when {
                     isPreview -> "$previewText $remote"
@@ -192,13 +105,21 @@ fun ChangelogPage(
     padding: PaddingValues = PaddingValues(0.dp),
 ) {
     val context = LocalContext.current
-    var entries by remember { mutableStateOf<List<ReleaseNotesEntry>>(emptyList()) }
+    var all by remember { mutableStateOf<List<ReleaseNotesEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var latest by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        entries = runCatching { withContext(Dispatchers.IO) { loadAllReleaseNotes(context) } }.getOrDefault(emptyList())
+        all = runCatching { withContext(Dispatchers.IO) { loadAllReleaseNotes(context) } }.getOrDefault(emptyList())
         loading = false
     }
+
+    val current = BuildConfig.VERSION_NAME
+    val currentEntry = findEntry(all, current)
+    val latestVer = latest
+    val latestEntry = latestVer?.let { findEntry(all, it) }
+    // 当前版本与最新正式版相同时，只显示一张日志卡，避免重复。
+    val showLatestSeparately = latestVer != null && normalizeVersion(latestVer) != normalizeVersion(current)
 
     LazyColumn(
         modifier.fillMaxSize(),
@@ -210,37 +131,57 @@ fun ChangelogPage(
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { UpdateCheckCard(activity) }
-        when {
-            loading -> item {
-                UiCard(activity, Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(
-                            stringResource(R.string.changelog_loading),
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
-                }
+        item { UpdateCheckCard(activity) { latest = it } }
+
+        // 当前版本更新日志
+        item {
+            ChangelogCard(
+                activity = activity,
+                title = stringResource(R.string.changelog_current, current),
+                entry = currentEntry,
+                loading = loading,
+            )
+        }
+
+        // 最新正式版更新日志（与当前不同版本时才单独显示）
+        if (showLatestSeparately && latestVer != null) {
+            item {
+                ChangelogCard(
+                    activity = activity,
+                    title = stringResource(R.string.changelog_latest, latestVer),
+                    entry = latestEntry,
+                    loading = false,
+                    fallbackHint = stringResource(R.string.changelog_see_github),
+                )
             }
-            entries.isEmpty() -> item {
-                UiCard(activity, Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(
-                            stringResource(R.string.changelog_empty),
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
+        }
+    }
+}
+
+/** 单个版本的更新日志卡片。entry 为 null 时显示占位/提示。 */
+@Composable
+private fun ChangelogCard(
+    activity: MainActivity,
+    title: String,
+    entry: ReleaseNotesEntry?,
+    loading: Boolean,
+    fallbackHint: String? = null,
+) {
+    UiCard(activity, Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MiuixTheme.textStyles.headline1, color = MiuixTheme.colorScheme.primary)
+            when {
+                loading -> Text(
+                    stringResource(R.string.changelog_loading),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+                entry != null && entry.notes.isNotEmpty() -> entry.notes.forEach { note ->
+                    Text("• $note", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 }
-            }
-            else -> items(entries) { entry ->
-                UiCard(activity, Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(entry.version, style = MiuixTheme.textStyles.headline1, color = MiuixTheme.colorScheme.primary)
-                        entry.notes.forEach { note ->
-                            Text("• $note", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                        }
-                    }
-                }
+                else -> Text(
+                    fallbackHint ?: stringResource(R.string.changelog_empty),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
             }
         }
     }

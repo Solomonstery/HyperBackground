@@ -54,6 +54,7 @@ public final class BackgroundContract {
     public static final String UI_SAYING_ENABLED = "ui_saying_enabled";
     public static final String UI_SAYING_API = "ui_saying_api";
     public static final String UI_SAYING_KEY = "ui_saying_key";
+    public static final String UI_IGNORED_UPDATE_VERSION = "ui_ignored_update_version";
     static final String UI_SCROLL_Y = "ui_scroll_y";
     public static final int UI_THEME_FOLLOW = 0;
     public static final int UI_THEME_LIGHT = 1;

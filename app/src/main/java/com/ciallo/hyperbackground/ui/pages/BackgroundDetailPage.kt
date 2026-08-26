@@ -32,6 +32,8 @@ import com.ciallo.hyperbackground.ui.components.SliderPreference
 import com.ciallo.hyperbackground.ui.components.UiCard
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 fun BackgroundDetailPage(
@@ -65,6 +67,35 @@ fun BackgroundDetailPage(
         if (slot == BackgroundContract.GLOBAL) {
             item { SectionTitle(stringResource(R.string.settings_appearance)) }
             item { SettingsAppearanceCard(activity) }
+            item { SectionTitle(stringResource(R.string.uninstall_notice_title)) }
+            item { UninstallNoticeCard(activity) }
+        }
+    }
+}
+
+/**
+ * 卸载 / 取消挂载前的操作须知卡片。
+ * 提醒用户先将颜色模式恢复默认、重启作用域并回访已挂载页面，避免深浅色状态残留。
+ */
+@Composable
+private fun UninstallNoticeCard(activity: MainActivity) {
+    UiCard(activity, Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                stringResource(R.string.uninstall_notice_intro),
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            listOf(
+                stringResource(R.string.uninstall_notice_step_1),
+                stringResource(R.string.uninstall_notice_step_2),
+                stringResource(R.string.uninstall_notice_step_3),
+                stringResource(R.string.uninstall_notice_step_4),
+            ).forEachIndexed { index, step ->
+                Text(
+                    "${index + 1}. $step",
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
         }
     }
 }

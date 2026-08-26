@@ -56,6 +56,7 @@ import com.ciallo.hyperbackground.ui.pages.ChangelogPage
 import com.ciallo.hyperbackground.ui.pages.HomePage
 import com.ciallo.hyperbackground.ui.pages.SettingsPage
 import com.ciallo.hyperbackground.ui.pages.RestartScopesDialog
+import com.ciallo.hyperbackground.ui.pages.UpdateAvailableDialog
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import top.yukonga.miuix.kmp.basic.Icon
@@ -251,6 +252,7 @@ class MainActivity : ComponentActivity() {
                             .putBoolean(BackgroundContract.UI_MONET, false).apply()
                     },
                 )
+                UpdateAvailableDialog(this@MainActivity)
             }
         }
     }

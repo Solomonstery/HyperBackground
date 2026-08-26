@@ -51,6 +51,7 @@ import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.ui.pages.BackgroundDetailPage
 import com.ciallo.hyperbackground.ui.pages.HomePage
 import com.ciallo.hyperbackground.ui.pages.SettingsPage
+import com.ciallo.hyperbackground.ui.pages.RestartScopesDialog
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import top.yukonga.miuix.kmp.basic.Icon
@@ -65,6 +66,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Home
 import top.yukonga.miuix.kmp.icon.extended.Settings
+import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
@@ -76,28 +78,13 @@ class MainActivity : ComponentActivity() {
         private set
     var cardOpacity by mutableFloatStateOf(1f)
         private set
-    private var pendingSlot: String? = null
-    private var pendingUiBackground = false
+    private var pendingMediaResult: ((Uri, String) -> Unit)? = null
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@registerForActivityResult
         runCatching {
             val mime = contentResolver.getType(uri) ?: "application/octet-stream"
-            if (pendingUiBackground) {
-                pendingUiBackground = false
-                require(mime.startsWith("image/")) { getString(R.string.unsupported_type, mime) }
-                config.saveUiBackground(uri, mime)
-                toast(R.string.saved)
-            } else {
-                val slot = pendingSlot.also { pendingSlot = null } ?: return@runCatching
-                val videoAllowed = slot == BackgroundContract.DEVICE
-                require(mime.startsWith("image/") || videoAllowed && mime.startsWith("video/")) {
-                    getString(R.string.unsupported_type, mime)
-                }
-                config.saveBackground(slot, uri, mime)
-                toast(R.string.saved)
-            }
-            revision++
+            pendingMediaResult.also { pendingMediaResult = null }?.invoke(uri, mime)
         }.onFailure { toast(getString(R.string.save_failed, it.message ?: "Unknown error")) }
     }
 
@@ -109,8 +96,14 @@ class MainActivity : ComponentActivity() {
         setContent { HyperBackgroundApp() }
     }
 
-    fun chooseBackground(slot: String) {
-        pendingSlot = slot
+    fun chooseBackground(slot: String, onSelected: (Uri, String) -> Unit) {
+        pendingMediaResult = { uri, mime ->
+            val videoAllowed = slot == BackgroundContract.DEVICE
+            require(mime.startsWith("image/") || videoAllowed && mime.startsWith("video/")) {
+                getString(R.string.unsupported_type, mime)
+            }
+            onSelected(uri, mime)
+        }
         val types = if (slot == BackgroundContract.DEVICE) {
             arrayOf("image/*", "video/mp4", "video/webm")
         } else {
@@ -119,9 +112,28 @@ class MainActivity : ComponentActivity() {
         picker.launch(types)
     }
 
-    fun chooseUiBackground() {
-        pendingUiBackground = true
+    fun chooseUiBackground(onSelected: (Uri, String) -> Unit) {
+        pendingMediaResult = { uri, mime ->
+            require(mime.startsWith("image/")) { getString(R.string.unsupported_type, mime) }
+            onSelected(uri, mime)
+        }
         picker.launch(arrayOf("image/*"))
+    }
+
+    fun saveBackground(slot: String, uri: Uri, mime: String) {
+        runCatching {
+            config.saveBackground(slot, uri, mime)
+            revision++
+            toast(R.string.saved)
+        }.onFailure { toast(getString(R.string.save_failed, it.message ?: "Unknown error")) }
+    }
+
+    fun saveUiBackground(uri: Uri, mime: String) {
+        runCatching {
+            config.saveUiBackground(uri, mime)
+            revision++
+            toast(R.string.saved)
+        }.onFailure { toast(getString(R.string.save_failed, it.message ?: "Unknown error")) }
     }
 
     fun clearBackground(slot: String) {
@@ -290,6 +302,7 @@ class MainActivity : ComponentActivity() {
     ) {
         val pagerState = rememberPagerState(pageCount = { 2 })
         val scope = rememberCoroutineScope()
+        var showRestartDialog by remember { mutableStateOf(false) }
         Scaffold(
             containerColor = Color.Transparent,
             bottomBar = {
@@ -321,16 +334,27 @@ class MainActivity : ComponentActivity() {
                     0 -> MainPageScaffold(
                         title = getString(R.string.nav_home),
                         bottomPadding = bottomPadding,
+                        actions = {
+                            IconButton(onClick = { showRestartDialog = true }) {
+                                Icon(MiuixIcons.Refresh, contentDescription = getString(R.string.restart_scope))
+                            }
+                        },
                     ) { padding, scrollModifier ->
                         HomePage(
                             modifier = scrollModifier,
                             padding = padding,
+                            revision = revision,
                             onOpenBackground = onOpenBackground,
                         )
                     }
                     else -> MainPageScaffold(
                         title = getString(R.string.nav_settings),
                         bottomPadding = bottomPadding,
+                        actions = {
+                            IconButton(onClick = { showRestartDialog = true }) {
+                                Icon(MiuixIcons.Refresh, contentDescription = getString(R.string.restart_scope))
+                            }
+                        },
                     ) { padding, scrollModifier ->
                         SettingsPage(
                             activity = this@MainActivity,
@@ -348,6 +372,11 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            RestartScopesDialog(
+                activity = this@MainActivity,
+                show = showRestartDialog,
+                onDismissRequest = { showRestartDialog = false },
+            )
         }
     }
 
@@ -355,6 +384,7 @@ class MainActivity : ComponentActivity() {
     private fun MainPageScaffold(
         title: String,
         bottomPadding: PaddingValues,
+        actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
         content: @Composable (PaddingValues, Modifier) -> Unit,
     ) {
         val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
@@ -362,10 +392,10 @@ class MainActivity : ComponentActivity() {
             containerColor = Color.Transparent,
             topBar = {
                 TopAppBar(
-                    color = Color.Transparent,
                     title = title,
                     largeTitle = title,
                     scrollBehavior = scrollBehavior,
+                    actions = actions,
                 )
             },
         ) { topPadding ->

@@ -47,9 +47,13 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun HomePage(
     modifier: Modifier = Modifier,
     padding: PaddingValues = PaddingValues(0.dp),
+    revision: Int,
     onOpenBackground: (String) -> Unit,
 ) {
     val activity = LocalContext.current as MainActivity
+    val sayingEnabled = remember(revision) {
+        activity.config.getBoolean(BackgroundContract.UI_SAYING_ENABLED, true)
+    }
     LazyColumn(
         modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -60,8 +64,10 @@ fun HomePage(
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { SectionTitle(stringResource(R.string.saying)) }
-        item { SayingCard(activity) }
+        if (sayingEnabled) {
+            item { SectionTitle(stringResource(R.string.saying)) }
+            item { SayingCard(activity) }
+        }
         item { SectionTitle(stringResource(R.string.scope)) }
         item {
             UiCard(activity, Modifier.fillMaxWidth()) {

@@ -47,6 +47,7 @@ public final class BackgroundContract {
     public static final String UI_BG_BLUR_ENABLED = "ui_bg_blur_enabled";
     public static final String UI_BG_BLUR_RADIUS = "ui_bg_blur_radius";
     public static final String UI_CARD_OPACITY = "ui_card_opacity";
+    public static final String UI_SAYING_ENABLED = "ui_saying_enabled";
     public static final String UI_SAYING_API = "ui_saying_api";
     public static final String UI_SAYING_KEY = "ui_saying_key";
     static final String UI_SCROLL_Y = "ui_scroll_y";

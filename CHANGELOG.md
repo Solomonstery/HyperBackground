@@ -2,6 +2,13 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.3.9-beta1
+
+- 修复：应用详情页（应用信息）不跟随模块自定义深浅色、只跟随系统的问题。该页 header 卡片由 miuix 组件绘制，走 `ViewUtils.isNightMode(context)` 读取 Activity 实际 Resources 的 `Configuration.isNightModeActive()`，此前仅替换 `attachBaseContext` 的 Context 无法覆盖到它。
+- 改进：在 `Activity.onCreate/onResume` 阶段直接改写 Activity 使用的 Resources 的 Configuration（uiMode NIGHT 位），使 miuix 组件的深浅色判定也跟随模块设置。
+- 兜底：在设置进程通过 `UiModeManager.setApplicationNightMode` 统一改写进程级夜间模式，覆盖绕过 Activity Context 的组件。
+- 测试重点为：应用详情页在强制浅色/强制深色/跟随系统三种模式下卡片与文字配色是否正确，以及其它设置页面配色与背景是否保持正常。
+
 ## 1.3.9
 
 - 汇总 1.3.8 测试线的修复，作为稳定版发布。

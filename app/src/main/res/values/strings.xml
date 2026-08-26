@@ -1,16 +1,86 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">HyperBG</string>
-    <string name="app_description">为 HyperOS 系统设置及设备互联、电话、小米账号、主题壁纸、桌面、手机管家、省电与健康使用手机等页面注入统一可配置的自定义背景。支持图片/GIF/动图/视频、透明度与模糊调节、文字明暗强制及外观自定义。</string>
+    <string name="app_description">Injects configurable backgrounds into HyperOS Settings and related system pages.</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_settings">Settings</string>
+    <string name="saying">Saying</string>
+    <string name="scope">Scopes</string>
+    <string name="saying_loading">Loading a saying…</string>
+    <string name="saying_failed">Could not load. Tap to retry.</string>
+    <string name="background_home">Settings home</string>
+    <string name="background_home_summary">Customize the main HyperOS Settings page</string>
+    <string name="background_device">My device</string>
+    <string name="background_device_summary">Images, GIF, WebP, MP4 and WebM</string>
+    <string name="background_global">Global background</string>
+    <string name="background_global_summary">Secondary pages and system settings components</string>
+    <string name="back">Back</string>
+    <string name="choose_image">Choose image</string>
+    <string name="choose_media">Choose media</string>
+    <string name="replace_image">Replace image</string>
+    <string name="restore_default">Restore default</string>
+    <string name="enabled_size">Enabled · %1$s</string>
+    <string name="system_default">System default</string>
+    <string name="opacity">Opacity</string>
+    <string name="background_blur">Background blur</string>
+    <string name="background_blur_summary">Only blur background media</string>
+    <string name="blur_strength">Blur strength</string>
+    <string name="saved_reopen">Saved. Reopen the target page to apply.</string>
+    <string name="saved">Saved</string>
+    <string name="save_failed">Save failed: %1$s</string>
+    <string name="unsupported_type">Unsupported file type: %1$s</string>
+    <string name="file_too_large">File must not exceed 200 MB</string>
+    <string name="appearance">Appearance</string>
+    <string name="settings_appearance">System Settings appearance</string>
+    <string name="settings_theme">Color mode</string>
+    <string name="text_color">Text color</string>
+    <string name="follow_system">Follow system</string>
+    <string name="light">Light</string>
+    <string name="dark">Dark</string>
+    <string name="light_text">Light text</string>
+    <string name="dark_text">Dark text</string>
+    <string name="module_appearance">Module appearance</string>
+    <string name="module_theme">Module theme</string>
+    <string name="monet">Monet wallpaper colors</string>
+    <string name="theme_color_enabled">Theme colors</string>
+    <string name="theme_color_enabled_summary">Enable Monet or a custom accent color</string>
+    <string name="monet_summary">Generate MIUIX colors from the current wallpaper</string>
+    <string name="accent_color">Accent color</string>
+    <string name="module_background">Module background</string>
+    <string name="clear_background">Clear background</string>
+    <string name="background_opacity">Background opacity</string>
+    <string name="card_opacity">Card opacity</string>
+    <string name="module_blur">Module background blur</string>
+    <string name="language">Language</string>
+    <string name="language_system">System default</string>
+    <string name="language_chinese">Simplified Chinese</string>
+    <string name="language_english">English</string>
+    <string name="saying_settings">Saying settings</string>
+    <string name="api_address">API address</string>
+    <string name="response_field">Response field</string>
+    <string name="save_refresh">Save and refresh</string>
+    <string name="tools">Tools</string>
+    <string name="restart_scope">Restart scope</string>
+    <string name="restart_scope_summary">Stop hooked system processes to reload configuration</string>
+    <string name="hook_diagnostics">Hook read diagnostics</string>
+    <string name="about">About</string>
+    <string name="current_version">Current version %1$s</string>
+    <string name="github_releases">GitHub Releases</string>
+    <string name="author">Author · 苍簇</string>
+    <string name="open_app_info">Open app info</string>
+    <string name="coolapk">CoolApk</string>
+    <string name="github">GitHub</string>
+    <string name="root_requested">Requesting root access…</string>
+    <string name="scope_restarted">Scopes restarted</string>
+    <string name="root_unavailable">Root is unavailable or permission was denied</string>
+    <string name="diagnostic_empty">Open a target page first, then return here.</string>
+    <string name="close">Close</string>
+    <string name="clear_records">Clear records</string>
+    <string name="not_read">Not read</string>
+    <string name="read_at">Read · %1$s</string>
     <string-array name="xposed_scope">
-        <item>com.android.settings</item>
-        <item>com.milink.service</item>
-        <item>com.android.phone</item>
-        <item>com.xiaomi.account</item>
-        <item>com.android.thememanager</item>
-        <item>com.miui.home</item>
-        <item>com.miui.securitycenter</item>
-        <item>com.miui.powerkeeper</item>
-        <item>com.xiaomi.misettings</item>
+        <item>com.android.settings</item><item>com.milink.service</item><item>com.android.phone</item>
+        <item>com.xiaomi.account</item><item>com.android.thememanager</item><item>com.miui.home</item>
+        <item>com.miui.securitycenter</item><item>com.miui.powerkeeper</item><item>com.xiaomi.misettings</item>
     </string-array>
 </resources>

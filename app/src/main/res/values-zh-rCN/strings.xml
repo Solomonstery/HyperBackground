@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">HyperBG</string>
+    <string name="app_description">为 HyperOS 系统设置及相关系统页面注入统一可配置的自定义背景。</string>
+    <string name="nav_home">主页</string><string name="nav_settings">设置</string>
+    <string name="saying">一言</string><string name="scope">作用域</string><string name="saying_loading">正在获取一言…</string><string name="saying_failed">一言获取失败，点击重试</string>
+    <string name="background_home">设置主页</string><string name="background_home_summary">独立控制 HyperOS 设置首页</string>
+    <string name="background_device">我的设备</string><string name="background_device_summary">图片、GIF、WebP、MP4 和 WebM</string>
+    <string name="background_global">全局背景</string><string name="background_global_summary">设置二级页和系统设置组件</string>
+    <string name="back">返回</string><string name="choose_image">选择图片</string><string name="choose_media">选择媒体</string><string name="replace_image">更换图片</string><string name="restore_default">恢复默认</string>
+    <string name="enabled_size">已启用 · %1$s</string><string name="system_default">跟随系统默认</string>
+    <string name="opacity">透明度</string><string name="background_blur">背景模糊</string><string name="background_blur_summary">仅模糊背景媒体</string><string name="blur_strength">模糊强度</string>
+    <string name="saved_reopen">已保存，重新进入目标页面后生效</string><string name="saved">已保存</string><string name="save_failed">保存失败：%1$s</string><string name="unsupported_type">不支持这种文件类型：%1$s</string><string name="file_too_large">文件不能超过 200 MB</string>
+    <string name="appearance">外观</string><string name="settings_appearance">系统设置外观</string><string name="settings_theme">颜色模式</string><string name="text_color">文字颜色</string>
+    <string name="follow_system">跟随系统</string><string name="light">浅色</string><string name="dark">深色</string><string name="light_text">浅色字</string><string name="dark_text">深色字</string>
+    <string name="module_appearance">模块外观</string><string name="module_theme">模块界面模式</string><string name="theme_color_enabled">Monet 主题色</string><string name="theme_color_enabled_summary">启用 Monet 或自定义主题强调色</string><string name="monet">Monet 壁纸取色</string><string name="monet_summary">跟随当前壁纸生成 MIUIX 动态色</string><string name="accent_color">主题强调色</string>
+    <string name="module_background">模块背景</string><string name="clear_background">清除背景</string><string name="background_opacity">背景图透明度</string><string name="card_opacity">卡片透明度</string><string name="module_blur">模块背景模糊</string>
+    <string name="language">语言</string><string name="language_system">跟随系统</string><string name="language_chinese">简体中文</string><string name="language_english">English</string>
+    <string name="saying_settings">一言设置</string><string name="api_address">API 地址</string><string name="response_field">读取字段</string><string name="save_refresh">保存并刷新</string>
+    <string name="tools">工具</string><string name="restart_scope">重启作用域</string><string name="restart_scope_summary">结束被 Hook 的系统进程以重新加载配置</string><string name="hook_diagnostics">Hook 读取记录</string>
+    <string name="about">关于</string><string name="current_version">当前版本 %1$s</string><string name="github_releases">GitHub Releases</string><string name="author">制作者 · 苍簇</string><string name="open_app_info">打开模块应用信息</string><string name="coolapk">酷安主页</string><string name="github">GitHub</string>
+    <string name="root_requested">正在请求 Root…</string><string name="scope_restarted">作用域已重启</string><string name="root_unavailable">无法调用 Root，请确认已授权</string>
+    <string name="diagnostic_empty">请先打开目标页面，再回到这里查看。</string><string name="close">关闭</string><string name="clear_records">清空记录</string><string name="not_read">未读取</string><string name="read_at">已读取 · %1$s</string>
+</resources>

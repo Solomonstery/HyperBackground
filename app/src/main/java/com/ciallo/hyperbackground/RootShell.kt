@@ -9,7 +9,7 @@ import kotlin.concurrent.thread
  * 主线程读取 stdout，最后再 waitFor，避免管道缓冲写满导致子进程阻塞、
  * 进而让 waitFor 超时（这会让批量 force-stop 中排在后面的包“看起来失效”）。
  */
-internal object RootShell {
+object RootShell {
 
     data class CommandResult(
         val stdout: String,

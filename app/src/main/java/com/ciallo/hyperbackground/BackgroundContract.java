@@ -7,16 +7,16 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 
-final class BackgroundContract {
-    static final String PACKAGE_SETTINGS = "com.android.settings";
-    static final String PACKAGE_MILINK = "com.milink.service";
-    static final String PACKAGE_PHONE = "com.android.phone";
-    static final String PACKAGE_ACCOUNT = "com.xiaomi.account";
-    static final String PACKAGE_THEME_MANAGER = "com.android.thememanager";
-    static final String PACKAGE_HOME = "com.miui.home";
-    static final String PACKAGE_SECURITY_CENTER = "com.miui.securitycenter";
-    static final String PACKAGE_POWER_KEEPER = "com.miui.powerkeeper";
-    static final String PACKAGE_MI_SETTINGS = "com.xiaomi.misettings";
+public final class BackgroundContract {
+    public static final String PACKAGE_SETTINGS = "com.android.settings";
+    public static final String PACKAGE_MILINK = "com.milink.service";
+    public static final String PACKAGE_PHONE = "com.android.phone";
+    public static final String PACKAGE_ACCOUNT = "com.xiaomi.account";
+    public static final String PACKAGE_THEME_MANAGER = "com.android.thememanager";
+    public static final String PACKAGE_HOME = "com.miui.home";
+    public static final String PACKAGE_SECURITY_CENTER = "com.miui.securitycenter";
+    public static final String PACKAGE_POWER_KEEPER = "com.miui.powerkeeper";
+    public static final String PACKAGE_MI_SETTINGS = "com.xiaomi.misettings";
 
     private static final String[] SUPPORTED_PACKAGES = new String[] {
             PACKAGE_SETTINGS,
@@ -30,54 +30,55 @@ final class BackgroundContract {
             PACKAGE_MI_SETTINGS
     };
 
-    static final String AUTHORITY = BuildConfig.APPLICATION_ID + ".provider";
-    static final String HOME = "home";
-    static final String DEVICE = "device";
-    static final String GLOBAL = "global";
-    static final String PREFS = "backgrounds";
-    static final String MIME_PREFIX = "mime_";
-    static final String OPACITY_PREFIX = "opacity_";
-    static final String BLUR_ENABLED_PREFIX = "blur_enabled_";
-    static final String BLUR_RADIUS_PREFIX = "blur_radius_";
-    static final String FONT_MODE = "font_mode";
+    public static final String AUTHORITY = BuildConfig.APPLICATION_ID + ".provider";
+    public static final String HOME = "home";
+    public static final String DEVICE = "device";
+    public static final String GLOBAL = "global";
+    public static final String PREFS = "backgrounds";
+    public static final String MIME_PREFIX = "mime_";
+    public static final String OPACITY_PREFIX = "opacity_";
+    public static final String BLUR_ENABLED_PREFIX = "blur_enabled_";
+    public static final String BLUR_RADIUS_PREFIX = "blur_radius_";
+    public static final String FONT_MODE = "font_mode";
     static final String DEVICE_LOGO_MODE = "device_logo_mode";
     static final String DEVICE_LOGO_TEXT = "device_logo_text";
     static final String DEVICE_LOGO_COLOR = "device_logo_color";
-    static final String SETTINGS_THEME_MODE = "settings_theme_mode";
+    public static final String SETTINGS_THEME_MODE = "settings_theme_mode";
 
-    static final String UI_MONET = "ui_monet";
-    static final String UI_ACCENT = "ui_accent";
-    static final String UI_THEME_MODE = "ui_theme_mode";
-    static final String UI_BG_MIME = "ui_bg_mime";
-    static final String UI_BG_OPACITY = "ui_bg_opacity";
-    static final String UI_BG_BLUR_ENABLED = "ui_bg_blur_enabled";
-    static final String UI_BG_BLUR_RADIUS = "ui_bg_blur_radius";
-    static final String UI_CARD_OPACITY = "ui_card_opacity";
-    static final String UI_SAYING_API = "ui_saying_api";
-    static final String UI_SAYING_KEY = "ui_saying_key";
+    public static final String UI_MONET = "ui_monet";
+    public static final String UI_THEME_COLOR_ENABLED = "ui_theme_color_enabled";
+    public static final String UI_ACCENT = "ui_accent";
+    public static final String UI_THEME_MODE = "ui_theme_mode";
+    public static final String UI_BG_MIME = "ui_bg_mime";
+    public static final String UI_BG_OPACITY = "ui_bg_opacity";
+    public static final String UI_BG_BLUR_ENABLED = "ui_bg_blur_enabled";
+    public static final String UI_BG_BLUR_RADIUS = "ui_bg_blur_radius";
+    public static final String UI_CARD_OPACITY = "ui_card_opacity";
+    public static final String UI_SAYING_API = "ui_saying_api";
+    public static final String UI_SAYING_KEY = "ui_saying_key";
     static final String UI_SCROLL_Y = "ui_scroll_y";
-    static final String DIAGNOSTIC_QUERY_PREFIX = "diagnostic_query_";
-    static final String DIAGNOSTIC_SLOT_PREFIX = "diagnostic_slot_";
-    static final String DIAGNOSTIC_ACTIVITY_PREFIX = "diagnostic_activity_";
-    static final String DIAGNOSTIC_RENDER_PREFIX = "diagnostic_render_";
+    public static final String DIAGNOSTIC_QUERY_PREFIX = "diagnostic_query_";
+    public static final String DIAGNOSTIC_SLOT_PREFIX = "diagnostic_slot_";
+    public static final String DIAGNOSTIC_ACTIVITY_PREFIX = "diagnostic_activity_";
+    public static final String DIAGNOSTIC_RENDER_PREFIX = "diagnostic_render_";
     static final String METHOD_REPORT_DIAGNOSTIC = "report_diagnostic";
     static final String EXTRA_DIAGNOSTIC_MESSAGE = "message";
 
-    static final int UI_THEME_FOLLOW = 0;
-    static final int UI_THEME_LIGHT = 1;
-    static final int UI_THEME_DARK = 2;
+    public static final int UI_THEME_FOLLOW = 0;
+    public static final int UI_THEME_LIGHT = 1;
+    public static final int UI_THEME_DARK = 2;
 
-    static final int FONT_FOLLOW = 0;
-    static final int FONT_LIGHT = 1;
-    static final int FONT_DARK = 2;
+    public static final int FONT_FOLLOW = 0;
+    public static final int FONT_LIGHT = 1;
+    public static final int FONT_DARK = 2;
 
     static final int DEVICE_LOGO_SYSTEM = 0;
     static final int DEVICE_LOGO_CUSTOM_TEXT = 1;
     static final int DEVICE_LOGO_HIDDEN = 2;
 
-    static final int SETTINGS_THEME_FOLLOW = 0;
-    static final int SETTINGS_THEME_LIGHT = 1;
-    static final int SETTINGS_THEME_DARK = 2;
+    public static final int SETTINGS_THEME_FOLLOW = 0;
+    public static final int SETTINGS_THEME_LIGHT = 1;
+    public static final int SETTINGS_THEME_DARK = 2;
 
     static final String COLUMN_MIME = "mime_type";
     static final String COLUMN_SIZE = "_size";

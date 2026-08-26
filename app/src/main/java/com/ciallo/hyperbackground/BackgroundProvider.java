@@ -2,7 +2,6 @@ package com.ciallo.hyperbackground;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
-import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.database.MatrixCursor;
@@ -14,11 +13,12 @@ import java.io.File;
 import java.io.FileNotFoundException;
 
 public final class BackgroundProvider extends ContentProvider {
+    private ConfigManager config() { return ConfigManager.get(getContext()); }
     @Override public boolean onCreate() { return true; }
     @Override public String getType(Uri uri) {
         enforceReader(); String slot = requireSlot(uri); File file = fileFor(slot);
         if (!file.isFile()) return null;
-        return prefs().getString(BackgroundContract.MIME_PREFIX + slot, "application/octet-stream");
+        return config().backgroundMime(slot);
     }
     @Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
         enforceReader(); if (!"r".equals(mode)) throw new FileNotFoundException("Read only");
@@ -30,7 +30,7 @@ public final class BackgroundProvider extends ContentProvider {
         enforceReader(); String slot = requireSlot(uri); recordReader(slot, selection);
         File file = fileFor(slot); String[] columns = columns(projection);
         MatrixCursor result = new MatrixCursor(columns, 1); MatrixCursor.RowBuilder row = result.newRow();
-        SharedPreferences p = prefs();
+        ConfigManager p = config();
         for (String column : columns) {
             if (BackgroundContract.COLUMN_MIME.equals(column)) row.add(p.getString(BackgroundContract.MIME_PREFIX + slot, "application/octet-stream"));
             else if (BackgroundContract.COLUMN_SIZE.equals(column)) row.add(file.isFile() ? file.length() : -1L);
@@ -56,17 +56,16 @@ public final class BackgroundProvider extends ContentProvider {
         String packageName = resolveCallingPackage();
         String message = extras == null ? null : extras.getString(BackgroundContract.EXTRA_DIAGNOSTIC_MESSAGE);
         if (packageName != null && message != null && !message.isEmpty()) {
-            prefs().edit().putString(BackgroundContract.DIAGNOSTIC_RENDER_PREFIX + packageName, message).apply();
+            config().edit().putString(BackgroundContract.DIAGNOSTIC_RENDER_PREFIX + packageName, message).apply();
         }
         return Bundle.EMPTY;
     }
 
-    private SharedPreferences prefs() { return getContext().getSharedPreferences(BackgroundContract.PREFS, 0); }
     private void recordReader(String slot, String activityName) {
         try {
             String packageName = resolveCallingPackage();
             if (packageName == null || !BackgroundContract.isSupportedPackage(packageName)) return;
-            SharedPreferences.Editor editor = prefs().edit()
+            android.content.SharedPreferences.Editor editor = config().edit()
                     .putLong(BackgroundContract.DIAGNOSTIC_QUERY_PREFIX + packageName, System.currentTimeMillis())
                     .putString(BackgroundContract.DIAGNOSTIC_SLOT_PREFIX + packageName, slot);
             if (activityName != null && !activityName.isEmpty()) {
@@ -105,7 +104,7 @@ public final class BackgroundProvider extends ContentProvider {
             throw new IllegalArgumentException("Unknown background slot");
         return slot;
     }
-    private File fileFor(String slot) { return new File(new File(getContext().getFilesDir(), "backgrounds"), slot + ".bin"); }
+    private File fileFor(String slot) { return config().backgroundFile(slot); }
     private static String[] columns(String[] projection) {
         if (projection != null && projection.length > 0) return projection;
         return new String[]{BackgroundContract.COLUMN_MIME, BackgroundContract.COLUMN_SIZE, BackgroundContract.COLUMN_MODIFIED,

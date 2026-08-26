@@ -29,6 +29,7 @@ android {
         targetSdk = 35
         versionCode = 33
         versionName = "1.3.9-beta2"
+        resourceConfigurations += listOf("en", "zh-rCN")
     }
 
     buildFeatures {

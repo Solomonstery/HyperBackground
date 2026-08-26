@@ -28,6 +28,7 @@ public final class SettingsBackgroundHook {
 
         if (settings) {
             SettingsSearchMaskOverride.install(classLoader);
+            SettingsTopBarBlurHook.install(classLoader);
             hookHomeActivity(classLoader);
             hookHomeFragment(classLoader);
             hookDeviceFragment(classLoader);
@@ -214,6 +215,7 @@ public final class SettingsBackgroundHook {
                             Object activity = XposedHelpers.callMethod(param.thisObject, "getActivity");
                             if (activity instanceof Activity
                                     && "com.android.settings.MiuiSettings".equals(activity.getClass().getName())) {
+                                SettingsTopBarBlurHook.markHomeFragment(param.thisObject);
                                 BackgroundApplier.applyHome((Activity) activity);
                             }
                         }

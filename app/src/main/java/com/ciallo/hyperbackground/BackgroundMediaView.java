@@ -9,6 +9,7 @@ import android.os.Build;
 import android.graphics.SurfaceTexture;
 import android.graphics.drawable.AnimatedImageDrawable;
 import android.graphics.drawable.Drawable;
+import android.content.res.AssetFileDescriptor;
 import android.media.MediaPlayer;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
@@ -98,9 +99,11 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         imageView = new ImageView(getContext());
         imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
         imageView.setAdjustViewBounds(false);
-        ImageDecoder.Source decoderSource = ImageDecoder.createSource(
-                getContext().getContentResolver(),
-                source.uri);
+        ImageDecoder.Source decoderSource = ImageDecoder.createSource(() ->
+                new AssetFileDescriptor(
+                        source.openFile(),
+                        0,
+                        AssetFileDescriptor.UNKNOWN_LENGTH));
         imageDrawable = ImageDecoder.decodeDrawable(decoderSource);
         imageView.setImageDrawable(imageDrawable);
         addView(imageView, new FrameLayout.LayoutParams(
@@ -146,8 +149,7 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
     private void startPlayer(SurfaceTexture surfaceTexture) {
         releasePlayer();
         try {
-            dataDescriptor = getContext().getContentResolver()
-                    .openFileDescriptor(source.uri, "r");
+            dataDescriptor = source.openFile();
             if (dataDescriptor == null) throw new IOException("Cannot open video");
 
             MediaPlayer player = new MediaPlayer();

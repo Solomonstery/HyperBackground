@@ -266,7 +266,7 @@ final class BackgroundApplier {
             LayerSession old = (LayerSession) XposedHelpers.getAdditionalInstanceField(activity, fieldKey);
             if (!source.exists) {
                 if (BackgroundContract.GLOBAL.equals(slot)) {
-                    diagnostic(activity, "source-missing authority=" + BackgroundContract.AUTHORITY);
+                    diagnostic(activity, "source-missing remote-file=" + BackgroundContract.remoteMediaName(slot));
                 }
                 if (old != null) removeLayer(activity, fieldKey, old);
                 return;

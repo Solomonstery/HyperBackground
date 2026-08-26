@@ -51,8 +51,6 @@ import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.ui.pages.BackgroundDetailPage
 import com.ciallo.hyperbackground.ui.pages.HomePage
 import com.ciallo.hyperbackground.ui.pages.SettingsPage
-import java.io.File
-import java.io.FileOutputStream
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import top.yukonga.miuix.kmp.basic.Icon
@@ -88,8 +86,7 @@ class MainActivity : ComponentActivity() {
             if (pendingUiBackground) {
                 pendingUiBackground = false
                 require(mime.startsWith("image/")) { getString(R.string.unsupported_type, mime) }
-                copyMedia(config.uiBackgroundFile, uri)
-                config.edit().putString(BackgroundContract.UI_BG_MIME, mime).apply()
+                config.saveUiBackground(uri, mime)
                 toast(R.string.saved)
             } else {
                 val slot = pendingSlot.also { pendingSlot = null } ?: return@runCatching
@@ -97,8 +94,7 @@ class MainActivity : ComponentActivity() {
                 require(mime.startsWith("image/") || videoAllowed && mime.startsWith("video/")) {
                     getString(R.string.unsupported_type, mime)
                 }
-                copyMedia(config.backgroundFile(slot), uri)
-                config.setBackgroundMime(slot, mime)
+                config.saveBackground(slot, uri, mime)
                 toast(R.string.saved)
             }
             revision++
@@ -138,9 +134,7 @@ class MainActivity : ComponentActivity() {
     }
 
     fun clearUiBackground() {
-        config.uiBackgroundFile.delete()
-        config.edit().remove(BackgroundContract.UI_BG_MIME).apply()
-        revision++
+        if (config.clearUiBackground()) revision++
     }
 
     fun updateCardOpacity(value: Float) {
@@ -152,29 +146,6 @@ class MainActivity : ComponentActivity() {
 
     fun openUrl(url: String) {
         runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-    }
-
-    private fun copyMedia(target: File, uri: Uri) {
-        target.parentFile?.mkdirs()
-        val temp = File(target.absolutePath + ".tmp")
-        var total = 0L
-        contentResolver.openInputStream(uri).use { input ->
-            requireNotNull(input)
-            FileOutputStream(temp).use { output ->
-                val buffer = ByteArray(64 * 1024)
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    total += count
-                    require(total <= 200L * 1024L * 1024L) { getString(R.string.file_too_large) }
-                    output.write(buffer, 0, count)
-                }
-                output.fd.sync()
-            }
-        }
-        if (target.exists() && !target.delete()) error("Cannot replace media")
-        if (!temp.renameTo(target)) error("Cannot finish media replacement")
-        target.setLastModified(System.currentTimeMillis())
     }
 
     private fun toast(resId: Int) = toast(getString(resId))

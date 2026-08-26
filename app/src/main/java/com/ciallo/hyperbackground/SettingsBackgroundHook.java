@@ -8,24 +8,18 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
-import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
-public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
+public final class SettingsBackgroundHook {
     private static final Map<Activity, Runnable> PENDING_GLOBAL = Collections.synchronizedMap(new WeakHashMap<>());
-    @Override
-    public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
-        if (!BackgroundContract.isSupportedPackage(lpparam.packageName)) return;
-        boolean settings = BackgroundContract.PACKAGE_SETTINGS.equals(lpparam.packageName);
+    static void install(String packageName, ClassLoader classLoader) {
+        boolean settings = BackgroundContract.PACKAGE_SETTINGS.equals(packageName);
 
-        XposedBridge.log("[HyperBackground] injected package=" + lpparam.packageName
-                + " process=" + lpparam.processName + " version=" + BuildConfig.VERSION_NAME);
         hookGlobalActivities();
         hookInstrumentationLifecycle();
-        hookKnownPackageLifecycle(lpparam);
+        hookKnownPackageLifecycle(packageName, classLoader);
 
         // 主题（深浅色）与文字色强制对所有支持的作用域进程生效，不再局限于设置进程，
         // 这样应用详情页等由其它进程提供的页面也能被强制控制。
@@ -33,10 +27,10 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
         TextColorOverride.install();
 
         if (settings) {
-            SettingsSearchMaskOverride.install(lpparam.classLoader);
-            hookHomeActivity(lpparam.classLoader);
-            hookHomeFragment(lpparam.classLoader);
-            hookDeviceFragment(lpparam.classLoader);
+            SettingsSearchMaskOverride.install(classLoader);
+            hookHomeActivity(classLoader);
+            hookHomeFragment(classLoader);
+            hookDeviceFragment(classLoader);
         }
     }
 
@@ -123,20 +117,20 @@ public final class SettingsBackgroundHook implements IXposedHookLoadPackage {
         }
     }
 
-    private static void hookKnownPackageLifecycle(final XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hookKnownPackageLifecycle(String packageName, ClassLoader classLoader) {
         String className = null;
-        if (BackgroundContract.PACKAGE_PHONE.equals(lpparam.packageName)) {
+        if (BackgroundContract.PACKAGE_PHONE.equals(packageName)) {
             className = "com.android.phone.settings.BaseActivity";
-        } else if (BackgroundContract.PACKAGE_ACCOUNT.equals(lpparam.packageName)) {
+        } else if (BackgroundContract.PACKAGE_ACCOUNT.equals(packageName)) {
             className = "com.xiaomi.account.ui.BaseActivity";
-        } else if (BackgroundContract.PACKAGE_THEME_MANAGER.equals(lpparam.packageName)) {
+        } else if (BackgroundContract.PACKAGE_THEME_MANAGER.equals(packageName)) {
             className = "com.android.thememanager.basemodule.base.AbstractBaseActivity";
         }
         if (className == null) return;
         try {
             XposedHelpers.findAndHookMethod(
                     className,
-                    lpparam.classLoader,
+                    classLoader,
                     "onCreate",
                     Bundle.class,
                     new XC_MethodHook() {

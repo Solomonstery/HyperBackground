@@ -95,6 +95,7 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.3")
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.3")
 
-    compileOnly(files("libs/xposed-stubs.jar"))
+    compileOnly("io.github.libxposed:api:101.0.1")
+    implementation("io.github.libxposed:service:101.0.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

@@ -1,6 +1,5 @@
 package com.ciallo.hyperbackground.ui.pages
 
-import android.app.AlertDialog
 import android.app.LocaleManager
 import android.content.Intent
 import android.net.Uri
@@ -297,11 +296,6 @@ private fun ToolsCard(activity: MainActivity) {
                 text = stringResource(R.string.restart_scope),
                 onClick = { restartScopes(activity) },
             )
-            TextButton(
-                modifier = Modifier.fillMaxWidth(),
-                text = stringResource(R.string.hook_diagnostics),
-                onClick = { showDiagnostics(activity) },
-            )
         }
     }
 }
@@ -352,37 +346,6 @@ private fun restartScopes(activity: MainActivity) {
             ).show()
         }
     }
-}
-
-private fun showDiagnostics(activity: MainActivity) {
-    val config = activity.config
-    val body = buildString {
-        append(activity.getString(R.string.diagnostic_empty)).append("\n\n")
-        SCOPE_PACKAGES.forEach { packageName ->
-            val last = config.getLong(BackgroundContract.DIAGNOSTIC_QUERY_PREFIX + packageName, 0L)
-            val slot = config.getString(BackgroundContract.DIAGNOSTIC_SLOT_PREFIX + packageName, "")
-            val render = config.getString(BackgroundContract.DIAGNOSTIC_RENDER_PREFIX + packageName, "")
-            append(packageName).append(": ")
-            append(if (last > 0) activity.getString(R.string.read_at, slot) else activity.getString(R.string.not_read))
-            if (!render.isNullOrBlank()) append("\n  ").append(render.take(160))
-            append('\n')
-        }
-    }
-    AlertDialog.Builder(activity)
-        .setTitle(R.string.hook_diagnostics)
-        .setMessage(body)
-        .setNegativeButton(R.string.close, null)
-        .setNeutralButton(R.string.clear_records) { _, _ ->
-            val editor = config.edit()
-            SCOPE_PACKAGES.forEach { packageName ->
-                editor.remove(BackgroundContract.DIAGNOSTIC_QUERY_PREFIX + packageName)
-                editor.remove(BackgroundContract.DIAGNOSTIC_SLOT_PREFIX + packageName)
-                editor.remove(BackgroundContract.DIAGNOSTIC_ACTIVITY_PREFIX + packageName)
-                editor.remove(BackgroundContract.DIAGNOSTIC_RENDER_PREFIX + packageName)
-            }
-            editor.apply()
-        }
-        .show()
 }
 
 private val SCOPE_PACKAGES = listOf(

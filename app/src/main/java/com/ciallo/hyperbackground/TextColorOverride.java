@@ -16,6 +16,8 @@ final class TextColorOverride {
     private static volatile int cachedMode = BackgroundContract.FONT_FOLLOW;
     private TextColorOverride() {}
 
+    static void invalidateConfig() { modeLoaded = false; }
+
     static void install() {
         try {
             XposedHelpers.findAndHookMethod(TextView.class, "setTextColor", int.class, new XC_MethodHook() {

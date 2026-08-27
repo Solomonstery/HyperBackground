@@ -17,6 +17,9 @@ class ConfigManager private constructor(private val context: Context) : SharedPr
     val uiBackgroundFile: File
         get() = File(context.filesDir, "ui_background.bin")
 
+    val logoFile: File
+        get() = File(context.filesDir, "logo.bin")
+
     fun backgroundFile(slot: String): File = File(backgroundsDir, "$slot.bin")
 
     fun backgroundMime(slot: String): String =
@@ -66,6 +69,26 @@ class ConfigManager private constructor(private val context: Context) : SharedPr
         return true
     }
 
+    /** 保存导入的 LOGO（SVG/XML/图片）并同步到 hook 进程可读的远端文件。 */
+    fun saveLogo(uri: Uri, mime: String) {
+        copyMedia(logoFile, uri)
+        syncMedia(BackgroundContract.LOGO_REMOTE_NAME, logoFile)
+        edit()
+            .putString(BackgroundContract.LOGO_MIME, mime)
+            .putLong(BackgroundContract.LOGO_VERSION, System.currentTimeMillis())
+            .apply()
+    }
+
+    fun clearLogo(): Boolean {
+        if (logoFile.exists() && !logoFile.delete()) return false
+        syncMedia(BackgroundContract.LOGO_REMOTE_NAME, null)
+        edit()
+            .remove(BackgroundContract.LOGO_MIME)
+            .putLong(BackgroundContract.LOGO_VERSION, 0L)
+            .apply()
+        return true
+    }
+
     fun syncToRemote(service: XposedService? = HyperBackgroundApp.xposedService) {
         service ?: return
         val metadata = preferences.edit()
@@ -84,6 +107,7 @@ class ConfigManager private constructor(private val context: Context) : SharedPr
         listOf(BackgroundContract.HOME, BackgroundContract.DEVICE, BackgroundContract.GLOBAL).forEach { slot ->
             syncMedia(BackgroundContract.remoteMediaName(slot), backgroundFile(slot).takeIf(File::isFile), service)
         }
+        syncMedia(BackgroundContract.LOGO_REMOTE_NAME, logoFile.takeIf(File::isFile), service)
     }
 
     private fun copyMedia(target: File, uri: Uri) {

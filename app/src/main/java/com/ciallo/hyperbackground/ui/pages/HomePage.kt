@@ -49,6 +49,7 @@ fun HomePage(
     padding: PaddingValues = PaddingValues(0.dp),
     revision: Int,
     onOpenBackground: (String) -> Unit,
+    onOpenLogo: () -> Unit,
 ) {
     val activity = LocalContext.current as MainActivity
     val sayingEnabled = remember(revision) {
@@ -86,6 +87,17 @@ fun HomePage(
                     title = stringResource(R.string.background_global),
                     summary = stringResource(R.string.background_global_summary),
                 ) { onOpenBackground(BackgroundContract.GLOBAL) }
+            }
+        }
+        item { SectionTitle(stringResource(R.string.custom_logo_section)) }
+        item {
+            UiCard(activity, Modifier.fillMaxWidth()) {
+                ScopeEntry(
+                    icon = MiuixIcons.Background,
+                    title = stringResource(R.string.custom_logo),
+                    summary = stringResource(R.string.custom_logo_summary),
+                    onClick = onOpenLogo,
+                )
             }
         }
     }

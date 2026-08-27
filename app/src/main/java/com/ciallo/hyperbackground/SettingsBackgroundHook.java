@@ -94,7 +94,7 @@ public final class SettingsBackgroundHook {
                     "onContentChanged",
                     new XC_MethodHook() {
                         @Override protected void afterHookedMethod(MethodHookParam param) {
-                            if (param.thisObject instanceof Activity) scheduleGlobal((Activity) param.thisObject);
+                            if (param.thisObject instanceof Activity) applyGlobalNow((Activity) param.thisObject);
                         }
                     });
             XposedHelpers.findAndHookMethod(
@@ -144,6 +144,17 @@ public final class SettingsBackgroundHook {
             // The launcher settings class can be supplied by a shared native runtime and
             // may not declare onCreate itself. Framework lifecycle hooks remain active.
             logHookError("precise lifecycle " + className, error);
+        }
+    }
+
+    // 内容层刚 inflate 完成（onContentChanged）时同步挂背景，赶在第一帧绘制之前，
+    // 避免先绘制原生底色、再于下一帧 post 补背景造成的黑/白闪。挂载失败时退回异步兜底。
+    private static void applyGlobalNow(final Activity activity) {
+        if (activity == null || activity.isFinishing()) return;
+        try {
+            BackgroundApplier.applyGlobal(activity);
+        } catch (Throwable ignored) {
+            scheduleGlobal(activity);
         }
     }
 

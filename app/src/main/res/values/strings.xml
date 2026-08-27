@@ -91,8 +91,8 @@
     <string name="changelog_current">Current · %1$s</string>
     <string name="changelog_latest">Latest stable · %1$s</string>
     <string name="changelog_see_github">Notes not bundled locally. Open GitHub Releases to view.</string>
-    <string name="uninstall_notice_title">Before uninstalling / unmounting</string>
-    <string name="uninstall_notice_intro">To avoid leftover state breaking the system light/dark toggle, follow these steps in order:</string>
+    <string name="uninstall_notice_title">Warning</string>
+    <string name="uninstall_notice_intro">Before disabling the scope or uninstalling the module, follow these steps in order:</string>
     <string name="uninstall_notice_step_1">Set both Color mode and Text color back to Follow system.</string>
     <string name="uninstall_notice_step_2">Run Restart scope once.</string>
     <string name="uninstall_notice_step_3">Open each secondary page you had mounted once (open all of them if you plan to remove backgrounds) so they revert to default.</string>

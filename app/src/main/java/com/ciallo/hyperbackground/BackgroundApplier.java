@@ -733,31 +733,39 @@ final class BackgroundApplier {
             return false;
         }
 
-        // True only for a fully-opaque neutral (black/white/grey) solid-color background.
-        // Handles ColorDrawable directly, and LayerDrawable that wraps such a solid layer
-        // (some pages, e.g. 隐私与安全 stat-card ConstraintLayout, use a LayerDrawable whose
-        // base layer is opaque #FF000000). Reads colors without mutating the drawable
-        // (no setBounds/draw), so shared card surfaces are never damaged. Semi-transparent
-        // (#24FFFFFF GradientDrawable/CardDrawable) or coloured backgrounds return false.
+        // True only for a fully-opaque neutral (black/white/grey) solid background.
+        // Handles ColorDrawable directly; for any other drawable (LayerDrawable,
+        // GradientDrawable, etc.) it samples a *copy* rendered to a 1x1 bitmap so we read
+        // the real composited colour without mutating the shared drawable (beta5 broke the
+        // grey cards by calling setBounds on the live instance — this copies first).
+        // Semi-transparent surfaces (e.g. #24FFFFFF cards) sample with alpha < 255 and are
+        // rejected; coloured panels are non-neutral and rejected.
         private boolean isOpaqueNeutralColorDrawable(Drawable bg) {
-            Integer color = solidNeutralColor(bg, 0);
-            return color != null;
+            if (bg == null) return false;
+            if (bg instanceof android.graphics.drawable.ColorDrawable) {
+                return isOpaqueNeutral(((android.graphics.drawable.ColorDrawable) bg).getColor());
+            }
+            Integer sampled = sampleDrawableColor(bg);
+            return sampled != null && isOpaqueNeutral(sampled);
         }
 
-        private Integer solidNeutralColor(Drawable bg, int depth) {
-            if (bg == null || depth > 3) return null;
-            if (bg instanceof android.graphics.drawable.ColorDrawable) {
-                int color = ((android.graphics.drawable.ColorDrawable) bg).getColor();
-                return isOpaqueNeutral(color) ? color : null;
+        // Renders a COPY of the drawable to a 1x1 bitmap and reads the pixel. Never touches
+        // the original drawable (no setBounds/draw on the live instance).
+        private Integer sampleDrawableColor(Drawable bg) {
+            try {
+                Drawable.ConstantState state = bg.getConstantState();
+                if (state == null) return null;
+                Drawable copy = state.newDrawable().mutate();
+                android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888);
+                android.graphics.Canvas canvas = new android.graphics.Canvas(bmp);
+                copy.setBounds(0, 0, 1, 1);
+                copy.draw(canvas);
+                int color = bmp.getPixel(0, 0);
+                bmp.recycle();
+                return color;
+            } catch (Throwable ignored) {
+                return null;
             }
-            if (bg instanceof android.graphics.drawable.LayerDrawable) {
-                android.graphics.drawable.LayerDrawable layers = (android.graphics.drawable.LayerDrawable) bg;
-                for (int i = 0; i < layers.getNumberOfLayers(); i++) {
-                    Integer c = solidNeutralColor(layers.getDrawable(i), depth + 1);
-                    if (c != null) return c;
-                }
-            }
-            return null;
         }
 
         // Fully opaque and neutral (channels close together, no dominant hue): black/white/grey.

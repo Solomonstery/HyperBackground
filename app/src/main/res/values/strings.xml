@@ -128,8 +128,9 @@
     <string name="logo_mode">Mode</string>
     <string name="logo_mode_system">System default</string>
     <string name="logo_mode_no_advanced_material">Drop advanced material</string>
-    <string name="logo_mode_keep_advanced_material">Keep advanced material</string>
+    <string name="logo_mode_keep_advanced_material">Keep advanced material (import SVG/XML)</string>
     <string name="logo_import">Import LOGO</string>
+    <string name="logo_not_imported">Not imported</string>
     <string name="logo_scale">Scale</string>
     <string name="logo_hint">Supports SVG, XML (VectorDrawable) and images. Reopen the "My device" page to apply.</string>
     <string-array name="xposed_scope">

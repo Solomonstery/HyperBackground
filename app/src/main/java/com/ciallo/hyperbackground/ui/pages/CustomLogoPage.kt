@@ -161,7 +161,7 @@ private fun LogoImportEntry(activity: MainActivity, hasLogo: Boolean) {
     val summary = if (hasLogo) {
         stringResource(R.string.enabled_size, humanLogoSize(activity.config.logoFile))
     } else {
-        stringResource(R.string.system_default)
+        stringResource(R.string.logo_not_imported)
     }
     BasicComponent(
         title = stringResource(R.string.logo_import),

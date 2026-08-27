@@ -11,80 +11,93 @@ import android.widget.ImageView;
 
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
-
 /**
  * 自定义 LOGO：把设置「我的设备」页的小米 OS LOGO 替换成用户导入的 SVG / VectorDrawable / 位图。
  *
- * <p>实现完整对齐 HyperChanger 的三种模式，核心是 {@link LogoSession}：
- * LOGO 就是 {@code miui_logo_view}（ImageView），它自身承载图片，其父视图链上带「高级材质」背景。
- * <ul>
- *   <li>系统默认：不替换，还原原图与材质；</li>
- *   <li>不保留高级材质：换图 + 向上清除 4 层父视图的材质背景；</li>
- *   <li>保留高级材质：换图 + 保留父视图材质背景（因此建议导入透明矢量图）。</li>
- * </ul>
+ * <p>本类忠实照搬 HyperChanger 的实现（{@code SettingsAppearanceApplier} 的 LOGO 部分
+ * 与 {@code SettingsDeviceModule} 的 LOGO hook），仅把配置读取接到本项目的
+ * {@link BackgroundContract}/{@link HookRuntime}，其余逻辑与原版一致。
  *
- * <p>三条互补路径：
- * <ol>
- *   <li>主路径 {@link #applyLogo}：在 {@code MiuiMyDeviceSettings} 生命周期后主动查找 LOGO 并按模式处理；</li>
- *   <li>{@code ImageView.setImageDrawable/setImageResource} hook：兜底 LOGO 被重新赋图的情况；</li>
- *   <li>{@code Resources/Context.getDrawable*} 与 {@code View.setBackgroundResource} hook：
- *       拦截以资源 id 加载的 LOGO（{@code xiaomi_os_logo*} / {@code provision_os_logo*}）。</li>
- * </ol>
+ * <p>与原版一致的是：所有 hook 都通过 libxposed 的 {@code hook(method).intercept{}}
+ * （本项目封装为 {@link HookRuntime#hook}）完成，可以在 {@code Resources.getDrawable} 等
+ * 方法返回前直接替换返回值——这是 LOGO 能被真正替换掉的关键，与传统 XposedHelpers 的
+ * {@code afterHookedMethod} 观察式回调不同。
+ *
+ * <p>三种模式（对齐原版 {@link BackgroundContract#LOGO_MODE_SYSTEM} 等）：
+ * <ul>
+ *   <li>系统默认：不替换，恢复原图与材质；</li>
+ *   <li>不保留高级材质：换图 + 向上清除 4 层父视图的材质背景；</li>
+ *   <li>保留高级材质：换图 + 保留父视图材质背景（建议导入透明矢量图）。</li>
+ * </ul>
  */
 final class LogoOverride {
+    private static final String TAG = "HyperBackground";
     private static final String MY_DEVICE_SETTINGS = "com.android.settings.device.MiuiMyDeviceSettings";
 
-    // 每个 fragment/activity 一个 LogoSession，记录原图与被清除的材质背景以便还原。
+    // 每个 fragment/activity 一个 LogoSession，记录原图与被清除的材质背景以便还原（对齐原版 logoSessions）。
     private static final Map<Object, LogoSession> SESSIONS =
             Collections.synchronizedMap(new WeakHashMap<>());
-    // 本模块主动 setImageDrawable / 解析素材时置位，用于跳过自身触发的 hook，防止递归。
+    // 本模块主动 setImageDrawable / 解析素材时置位，用于跳过自身触发的 hook（对齐原版 internalLogo）。
     private static final ThreadLocal<Boolean> INTERNAL = new ThreadLocal<>();
-    // 缓存已解析的 LOGO，cacheKey 变化时失效。
-    private static volatile Drawable cachedDrawable;
-    private static volatile String cachedKey;
 
     private LogoOverride() {}
 
     static void install(ClassLoader classLoader) {
-        hookLogoResources();
-        hookBackgroundResource();
-        hookImageViewSetters();
-        hookDeviceLifecycle(classLoader);
+        installPersistentLogoHooks();
+        installLogoResourceHooks();
+        installDeviceLifecycleHooks(classLoader);
     }
 
-    // ---- 主路径：MiuiMyDeviceSettings 生命周期后主动查找并应用 ----
+    // ---- 生命周期 hook：MiuiMyDeviceSettings.onViewCreated/onResume 后主动应用 LOGO ----
+    // 对齐原版 installAppearanceHooks 中 device 分支 + hookLifecycle 的 applyLogo 调用。
 
-    private static void hookDeviceLifecycle(ClassLoader classLoader) {
-        XC_MethodHook fragmentHook = new XC_MethodHook() {
-            @Override protected void afterHookedMethod(MethodHookParam param) {
-                if (param.thisObject != null) applyLogo(param.thisObject);
-            }
-        };
+    private static void installDeviceLifecycleHooks(ClassLoader classLoader) {
+        Class<?> device;
         try {
-            XposedHelpers.findAndHookMethod(
-                    MY_DEVICE_SETTINGS, classLoader,
-                    "onViewCreated", View.class, android.os.Bundle.class, fragmentHook);
-            try {
-                XposedHelpers.findAndHookMethod(
-                        MY_DEVICE_SETTINGS, classLoader, "onResume", fragmentHook);
-            } catch (Throwable ignored) {
-                // onResume 不存在时忽略，onViewCreated 已足够。
-            }
+            device = classLoader.loadClass(MY_DEVICE_SETTINGS);
         } catch (Throwable error) {
-            XposedBridge.log("[HyperBackground] LOGO device lifecycle hook failed: " + error);
+            HookRuntime.log("LOGO could not load " + MY_DEVICE_SETTINGS, error);
+            return;
+        }
+        for (Method method : device.getDeclaredMethods()) {
+            if (method.getName().equals("onViewCreated") && method.getParameterCount() == 2) {
+                hookApplyLogo(method);
+            }
+        }
+        // onResume/onCreate 可能声明在父类，遍历自身+父类（对齐原版 allMethods）。
+        Class<?> current = device;
+        while (current != null && current != Object.class) {
+            for (Method method : current.getDeclaredMethods()) {
+                String name = method.getName();
+                if ((name.equals("onResume") && method.getParameterCount() == 0)
+                        || (name.equals("onCreate") && method.getParameterCount() == 1)) {
+                    hookApplyLogo(method);
+                }
+            }
+            current = current.getSuperclass();
         }
     }
 
-    /** 主动查找 LOGO 视图，按模式换图并处理材质背景。key 为 fragment 或 activity。 */
+    private static void hookApplyLogo(Method method) {
+        try {
+            HookRuntime.hook(method, new HookRuntime.LegacyMethodHook() {
+                @Override public void after(HookRuntime.LegacyHookParam param) {
+                    if (param.thisObject != null) applyLogo(param.thisObject);
+                }
+            });
+        } catch (Throwable ignored) {
+            // 单个方法 hook 失败不影响其它方法。
+        }
+    }
+
+    /** 主动查找 LOGO 视图，按模式换图并处理材质背景。owner 为 fragment 或 activity（对齐原版 applyLogo）。 */
     private static void applyLogo(Object owner) {
         try {
             Context context = ownerContext(owner);
@@ -100,8 +113,11 @@ final class LogoOverride {
                 SESSIONS.remove(owner);
                 return;
             }
-            Drawable drawable = resolveDrawable(target.getResources(), config);
-            if (drawable == null) return;
+            Drawable drawable = LogoDrawableLoader.load(target.getResources(), readRemoteBytes(config));
+            if (drawable == null) {
+                HookRuntime.log("LOGO drawable load returned null mime=" + config.mime);
+                return;
+            }
             LogoSession session = existing;
             if (session == null) {
                 session = new LogoSession(target);
@@ -110,14 +126,14 @@ final class LogoOverride {
             applyLogoDrawable(target, drawable, config.scale);
             session.applyMaterialPolicy(config.mode == BackgroundContract.LOGO_MODE_NO_ADVANCED_MATERIAL);
         } catch (Throwable error) {
-            XposedBridge.log("[HyperBackground] LOGO apply failed: " + error);
+            HookRuntime.log("LOGO apply failed", error);
         }
     }
 
     private static Context ownerContext(Object owner) {
         if (owner instanceof Activity) return (Activity) owner;
         try {
-            Object context = XposedHelpers.callMethod(owner, "getContext");
+            Object context = owner.getClass().getMethod("getContext").invoke(owner);
             return context instanceof Context ? (Context) context : null;
         } catch (Throwable ignored) {
             return null;
@@ -130,14 +146,14 @@ final class LogoOverride {
                     ? ((Activity) owner).getWindow().getDecorView() : null;
         }
         try {
-            Object view = XposedHelpers.callMethod(owner, "getView");
+            Object view = owner.getClass().getMethod("getView").invoke(owner);
             return view instanceof View ? (View) view : null;
         } catch (Throwable ignored) {
             return null;
         }
     }
 
-    /** 把自定义图设进 LOGO ImageView，复位后按比例缩放。用 INTERNAL 防止 setImageDrawable hook 递归。 */
+    /** 把自定义图设进 LOGO ImageView，复位后按比例缩放（对齐原版 applyLogoDrawable）。 */
     private static void applyLogoDrawable(ImageView view, Drawable drawable, int scalePercent) {
         INTERNAL.set(Boolean.TRUE);
         try {
@@ -146,7 +162,7 @@ final class LogoOverride {
             view.setScaleX(1f);
             view.setScaleY(1f);
             view.setImageDrawable(drawable);
-            float scale = Math.max(50, Math.min(200, scalePercent)) / 100f;
+            float scale = clampScale(scalePercent) / 100f;
             view.setScaleX(scale);
             view.setScaleY(scale);
         } finally {
@@ -196,141 +212,148 @@ final class LogoOverride {
         return 0;
     }
 
-    // ---- 路径 2：ImageView setter hook ----
+    // ---- 持久化 setter hook：ImageView.setImageDrawable/setImageResource ----
+    // 对齐原版 installPersistentLogoHooks。
 
-    private static void hookImageViewSetters() {
+    private static void installPersistentLogoHooks() {
         try {
-            XposedHelpers.findAndHookMethod(
-                    ImageView.class, "setImageDrawable", Drawable.class,
-                    new XC_MethodHook() {
-                        @Override protected void afterHookedMethod(MethodHookParam param) {
-                            if (Boolean.TRUE.equals(INTERNAL.get())) return;
-                            if (!(param.thisObject instanceof ImageView)) return;
-                            ImageView view = (ImageView) param.thisObject;
-                            Drawable replacement = logoReplacement(view);
-                            if (replacement != null) applyLogoDrawable(view, replacement, currentScale());
-                        }
-                    });
-            XposedHelpers.findAndHookMethod(
-                    ImageView.class, "setImageResource", int.class,
-                    new XC_MethodHook() {
-                        @Override protected void afterHookedMethod(MethodHookParam param) {
-                            if (Boolean.TRUE.equals(INTERNAL.get())) return;
-                            if (!(param.thisObject instanceof ImageView)) return;
-                            ImageView view = (ImageView) param.thisObject;
-                            Drawable replacement = logoReplacement(view);
-                            if (replacement != null) applyLogoDrawable(view, replacement, currentScale());
-                        }
-                    });
+            Method setImageDrawable = ImageView.class.getMethod("setImageDrawable", Drawable.class);
+            HookRuntime.hook(setImageDrawable, new HookRuntime.LegacyMethodHook() {
+                @Override public void before(HookRuntime.LegacyHookParam param) {
+                    if (!(param.thisObject instanceof ImageView)) return;
+                    Drawable replacement = logoReplacement((ImageView) param.thisObject);
+                    // 换成自定义图后继续原方法（对齐原版 chain.proceedWith(arrayOf(replacement))）。
+                    if (replacement != null) param.args[0] = replacement;
+                }
+            });
+
+            Method setImageResource = ImageView.class.getMethod("setImageResource", int.class);
+            HookRuntime.hook(setImageResource, new HookRuntime.LegacyMethodHook() {
+                @Override public void before(HookRuntime.LegacyHookParam param) {
+                    if (!(param.thisObject instanceof ImageView)) return;
+                    ImageView view = (ImageView) param.thisObject;
+                    Drawable replacement = logoReplacement(view);
+                    // 命中则改走 applyLogoDrawable，并阻止原资源赋图（对齐原版返回 null）。
+                    if (replacement != null) {
+                        applyLogoDrawable(view, replacement, currentScale());
+                        param.setResult(null);
+                    }
+                }
+            });
+            HookRuntime.log("Installed persistent Settings logo replacement hooks");
         } catch (Throwable error) {
-            XposedBridge.log("[HyperBackground] LOGO ImageView hook failed: " + error);
+            HookRuntime.log("Could not hook Settings logo setters", error);
         }
     }
 
-    /** 命中 LOGO ImageView 且已启用替换时返回自定义图，否则 null。 */
+    /** 命中 LOGO ImageView 且已启用替换时返回自定义图，否则 null（对齐原版 logoReplacement）。 */
     private static Drawable logoReplacement(ImageView view) {
         if (Boolean.TRUE.equals(INTERNAL.get())) return null;
         if (!BackgroundContract.PACKAGE_SETTINGS.equals(view.getContext().getPackageName())) return null;
-        int id = view.getId();
-        if (id == View.NO_ID) return null;
-        String name;
+        String idName;
         try {
-            name = view.getResources().getResourceEntryName(id).toLowerCase();
+            idName = view.getResources().getResourceEntryName(view.getId()).toLowerCase();
         } catch (Throwable ignored) {
-            return null;
+            idName = "";
         }
-        if (!name.equals("miui_logo_view") && !name.contains("logo")) return null;
+        if (!idName.equals("miui_logo_view") && !idName.contains("logo")) return null;
         BackgroundContract.LogoConfig config = safeConfig();
         if (config == null || !config.active()) return null;
-        return resolveDrawable(view.getResources(), config);
+        return LogoDrawableLoader.load(view.getResources(), readRemoteBytes(config));
     }
 
-    // ---- 路径 3：资源层拦截 ----
+    // ---- 资源层 hook：Resources/Context.getDrawable* 与 View.setBackgroundResource ----
+    // 对齐原版 installLogoResourceHooks。
 
-    private static void hookLogoResources() {
-        XC_MethodHook resourcesHook = new XC_MethodHook() {
-            @Override protected void afterHookedMethod(MethodHookParam param) {
-                if (!(param.thisObject instanceof Resources)) return;
-                if (param.args.length == 0 || !(param.args[0] instanceof Integer)) return;
-                Resources resources = (Resources) param.thisObject;
-                int resourceId = (Integer) param.args[0];
-                Drawable replacement = logoResourceReplacement(resources, resourceId);
-                if (replacement != null) param.setResult(replacement);
-            }
-        };
-        hookResourcesMethod("getDrawable", resourcesHook, int.class);
-        hookResourcesMethod("getDrawable", resourcesHook, int.class, Resources.Theme.class);
-        hookResourcesMethod("getDrawableForDensity", resourcesHook, int.class, int.class);
-        hookResourcesMethod("getDrawableForDensity", resourcesHook, int.class, int.class, Resources.Theme.class);
+    private static void installLogoResourceHooks() {
         try {
-            XposedHelpers.findAndHookMethod(
-                    Context.class, "getDrawable", int.class,
-                    new XC_MethodHook() {
-                        @Override protected void afterHookedMethod(MethodHookParam param) {
-                            if (!(param.thisObject instanceof Context)) return;
-                            if (param.args.length == 0 || !(param.args[0] instanceof Integer)) return;
-                            Context context = (Context) param.thisObject;
-                            int resourceId = (Integer) param.args[0];
-                            Drawable replacement = logoResourceReplacement(context.getResources(), resourceId);
-                            if (replacement != null) param.setResult(replacement);
-                        }
-                    });
+            Method setBackgroundResource = View.class.getMethod("setBackgroundResource", int.class);
+            HookRuntime.hook(setBackgroundResource, new HookRuntime.LegacyMethodHook() {
+                @Override public void before(HookRuntime.LegacyHookParam param) {
+                    if (!(param.thisObject instanceof View)) return;
+                    if (param.args.length == 0 || !(param.args[0] instanceof Integer)) return;
+                    View view = (View) param.thisObject;
+                    int resourceId = (Integer) param.args[0];
+                    Drawable replacement = logoResourceReplacement(view.getContext(), view.getResources(), resourceId);
+                    if (replacement != null) {
+                        view.setBackground(replacement);
+                        param.setResult(null);
+                    }
+                }
+            });
+
+            hookDrawableGetter(Resources.class.getMethod("getDrawable", int.class));
+            hookDrawableGetter(Resources.class.getMethod("getDrawable", int.class, Resources.Theme.class));
+            hookDrawableGetter(Resources.class.getMethod("getDrawableForDensity", int.class, int.class));
+            hookDrawableGetter(Resources.class.getMethod(
+                    "getDrawableForDensity", int.class, int.class, Resources.Theme.class));
+
+            Method contextGetDrawable = Context.class.getMethod("getDrawable", int.class);
+            HookRuntime.hook(contextGetDrawable, new HookRuntime.LegacyMethodHook() {
+                @Override public void before(HookRuntime.LegacyHookParam param) {
+                    if (!(param.thisObject instanceof Context)) return;
+                    if (param.args.length == 0 || !(param.args[0] instanceof Integer)) return;
+                    Context context = (Context) param.thisObject;
+                    int resourceId = (Integer) param.args[0];
+                    Drawable replacement = logoResourceReplacement(context, context.getResources(), resourceId);
+                    if (replacement != null) param.setResult(replacement);
+                }
+            });
+            HookRuntime.log("Installed Settings logo resource replacement hooks");
         } catch (Throwable error) {
-            XposedBridge.log("[HyperBackground] LOGO context.getDrawable hook failed: " + error);
+            HookRuntime.log("Could not hook Settings logo resource access", error);
         }
     }
 
-    private static void hookResourcesMethod(String method, XC_MethodHook hook, Object... paramTypes) {
+    private static void hookDrawableGetter(Method method) {
         try {
-            Object[] args = new Object[paramTypes.length + 1];
-            System.arraycopy(paramTypes, 0, args, 0, paramTypes.length);
-            args[paramTypes.length] = hook;
-            XposedHelpers.findAndHookMethod(Resources.class, method, args);
+            HookRuntime.hook(method, new HookRuntime.LegacyMethodHook() {
+                @Override public void before(HookRuntime.LegacyHookParam param) {
+                    if (!(param.thisObject instanceof Resources)) return;
+                    if (param.args.length == 0 || !(param.args[0] instanceof Integer)) return;
+                    Resources resources = (Resources) param.thisObject;
+                    int resourceId = (Integer) param.args[0];
+                    Drawable replacement = logoResourceReplacement(null, resources, resourceId);
+                    if (replacement != null) param.setResult(replacement);
+                }
+            });
         } catch (Throwable ignored) {
             // 该重载在当前系统不存在，忽略。
         }
     }
 
-    private static void hookBackgroundResource() {
-        try {
-            XposedHelpers.findAndHookMethod(
-                    View.class, "setBackgroundResource", int.class,
-                    new XC_MethodHook() {
-                        @Override protected void beforeHookedMethod(MethodHookParam param) {
-                            if (!(param.thisObject instanceof View)) return;
-                            View view = (View) param.thisObject;
-                            int resourceId = (Integer) param.args[0];
-                            Drawable replacement = logoResourceReplacement(view.getResources(), resourceId);
-                            if (replacement != null) {
-                                view.setBackground(replacement);
-                                param.setResult(null);
-                            }
-                        }
-                    });
-        } catch (Throwable error) {
-            XposedBridge.log("[HyperBackground] LOGO setBackgroundResource hook failed: " + error);
-        }
-    }
-
-    /** 资源 id 命中 LOGO 资源名时返回按缩放包装的自定义图，否则 null。 */
-    private static Drawable logoResourceReplacement(Resources resources, int resourceId) {
+    /**
+     * 资源 id 命中 LOGO 资源名时返回按缩放包装的自定义图，否则 null（对齐原版 logoResourceReplacementInternal）。
+     * context 允许为 null（Resources.getDrawable 场景），此时用资源包名做校验。
+     */
+    private static Drawable logoResourceReplacement(Context context, Resources resources, int resourceId) {
         if (Boolean.TRUE.equals(INTERNAL.get())) return null;
         if (resources == null || resourceId == 0) return null;
-        BackgroundContract.LogoConfig config = safeConfig();
-        if (config == null || !config.active()) return null;
+        if (context != null && !BackgroundContract.PACKAGE_SETTINGS.equals(context.getPackageName())) return null;
+        String packageName;
+        try {
+            packageName = resources.getResourcePackageName(resourceId);
+        } catch (Throwable ignored) {
+            packageName = null;
+        }
+        if (packageName != null && !BackgroundContract.PACKAGE_SETTINGS.equals(packageName)) return null;
         String name;
         try {
             name = resources.getResourceEntryName(resourceId).toLowerCase();
         } catch (Throwable ignored) {
             return null;
         }
-        if (!isLogoResource(name, config.mode)) return null;
-        Drawable base = resolveDrawable(resources, config);
-        if (base == null) return null;
+        BackgroundContract.LogoConfig config = safeConfig();
+        if (config == null || !config.active() || !isLogoResource(name, config.mode)) return null;
+        Drawable base = LogoDrawableLoader.load(resources, readRemoteBytes(config));
+        if (base == null) {
+            HookRuntime.log("LOGO resource replacement load failed name=" + name);
+            return null;
+        }
         return LogoDrawableLoader.withScale(base, config.scale);
     }
 
-    /** 依据模式判断资源名是否为需要替换的小米 OS LOGO（名称集与 HyperChanger 对齐）。 */
+    /** 依据模式判断资源名是否为需要替换的小米 OS LOGO（名称集与原版 isLogoResource 对齐）。 */
     private static boolean isLogoResource(String name, int mode) {
         if (name == null) return false;
         boolean xiaomi = name.equals("xiaomi_os_logo")
@@ -350,35 +373,22 @@ final class LogoOverride {
         }
     }
 
-    // ---- 共用：解析素材 + 配置 ----
+    // ---- 共用：读取素材 + 配置 ----
 
     private static int currentScale() {
         BackgroundContract.LogoConfig config = safeConfig();
         return config == null ? 100 : config.scale;
     }
 
-    private static Drawable resolveDrawable(Resources resources, BackgroundContract.LogoConfig config) {
-        String key = config.cacheKey();
-        Drawable cached = cachedDrawable;
-        if (cached != null && key.equals(cachedKey)) return cached;
-        byte[] bytes = readRemoteBytes(config);
-        if (bytes == null) return null;
-        Drawable base;
-        // 解析 VectorDrawable / 位图会读资源，标记为内部调用以跳过资源层 hook，防止递归。
-        INTERNAL.set(Boolean.TRUE);
-        try {
-            base = LogoDrawableLoader.load(resources, bytes);
-        } finally {
-            INTERNAL.remove();
-        }
-        if (base == null) return null;
-        cachedDrawable = base;
-        cachedKey = key;
-        return base;
+    private static int clampScale(int scalePercent) {
+        return Math.max(50, Math.min(200, scalePercent));
     }
 
     private static byte[] readRemoteBytes(BackgroundContract.LogoConfig config) {
+        if (config == null) return null;
         ParcelFileDescriptor descriptor = null;
+        // 读取跨进程文件不涉及资源 hook，但解析 VectorDrawable 会调 Resources.getDrawable，
+        // LogoDrawableLoader.load 内部已在解析期间由调用方通过 INTERNAL 保护；这里仅负责读字节。
         try {
             descriptor = config.openFile();
             if (descriptor == null) return null;
@@ -409,7 +419,7 @@ final class LogoOverride {
         }
     }
 
-    /** 记录 LOGO 原始状态并按模式清除/恢复父视图材质背景。对齐 HyperChanger 的 LogoSession。 */
+    /** 记录 LOGO 原始状态并按模式清除/恢复父视图材质背景（对齐原版 LogoSession）。 */
     private static final class LogoSession {
         final ImageView view;
         private final Drawable originalDrawable;

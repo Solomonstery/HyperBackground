@@ -2,6 +2,12 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.4.2-beta3
+
+- 修复：导入 SVG / XML / 图片后自定义 LOGO 不生效——重写 LOGO 替换机制，忠实照搬 HyperChanger 原版实现。
+- 原因：此前 LOGO hook 用传统 `XposedHelpers.afterHookedMethod`（观察式回调），无法在 `Resources.getDrawable` 等资源方法返回前替换返回值；OS4「我的设备」LOGO 多以资源 id 加载，故替换从未真正命中。
+- 实现：改用项目既有的 libxposed `hook().intercept{}` 封装（`HookRuntime.hook`），与原版一致地拦截 `ImageView.setImageDrawable/setImageResource`、`Resources.getDrawable*`、`Context.getDrawable`、`View.setBackgroundResource`，命中 LOGO 资源（`xiaomi_os_logo*` / `provision_os_logo*`）时直接返回自定义图；并对齐原版 `LogoSession` 的材质清除/恢复、`findLogoView` 查找与生命周期主动应用。
+
 ## 1.4.2-beta2
 
 - 修复：1.4.2-beta1 编译失败——`MainActivity` 引用了 `CustomLogoPage` 却漏了 import，补上 `com.ciallo.hyperbackground.ui.pages.CustomLogoPage` 导入。

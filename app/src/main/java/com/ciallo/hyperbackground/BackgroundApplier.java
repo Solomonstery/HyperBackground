@@ -323,7 +323,6 @@ final class BackgroundApplier {
                         + " root=" + (originalRoot == null ? "none" : originalRoot.getClass().getName())
                         + " topBar=" + (transparentTopBar ? "transparent" : "content-only")
                         + " activity=" + activity.getClass().getName());
-                dumpSurfaceColors(activity, host);
             }
         } catch (Throwable error) { log("applyLayer/" + slot, error); }
     }
@@ -397,71 +396,6 @@ final class BackgroundApplier {
         try { return activity.getResources().getResourceEntryName(view.getId()).toLowerCase(); }
         catch (Throwable ignored) { return ""; }
     }
-
-    // === TEMP DIAGNOSTIC: dump card/surface background colors to locate black vs grey blocks. ===
-    // Remove after tuning the black/grey threshold. Only runs for external settings pages.
-    private static void dumpSurfaceColors(final Activity activity, final ViewGroup host) {
-        if (activity == null || host == null) return;
-        String pkg = activity.getPackageName();
-        boolean external = BackgroundContract.PACKAGE_PHONE.equals(pkg)
-                || BackgroundContract.PACKAGE_ACCOUNT.equals(pkg)
-                || BackgroundContract.PACKAGE_THEME_MANAGER.equals(pkg)
-                || BackgroundContract.PACKAGE_SECURITY_CENTER.equals(pkg)
-                || BackgroundContract.PACKAGE_POWER_KEEPER.equals(pkg)
-                || BackgroundContract.PACKAGE_MI_SETTINGS.equals(pkg);
-        if (!external) return;
-        host.postDelayed(() -> {
-            try {
-                XposedBridge.log("[HyperBackground][dump] === " + activity.getClass().getName() + " ===");
-                dumpSurfaceColorsRecursive(activity, host, 0);
-            } catch (Throwable error) { log("dumpSurfaceColors", error); }
-        }, 600);
-    }
-
-    private static void dumpSurfaceColorsRecursive(Activity activity, View view, int depth) {
-        if (view == null || depth > 12) return;
-        int w = view.getWidth();
-        int h = view.getHeight();
-        Drawable bg = view.getBackground();
-        String idName = resourceEntryName(activity, view);
-        // Only report views that carry a background AND are reasonably large, or whose id hints a card.
-        boolean cardHint = idName.contains("card") || idName.contains("banner") || idName.contains("container");
-        if (bg != null && (cardHint || (w > 200 && h > 120))) {
-            int color = extractDrawableColor(bg, w, h);
-            String argb = color == 0 ? "unknown" : String.format("#%08X", color);
-            XposedBridge.log("[HyperBackground][dump] d=" + depth
-                    + " id=" + (idName.isEmpty() ? "none" : idName)
-                    + " cls=" + view.getClass().getSimpleName()
-                    + " size=" + w + "x" + h
-                    + " bgClass=" + bg.getClass().getSimpleName()
-                    + " color=" + argb);
-        }
-        if (view instanceof ViewGroup) {
-            ViewGroup g = (ViewGroup) view;
-            for (int i = 0; i < g.getChildCount(); i++) dumpSurfaceColorsRecursive(activity, g.getChildAt(i), depth + 1);
-        }
-    }
-
-    // Best-effort extraction of a representative color from an arbitrary drawable.
-    private static int extractDrawableColor(Drawable drawable, int w, int h) {
-        try {
-            if (drawable instanceof android.graphics.drawable.ColorDrawable) {
-                return ((android.graphics.drawable.ColorDrawable) drawable).getColor();
-            }
-            int sw = Math.max(1, Math.min(w, 4));
-            int sh = Math.max(1, Math.min(h, 4));
-            android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(sw, sh, android.graphics.Bitmap.Config.ARGB_8888);
-            android.graphics.Canvas canvas = new android.graphics.Canvas(bmp);
-            drawable.setBounds(0, 0, sw, sh);
-            drawable.draw(canvas);
-            int color = bmp.getPixel(sw / 2, sh / 2);
-            bmp.recycle();
-            return color;
-        } catch (Throwable ignored) {
-            return 0;
-        }
-    }
-    // === END TEMP DIAGNOSTIC ===
 
     private static void diagnostic(Activity activity, String message) {
         try {
@@ -752,6 +686,19 @@ final class BackgroundApplier {
                 return true;
             }
 
+            // Some external-settings pages (security center 应用设置/隐私与安全) place opaque
+            // neutral ColorDrawable panels around their cards (e.g. top_container/top_view,
+            // the stat-card ConstraintLayout). In dark mode they read as black blocks and in
+            // light mode as white blocks over the wallpaper. Clear only fully-opaque neutral
+            // solid colors (black/white/grey); semi-transparent card surfaces (e.g. #24FFFFFF
+            // GradientDrawable/CardDrawable) and coloured controls are intentionally kept.
+            if (externalSettingsPage
+                    && width >= (int) (rootWidth * 0.5f)
+                    && height >= (int) (rootHeight * 0.05f)
+                    && isOpaqueNeutralColorDrawable(bg)) {
+                return true;
+            }
+
             if (!large) return false;
 
             String cls = view.getClass().getName().toLowerCase();
@@ -784,6 +731,21 @@ final class BackgroundApplier {
             if (value == null || value.isEmpty()) return false;
             for (String needle : needles) if (value.contains(needle)) return true;
             return false;
+        }
+
+        // True only for a fully-opaque neutral (black/white/grey) solid-color background.
+        // Restricted to ColorDrawable so shared GradientDrawable/CardDrawable card surfaces
+        // (e.g. semi-transparent #24FFFFFF) are never touched. Semi-transparent or coloured
+        // panels return false and keep their native background.
+        private boolean isOpaqueNeutralColorDrawable(Drawable bg) {
+            if (!(bg instanceof android.graphics.drawable.ColorDrawable)) return false;
+            int color = ((android.graphics.drawable.ColorDrawable) bg).getColor();
+            if (Color.alpha(color) != 255) return false;
+            int r = Color.red(color), g = Color.green(color), b = Color.blue(color);
+            int max = Math.max(r, Math.max(g, b));
+            int min = Math.min(r, Math.min(g, b));
+            // Neutral means the three channels are close together (no dominant hue).
+            return (max - min) <= 24;
         }
     }
     private static final class ActionBarSurface {

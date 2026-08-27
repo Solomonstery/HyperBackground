@@ -53,6 +53,7 @@ import com.ciallo.hyperbackground.ConfigManager
 import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.ui.pages.BackgroundDetailPage
 import com.ciallo.hyperbackground.ui.pages.ChangelogPage
+import com.ciallo.hyperbackground.ui.pages.CustomLogoPage
 import com.ciallo.hyperbackground.ui.pages.HomePage
 import com.ciallo.hyperbackground.ui.pages.SettingsPage
 import com.ciallo.hyperbackground.ui.pages.RestartScopesDialog

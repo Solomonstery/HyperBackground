@@ -2,6 +2,10 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.4.2-beta2
+
+- 修复：1.4.2-beta1 编译失败——`MainActivity` 引用了 `CustomLogoPage` 却漏了 import，补上 `com.ciallo.hyperbackground.ui.pages.CustomLogoPage` 导入。
+
 ## 1.4.2-beta1
 
 - 新增：自定义 LOGO 功能，主页新增独立的第四个功能卡片「自定义 LOGO」，进入二级页可导入 SVG / XML(VectorDrawable) / 图片替换设置「我的设备」页面的 LOGO。

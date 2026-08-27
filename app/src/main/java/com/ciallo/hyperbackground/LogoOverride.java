@@ -70,11 +70,12 @@ final class LogoOverride {
             }
         };
         try {
-            Class<?> device = XposedHelpers.findClass(MY_DEVICE_SETTINGS, classLoader);
             XposedHelpers.findAndHookMethod(
-                    device, "onViewCreated", View.class, android.os.Bundle.class, fragmentHook);
+                    MY_DEVICE_SETTINGS, classLoader,
+                    "onViewCreated", View.class, android.os.Bundle.class, fragmentHook);
             try {
-                XposedHelpers.findAndHookMethod(device, "onResume", fragmentHook);
+                XposedHelpers.findAndHookMethod(
+                        MY_DEVICE_SETTINGS, classLoader, "onResume", fragmentHook);
             } catch (Throwable ignored) {
                 // onResume 不存在时忽略，onViewCreated 已足够。
             }

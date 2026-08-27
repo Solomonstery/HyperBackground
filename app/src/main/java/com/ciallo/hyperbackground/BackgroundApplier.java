@@ -734,17 +734,38 @@ final class BackgroundApplier {
         }
 
         // True only for a fully-opaque neutral (black/white/grey) solid-color background.
-        // Restricted to ColorDrawable so shared GradientDrawable/CardDrawable card surfaces
-        // (e.g. semi-transparent #24FFFFFF) are never touched. Semi-transparent or coloured
-        // panels return false and keep their native background.
+        // Handles ColorDrawable directly, and LayerDrawable that wraps such a solid layer
+        // (some pages, e.g. 隐私与安全 stat-card ConstraintLayout, use a LayerDrawable whose
+        // base layer is opaque #FF000000). Reads colors without mutating the drawable
+        // (no setBounds/draw), so shared card surfaces are never damaged. Semi-transparent
+        // (#24FFFFFF GradientDrawable/CardDrawable) or coloured backgrounds return false.
         private boolean isOpaqueNeutralColorDrawable(Drawable bg) {
-            if (!(bg instanceof android.graphics.drawable.ColorDrawable)) return false;
-            int color = ((android.graphics.drawable.ColorDrawable) bg).getColor();
+            Integer color = solidNeutralColor(bg, 0);
+            return color != null;
+        }
+
+        private Integer solidNeutralColor(Drawable bg, int depth) {
+            if (bg == null || depth > 3) return null;
+            if (bg instanceof android.graphics.drawable.ColorDrawable) {
+                int color = ((android.graphics.drawable.ColorDrawable) bg).getColor();
+                return isOpaqueNeutral(color) ? color : null;
+            }
+            if (bg instanceof android.graphics.drawable.LayerDrawable) {
+                android.graphics.drawable.LayerDrawable layers = (android.graphics.drawable.LayerDrawable) bg;
+                for (int i = 0; i < layers.getNumberOfLayers(); i++) {
+                    Integer c = solidNeutralColor(layers.getDrawable(i), depth + 1);
+                    if (c != null) return c;
+                }
+            }
+            return null;
+        }
+
+        // Fully opaque and neutral (channels close together, no dominant hue): black/white/grey.
+        private boolean isOpaqueNeutral(int color) {
             if (Color.alpha(color) != 255) return false;
             int r = Color.red(color), g = Color.green(color), b = Color.blue(color);
             int max = Math.max(r, Math.max(g, b));
             int min = Math.min(r, Math.min(g, b));
-            // Neutral means the three channels are close together (no dominant hue).
             return (max - min) <= 24;
         }
     }

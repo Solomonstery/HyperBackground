@@ -35,11 +35,9 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
     private int videoWidth;
     private int videoHeight;
     private boolean hostResumed = true;
-    // 顶部圆角半径（px，>0 才裁切）。用自绘 clipPath 而非 setClipToOutline，后者对内部 MATRIX 绘制的
-    // ImageView 内容裁切不稳定，直接在 dispatchDraw 裁路径可确保对任意子内容一定生效。
+    // 顶部圆角半径（px，>0 才裁切）。用 setClipToOutline（View 级裁切）而非离屏 canvas clipPath，
+    // 后者在 View 带 alpha<1 时不可靠。不透明度已改为作用在内容视图上，故 media 自身 alpha 恒为 1。
     private float topCornerRadius;
-    private final android.graphics.Path clipPath = new android.graphics.Path();
-    private final android.graphics.RectF clipRect = new android.graphics.RectF();
 
     BackgroundMediaView(Context context, BackgroundContract.Source source) throws IOException {
         super(context);
@@ -47,17 +45,23 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         setClickable(false);
         setFocusable(false);
-        setAlpha(source.opacity / 100f);
-        if (Build.VERSION.SDK_INT >= 31 && source.blurEnabled && source.blurRadius > 0) {
-            float radius = source.blurRadius;
-            setRenderEffect(RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP));
-        } else if (Build.VERSION.SDK_INT >= 31) {
-            setRenderEffect(null);
-        }
         if (source.isVideo()) {
             createVideoView();
         } else {
             createImageView();
+        }
+        // 不透明度 / 模糊作用到「内容视图」而非 media 自身：media 保持 alpha=1、不创建离屏合成层，
+        // 圆角裁切（setClipToOutline）才能可靠作用于其内容——否则 View 带 alpha<1 会走离屏层，
+        // 非矩形裁切在合成时易失效（此前圆角一个都不生效的根因）。
+        View content = imageView != null ? imageView : textureView;
+        if (content != null) {
+            content.setAlpha(source.opacity / 100f);
+            if (Build.VERSION.SDK_INT >= 31 && source.blurEnabled && source.blurRadius > 0) {
+                float radius = source.blurRadius;
+                content.setRenderEffect(RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP));
+            } else if (Build.VERSION.SDK_INT >= 31) {
+                content.setRenderEffect(null);
+            }
         }
     }
 
@@ -106,34 +110,41 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         removeAllViews();
     }
 
-    // 设置圆角半径（px）：四角同半径圆角裁切。
+    // 设置内容不透明度（0-1）：作用在内容视图（imageView/textureView）而非 media 自身，避免 media 走
+    // 离屏合成层导致圆角裁切失效。用于拨号盘键盘面板不透明度滑块（与图自身 opacity 叠乘后传入）。
+    void setContentAlpha(float alpha) {
+        View content = imageView != null ? imageView : textureView;
+        if (content != null) content.setAlpha(Math.max(0f, Math.min(1f, alpha)));
+    }
+
+    // 设置圆角半径（px）：四角同半径圆角。用 setClipToOutline（View 级裁切，作用于离屏合成层的输出，
+    // 与本视图的 alpha / renderEffect 兼容），比在 dispatchDraw 内 clipPath 更可靠——后者在 View 带
+    // alpha<1 / renderEffect 时走离屏层，canvas 上的非矩形 clip 可能不生效。关键是尺寸就绪后重算轮廓。
     void setTopCornerRadius(float radiusPx) {
         this.topCornerRadius = Math.max(0f, radiusPx);
-        setWillNotDraw(false);
-        invalidate();
+        if (topCornerRadius <= 0f) {
+            setClipToOutline(false);
+            setOutlineProvider(null);
+            return;
+        }
+        setOutlineProvider(new android.view.ViewOutlineProvider() {
+            @Override public void getOutline(View view, android.graphics.Outline outline) {
+                int w = view.getWidth();
+                int h = view.getHeight();
+                if (w <= 0 || h <= 0) return;
+                float r = Math.min(topCornerRadius, Math.min(w, h) / 2f);
+                outline.setRoundRect(0, 0, w, h, r);
+            }
+        });
+        setClipToOutline(true);
+        invalidateOutline();
     }
 
     @Override
-    protected void dispatchDraw(android.graphics.Canvas canvas) {
-        if (topCornerRadius <= 0f) {
-            super.dispatchDraw(canvas);
-            return;
-        }
-        int w = getWidth();
-        int h = getHeight();
-        if (w <= 0 || h <= 0) {
-            super.dispatchDraw(canvas);
-            return;
-        }
-        // 四角同半径圆角。半径不超过宽/高一半，避免面板从底部往上弹出、动画中途高度较小时圆角画不全。
-        float r = Math.min(topCornerRadius, Math.min(w, h) / 2f);
-        clipPath.reset();
-        clipRect.set(0f, 0f, w, h);
-        clipPath.addRoundRect(clipRect, r, r, android.graphics.Path.Direction.CW);
-        int save = canvas.save();
-        canvas.clipPath(clipPath);
-        super.dispatchDraw(canvas);
-        canvas.restoreToCount(save);
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        // 首帧尺寸为 0 时 getOutline 直接 return 不设轮廓；尺寸就绪 / 变化后必须重算，否则圆角不出现。
+        if (topCornerRadius > 0f) invalidateOutline();
     }
 
     private void createImageView() throws IOException {

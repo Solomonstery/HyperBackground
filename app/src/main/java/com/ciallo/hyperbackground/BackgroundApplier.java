@@ -304,10 +304,11 @@ final class BackgroundApplier {
                 // 自定义图塞进 dialer_background_view 内铺满（置底、不挡数字键）；原生 9-patch 底随
                 // 背景板 alpha 归零而隐去；面板底 dialer_background_pad 换透明占位让图透出。
                 BackgroundMediaView media = new BackgroundMediaView(ctx, source);
-                // 拨号盘键盘面板不透明度滑块也作用于自定义图：与该图自身 opacity 叠乘，滑块不再失效。
-                media.setAlpha((enabled ? padAlpha : 1f) * (source.opacity / 100f));
-                // 给自定义背景图裁出四角圆角（30dp）：用 BackgroundMediaView 内部 dispatchDraw 自绘裁切，
-                // 逐帧按当前尺寸构造路径，不受面板从底部弹出动画的影响。
+                // 拨号盘键盘面板不透明度滑块也作用于自定义图：与该图自身 opacity 叠乘后作用到「内容视图」，
+                // media 自身 alpha 恒为 1、不走离屏合成层，圆角裁切才能可靠生效。
+                media.setContentAlpha((enabled ? padAlpha : 1f) * (source.opacity / 100f));
+                // 给自定义背景图裁出四角圆角（30dp）：BackgroundMediaView 用 setClipToOutline 裁切，
+                // 不透明度已移到内容视图故 media 自身 alpha=1、不走离屏层，圆角可靠生效。
                 float density = ctx.getResources().getDisplayMetrics().density;
                 media.setTopCornerRadius(30f * density);
                 bgHost.addView(media, 0, new FrameLayout.LayoutParams(

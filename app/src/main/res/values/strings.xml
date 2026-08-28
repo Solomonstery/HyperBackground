@@ -120,19 +120,6 @@
     <string name="clear_records">Clear records</string>
     <string name="not_read">Not read</string>
     <string name="read_at">Read · %1$s</string>
-    <string name="custom_logo_section">Custom LOGO</string>
-    <string name="custom_logo">Custom LOGO</string>
-    <string name="custom_logo_summary">Replace the LOGO on the Settings "My device" page</string>
-    <string name="logo_enable">Enable custom LOGO</string>
-    <string name="logo_enable_summary">Import an SVG, XML or image to replace the device LOGO</string>
-    <string name="logo_mode">Mode</string>
-    <string name="logo_mode_system">System default</string>
-    <string name="logo_mode_no_advanced_material">Drop advanced material</string>
-    <string name="logo_mode_keep_advanced_material">Keep advanced material (import SVG/XML)</string>
-    <string name="logo_import">Import LOGO</string>
-    <string name="logo_not_imported">Not imported</string>
-    <string name="logo_scale">Scale</string>
-    <string name="logo_hint">Supports SVG, XML (VectorDrawable) and images. Reopen the "My device" page to apply.</string>
     <string-array name="xposed_scope">
         <item>com.android.settings</item><item>com.milink.service</item><item>com.android.phone</item>
         <item>com.xiaomi.account</item><item>com.android.thememanager</item><item>com.miui.home</item>

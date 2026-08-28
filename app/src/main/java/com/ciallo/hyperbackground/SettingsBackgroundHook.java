@@ -29,7 +29,6 @@ public final class SettingsBackgroundHook {
         if (settings) {
             SettingsSearchMaskOverride.install(classLoader);
             SettingsTopBarBlurHook.install(classLoader);
-            LogoOverride.install(classLoader);
             hookHomeActivity(classLoader);
             hookHomeFragment(classLoader);
             hookDeviceFragment(classLoader);

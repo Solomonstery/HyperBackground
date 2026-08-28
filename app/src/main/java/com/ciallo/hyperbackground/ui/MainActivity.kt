@@ -53,7 +53,6 @@ import com.ciallo.hyperbackground.ConfigManager
 import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.ui.pages.BackgroundDetailPage
 import com.ciallo.hyperbackground.ui.pages.ChangelogPage
-import com.ciallo.hyperbackground.ui.pages.CustomLogoPage
 import com.ciallo.hyperbackground.ui.pages.HomePage
 import com.ciallo.hyperbackground.ui.pages.SettingsPage
 import com.ciallo.hyperbackground.ui.pages.RestartScopesDialog
@@ -137,20 +136,6 @@ class MainActivity : ComponentActivity() {
         picker.launch(arrayOf("image/*"))
     }
 
-    fun chooseLogo(onSelected: (Uri, String) -> Unit) {
-        pendingMediaResult = { uri, mime -> onSelected(uri, mime) }
-        // SVG/XML 的 MIME 在不同文件管理器下不统一，一并放开常见类型与任意类型兜底。
-        picker.launch(
-            arrayOf(
-                "image/svg+xml",
-                "application/xml",
-                "text/xml",
-                "image/*",
-                "application/octet-stream",
-            ),
-        )
-    }
-
     fun saveBackground(slot: String, uri: Uri, mime: String) {
         runCatching {
             config.saveBackground(slot, uri, mime)
@@ -178,23 +163,6 @@ class MainActivity : ComponentActivity() {
 
     fun clearUiBackground() {
         if (config.clearUiBackground()) revision++
-    }
-
-    fun saveLogo(uri: Uri, mime: String) {
-        runCatching {
-            config.saveLogo(uri, mime)
-            revision++
-            toast(R.string.saved)
-        }.onFailure { toast(getString(R.string.save_failed, it.message ?: "Unknown error")) }
-    }
-
-    fun clearLogo() {
-        if (config.clearLogo()) {
-            revision++
-            toast(R.string.restore_default)
-        } else {
-            toast(getString(R.string.save_failed, "Cannot delete logo"))
-        }
     }
 
     fun updateCardOpacity(value: Float) {
@@ -340,15 +308,10 @@ class MainActivity : ComponentActivity() {
                     onAccent = onAccent,
                     onOpenBackground = { detailSlot = it },
                     onOpenChangelog = { detailSlot = ROUTE_CHANGELOG },
-                    onOpenLogo = { detailSlot = ROUTE_LOGO },
                 )
                 ROUTE_CHANGELOG -> Box(Modifier.fillMaxSize()) {
                     ModuleBackground(revision)
                     ChangelogScreen(onBack = { detailSlot = null })
-                }
-                ROUTE_LOGO -> Box(Modifier.fillMaxSize()) {
-                    ModuleBackground(revision)
-                    LogoScreen(onBack = { detailSlot = null })
                 }
                 else -> Box(Modifier.fillMaxSize()) {
                     ModuleBackground(revision)
@@ -370,7 +333,6 @@ class MainActivity : ComponentActivity() {
         onAccent: (Int) -> Unit,
         onOpenBackground: (String) -> Unit,
         onOpenChangelog: () -> Unit,
-        onOpenLogo: () -> Unit,
     ) {
         val pagerState = rememberPagerState(pageCount = { 2 })
         val scope = rememberCoroutineScope()
@@ -465,7 +427,6 @@ class MainActivity : ComponentActivity() {
                                 padding = padding,
                                 revision = revision,
                                 onOpenBackground = onOpenBackground,
-                                onOpenLogo = onOpenLogo,
                             )
                         }
                         else -> MainPageScaffold(
@@ -614,41 +575,6 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun LogoScreen(onBack: () -> Unit) {
-        val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-        val hasUiBackground = remember(revision) { config.uiBackgroundFile.isFile }
-        val topBarColor = if (hasUiBackground) {
-            Color.Transparent
-        } else {
-            MiuixTheme.colorScheme.surface.copy(alpha = cardOpacity)
-        }
-        val title = getString(R.string.custom_logo)
-        Scaffold(
-            containerColor = Color.Transparent,
-            topBar = {
-                TopAppBar(
-                    color = topBarColor,
-                    title = title,
-                    largeTitle = title,
-                    scrollBehavior = scrollBehavior,
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(MiuixIcons.Back, contentDescription = getString(R.string.back))
-                        }
-                    },
-                )
-            },
-        ) { padding ->
-            CustomLogoPage(
-                activity = this@MainActivity,
-                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-                padding = padding,
-                revision = revision,
-            )
-        }
-    }
-
-    @Composable
     private fun ModuleBackground(revision: Int) {
         val file = remember(revision) { config.uiBackgroundFile }
         if (!file.isFile) return
@@ -680,6 +606,5 @@ class MainActivity : ComponentActivity() {
         // 二级页导航哨兵：复用 detailSlot 的 AnimatedContent/返回动画承载更新日志页，
         // 取一个不会与背景 slot（home/device/global）冲突的值。
         const val ROUTE_CHANGELOG = "__changelog__"
-        const val ROUTE_LOGO = "__logo__"
     }
 }

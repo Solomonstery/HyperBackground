@@ -2,23 +2,6 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
-## 1.4.2-beta3
-
-- 修复：导入 SVG / XML / 图片后自定义 LOGO 不生效——重写 LOGO 替换机制，忠实照搬 HyperChanger 原版实现。
-- 原因：此前 LOGO hook 用传统 `XposedHelpers.afterHookedMethod`（观察式回调），无法在 `Resources.getDrawable` 等资源方法返回前替换返回值；OS4「我的设备」LOGO 多以资源 id 加载，故替换从未真正命中。
-- 实现：改用项目既有的 libxposed `hook().intercept{}` 封装（`HookRuntime.hook`），与原版一致地拦截 `ImageView.setImageDrawable/setImageResource`、`Resources.getDrawable*`、`Context.getDrawable`、`View.setBackgroundResource`，命中 LOGO 资源（`xiaomi_os_logo*` / `provision_os_logo*`）时直接返回自定义图；并对齐原版 `LogoSession` 的材质清除/恢复、`findLogoView` 查找与生命周期主动应用。
-
-## 1.4.2-beta2
-
-- 修复：1.4.2-beta1 编译失败——`MainActivity` 引用了 `CustomLogoPage` 却漏了 import，补上 `com.ciallo.hyperbackground.ui.pages.CustomLogoPage` 导入。
-
-## 1.4.2-beta1
-
-- 新增：自定义 LOGO 功能，主页新增独立的第四个功能卡片「自定义 LOGO」，进入二级页可导入 SVG / XML(VectorDrawable) / 图片替换设置「我的设备」页面的 LOGO。
-- 功能：支持启用开关、模式选择（系统默认 / 不保留高级材质 / 保留高级材质）、缩放（50%–200%）与一键清除恢复默认。
-- 实现：SVG 走正则抓取 `<path>` 后经 `android.util.PathParser` 反射生成 `Path` 绘制，VectorDrawable 走系统 `Drawable.createFromXml`，其它按位图解码；配置与素材通过既有跨进程通道同步给 hook 侧，`MiuiMyDeviceSettings` 页面主动查找 LOGO 控件并替换。
-- 说明：本版仅移植 LOGO 替换，暂不含设备信息文字覆盖与骁龙图标开关。
-
 ## 1.4.1
 
 本版本在 1.4.0 重构基础上修复深浅色残留、二级页进入闪烁与安全中心系页面底块残留，并补齐更新日志与更新提示。

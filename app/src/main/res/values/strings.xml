@@ -16,6 +16,10 @@
     <string name="background_global_summary">Background and colors for secondary system pages</string>
     <string name="background_contacts">Contacts &amp; Dialer</string>
     <string name="background_contacts_summary">Background for the Contacts and Dialer main screen</string>
+    <string name="contacts_surface_title">Dialpad &amp; list</string>
+    <string name="contacts_surface_adapt">Adapt surfaces</string>
+    <string name="contacts_surface_adapt_summary">Clear the list\'s solid background and make the dialpad panel translucent</string>
+    <string name="contacts_dialpad_opacity">Dialpad panel opacity</string>
     <string name="back">Back</string>
     <string name="choose_image">Choose image</string>
     <string name="choose_media">Choose media</string>

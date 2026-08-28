@@ -40,6 +40,10 @@ public final class BackgroundContract {
     static final String DEVICE_LOGO_TEXT = "device_logo_text";
     static final String DEVICE_LOGO_COLOR = "device_logo_color";
     public static final String SETTINGS_THEME_MODE = "settings_theme_mode";
+    // 通讯录与拨号「拨号盘 / 列表适配」：开关开启后清除列表纯黑底、并把拨号盘键盘面板设为半透明。
+    public static final String CONTACTS_SURFACE_ADAPT = "contacts_surface_adapt";
+    // 拨号盘键盘面板不透明度（0-100，默认 60），仅在适配开关开启时生效。
+    public static final String CONTACTS_DIALPAD_OPACITY = "contacts_dialpad_opacity";
 
     public static final String UI_MONET = "ui_monet";
     public static final String UI_THEME_COLOR_ENABLED = "ui_theme_color_enabled";

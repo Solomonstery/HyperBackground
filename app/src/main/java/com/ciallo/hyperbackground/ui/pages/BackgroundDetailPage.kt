@@ -66,6 +66,10 @@ fun BackgroundDetailPage(
             item { SectionTitle(stringResource(R.string.blur)) }
             item { TopBlurCard(activity) }
         }
+        if (slot == BackgroundContract.CONTACTS) {
+            item { SectionTitle(stringResource(R.string.contacts_surface_title)) }
+            item { ContactsSurfaceCard(activity) }
+        }
         if (slot == BackgroundContract.GLOBAL) {
             item { SectionTitle(stringResource(R.string.settings_appearance)) }
             item { SettingsAppearanceCard(activity) }
@@ -147,6 +151,54 @@ private fun TopBlurCard(activity: MainActivity) {
                         onValueChangeFinished = {
                             config.edit()
                                 .putInt(BackgroundContract.UI_TOP_BLUR_STRENGTH, it.toInt())
+                                .apply()
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContactsSurfaceCard(activity: MainActivity) {
+    val config = activity.config
+    var enabled by remember {
+        mutableStateOf(config.getBoolean(BackgroundContract.CONTACTS_SURFACE_ADAPT, true))
+    }
+    var opacity by remember {
+        mutableFloatStateOf(
+            config.getInt(BackgroundContract.CONTACTS_DIALPAD_OPACITY, 60)
+                .coerceIn(0, 100)
+                .toFloat(),
+        )
+    }
+    UiCard(activity, Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            SwitchPreference(
+                title = stringResource(R.string.contacts_surface_adapt),
+                summary = stringResource(R.string.contacts_surface_adapt_summary),
+                checked = enabled,
+                onCheckedChange = {
+                    enabled = it
+                    config.edit().putBoolean(BackgroundContract.CONTACTS_SURFACE_ADAPT, it).apply()
+                },
+            )
+            AnimatedVisibility(
+                visible = enabled,
+                enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(220)),
+                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(180)),
+            ) {
+                Column(Modifier.padding(bottom = 8.dp)) {
+                    SliderPreference(
+                        label = stringResource(R.string.contacts_dialpad_opacity),
+                        value = opacity,
+                        range = 0f..100f,
+                        suffix = "%",
+                        onValueChange = { opacity = it },
+                        onValueChangeFinished = {
+                            config.edit()
+                                .putInt(BackgroundContract.CONTACTS_DIALPAD_OPACITY, it.toInt())
                                 .apply()
                         },
                     )

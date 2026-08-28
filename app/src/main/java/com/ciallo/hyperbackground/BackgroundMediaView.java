@@ -138,39 +138,38 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         imageView.post(this::updateImageCropMatrix);
     }
 
-    // 屏幕坐标系定位：图按「屏幕宽度」等比缩放并钉在整块屏幕上（横向恒铺满、居中），拨号盘只是浮在
-    // 图上的一个窗口——透过它看到的就是全屏图对应位置的那一块。基准用屏幕尺寸（DisplayMetrics，同步且
-    // 恒定），不依赖 imageView 布局时机，根治此前依赖 getWidth() 导致的“缩到一角 / 闪一下才对位”。
-    // zoom：以屏幕宽为基准放大/缩小。focusY：纵向取景偏移（0=顶部，100=底部），横向不再需要（恒居中）。
+    // 定位：横向以「屏幕宽度」等比铺满并相对整屏居中（恒居中，不受视口位置影响）；纵向以「拨号盘视口
+    // 自身」为取景范围——focusY=0 图顶对齐视口顶（看到图最上段）、100 图底对齐视口底（看到图最下段）、
+    // 50 居中，可拖过整张图。此前纵向用整屏高作范围、可移动量被视口外区域吃掉，导致 100% 也扫不到图底。
+    // zoom：以屏幕宽为基准放大/缩小。
     private void updateImageCropMatrix() {
         if (imageView == null || imageDrawable == null) return;
         if (imageView.getScaleType() != ImageView.ScaleType.MATRIX) return;
         int dw = imageDrawable.getIntrinsicWidth();
         int dh = imageDrawable.getIntrinsicHeight();
         if (dw <= 0 || dh <= 0) return;
+        int vh = imageView.getHeight();
+        if (vh <= 0) return;   // 视口高度未就绪，等布局监听 / post 回调再算
         android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
         int screenW = dm.widthPixels;
-        int screenH = dm.heightPixels;
-        if (screenW <= 0 || screenH <= 0) return;
+        if (screenW <= 0) return;
 
         // 以屏幕宽度铺满为基准（图宽 = 屏幕宽），再乘缩放大小 zoom。100%=正好等于屏幕宽。
         float zoom = Math.max(1, Math.min(200, source.zoom)) / 100f;
         float scale = (float) screenW / dw * zoom;
         float scaledW = dw * scale;   // 缩放后图宽（zoom=100 时 = screenW）
-        float scaledH = dh * scale;   // 缩放后图高（竖图通常 > screenH）
+        float scaledH = dh * scale;   // 缩放后图高（竖图通常 > 视口高）
 
-        // media（本视图）在屏幕上的绝对位置：把图钉在屏幕坐标系，需减去 media 的屏幕偏移，
-        // 使图的“屏幕坐标原点”对齐到屏幕左上，而非 media 左上。
+        // 横向：图相对整屏居中（恒居中铺满）。视口在屏幕上的 x 偏移需扣除，使图对齐屏幕中线而非视口中线。
         int[] loc = new int[2];
         imageView.getLocationOnScreen(loc);
         int mediaX = loc[0];
-        int mediaY = loc[1];
-
-        // 横向：图相对屏幕居中（(screenW - scaledW)/2），再换算到 media 局部坐标（减 mediaX）。
         float dx = (screenW - scaledW) / 2f - mediaX;
-        // 纵向：focusY 决定图相对屏幕的纵向摆放（0=顶部对齐、100=底部对齐、50=居中），再换算到 media 局部。
+
+        // 纵向：以拨号盘视口自身为取景范围，focusY 在 [0, vh - scaledH] 内插值（scaledH>vh 时为负、向上滚动），
+        // 0=图顶对齐视口顶、100=图底对齐视口底，可覆盖整张图。
         float fy = Math.max(0, Math.min(100, source.focusY)) / 100f;
-        float dy = (screenH - scaledH) * fy - mediaY;
+        float dy = (vh - scaledH) * fy;
 
         Matrix matrix = new Matrix();
         matrix.setScale(scale, scale);

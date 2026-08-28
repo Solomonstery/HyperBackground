@@ -353,6 +353,12 @@ final class BackgroundApplier {
                 }
             });
             media.setClipToOutline(true);
+            // 首帧 media 尺寸为 0，getOutline 会直接 return 而不设轮廓；待布局拿到非零尺寸后需主动
+            // invalidateOutline 重算，否则圆角始终不出现（表现为直角）。尺寸变化时也重算以自适应。
+            media.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+                if ((r - l) != (or - ol) || (b - t) != (ob - ot)) v.invalidateOutline();
+            });
+            media.post(media::invalidateOutline);
         } catch (Throwable ignored) {}
     }
 

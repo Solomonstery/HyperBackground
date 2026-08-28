@@ -58,6 +58,10 @@ public final class BackgroundContract {
     public static final int CONTACTS_DIALPAD_SCALE_STRETCH = 2;
     // 贴满裁切模式下的纵向取景焦点（0=顶部，50=居中，100=底部），决定裁掉上/下哪部分。
     public static final String CONTACTS_DIALPAD_FOCUS_Y = "contacts_dialpad_focus_y";
+    // 拨号盘自定义背景额外放大倍数（100=原始基准，>100 在缩放模式基础上再放大后按焦点取景）。
+    public static final String CONTACTS_DIALPAD_ZOOM = "contacts_dialpad_zoom";
+    public static final int CONTACTS_DIALPAD_ZOOM_MIN = 100;
+    public static final int CONTACTS_DIALPAD_ZOOM_MAX = 300;
     // 通讯录与拨号进程专属深浅色（与全局强制深浅色独立并存，仅作用于 com.android.contacts 进程）。
     // 三态取值复用 SETTINGS_THEME_FOLLOW/LIGHT/DARK。
     public static final String CONTACTS_THEME_MODE = "contacts_theme_mode";
@@ -130,7 +134,8 @@ public final class BackgroundContract {
                 prefs.getInt(DEVICE_LOGO_COLOR, 0xFF111111),
                 prefs.getInt(SETTINGS_THEME_MODE, SETTINGS_THEME_FOLLOW),
                 prefs.getInt(CONTACTS_DIALPAD_SCALE_MODE, CONTACTS_DIALPAD_SCALE_CROP),
-                prefs.getInt(CONTACTS_DIALPAD_FOCUS_Y, 50)
+                prefs.getInt(CONTACTS_DIALPAD_FOCUS_Y, 50),
+                prefs.getInt(CONTACTS_DIALPAD_ZOOM, CONTACTS_DIALPAD_ZOOM_MIN)
         );
     }
 
@@ -155,11 +160,12 @@ public final class BackgroundContract {
         // 拨号盘自定义背景专用：缩放方式与纵向取景焦点（其它通道用默认值 CROP/50，行为与旧版一致）。
         final int scaleMode;
         final int focusY;
+        final int zoom;
 
         Source(String slot, String mime, long size, long modified, boolean exists,
                int opacity, boolean blurEnabled, int blurRadius, int fontMode,
                int deviceLogoMode, String deviceLogoText, int deviceLogoColor, int settingsThemeMode,
-               int scaleMode, int focusY) {
+               int scaleMode, int focusY, int zoom) {
             this.slot = slot;
             this.mime = mime == null ? "application/octet-stream" : mime;
             this.size = size;
@@ -175,6 +181,7 @@ public final class BackgroundContract {
             this.settingsThemeMode = settingsThemeMode;
             this.scaleMode = Math.max(CONTACTS_DIALPAD_SCALE_CROP, Math.min(CONTACTS_DIALPAD_SCALE_STRETCH, scaleMode));
             this.focusY = Math.max(0, Math.min(100, focusY));
+            this.zoom = Math.max(CONTACTS_DIALPAD_ZOOM_MIN, Math.min(CONTACTS_DIALPAD_ZOOM_MAX, zoom));
         }
 
         boolean isVideo() { return mime.startsWith("video/"); }
@@ -187,7 +194,7 @@ public final class BackgroundContract {
             return slot + ':' + mime + ':' + size + ':' + modified + ':' + opacity + ':'
                     + blurEnabled + ':' + blurRadius + ':' + fontMode + ':' + deviceLogoMode + ':'
                     + deviceLogoText + ':' + deviceLogoColor + ':' + settingsThemeMode + ':'
-                    + scaleMode + ':' + focusY;
+                    + scaleMode + ':' + focusY + ':' + zoom;
         }
     }
 }

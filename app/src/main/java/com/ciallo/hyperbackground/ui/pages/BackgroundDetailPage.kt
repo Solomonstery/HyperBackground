@@ -202,6 +202,17 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
                 .toFloat(),
         )
     }
+    var zoom by remember {
+        mutableFloatStateOf(
+            config.getInt(
+                BackgroundContract.CONTACTS_DIALPAD_ZOOM,
+                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN,
+            ).coerceIn(
+                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN,
+                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX,
+            ).toFloat(),
+        )
+    }
     val dialpadModeOptions = listOf(
         stringResource(R.string.contacts_dialpad_bg_default),
         stringResource(R.string.contacts_dialpad_bg_custom),
@@ -269,6 +280,20 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
                         onSelectedIndexChange = {
                             scaleMode = it
                             config.edit().putInt(BackgroundContract.CONTACTS_DIALPAD_SCALE_MODE, it).apply()
+                        },
+                    )
+                    // 缩放大小：在所选缩放方式基础上再放大（100% 为原始基准），三种模式均生效。
+                    SliderPreference(
+                        label = stringResource(R.string.contacts_dialpad_zoom),
+                        value = zoom,
+                        range = BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN.toFloat()..
+                            BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX.toFloat(),
+                        suffix = "%",
+                        onValueChange = { zoom = it },
+                        onValueChangeFinished = {
+                            config.edit()
+                                .putInt(BackgroundContract.CONTACTS_DIALPAD_ZOOM, zoom.toInt())
+                                .apply()
                         },
                     )
                     // 纵向位置：仅「贴满裁切」时有意义，决定裁掉上/下哪部分（0 顶、50 中、100 底）。

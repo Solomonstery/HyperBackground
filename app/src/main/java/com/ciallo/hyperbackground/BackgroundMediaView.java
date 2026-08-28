@@ -116,27 +116,17 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         }
     }
 
-    // 按通道的缩放方式设定 ImageView：完整显示=FIT_CENTER（保比例、留边），拉伸=FIT_XY（变形铺满），
-    // 贴满裁切=保比例填满、裁掉溢出——用 MATRIX 自绘以便按 focusY 决定纵向取景（0 顶、50 中、100 底）。
+    // 统一走 MATRIX 自绘，便于叠加「缩放大小」倍数与「纵向位置」焦点：
+    //   基准缩放 = 贴满裁切按较大边填满 / 完整显示按较小边留边 / 拉伸按 XY 各自铺满（会变形）；
+    //   再乘以 zoom（≥1），横向恒居中、纵向按 focusY 平移取景。
     private void applyImageScale() {
         if (imageView == null) return;
-        switch (source.scaleMode) {
-            case BackgroundContract.CONTACTS_DIALPAD_SCALE_FIT:
-                imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                break;
-            case BackgroundContract.CONTACTS_DIALPAD_SCALE_STRETCH:
-                imageView.setScaleType(ImageView.ScaleType.FIT_XY);
-                break;
-            default:
-                imageView.setScaleType(ImageView.ScaleType.MATRIX);
-                // 视图尺寸在布局后才确定，且随宿主尺寸变化重算；焦点裁景在此计算。
-                imageView.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateImageCropMatrix());
-                updateImageCropMatrix();
-                break;
-        }
+        imageView.setScaleType(ImageView.ScaleType.MATRIX);
+        // 视图尺寸在布局后才确定，且随宿主尺寸变化重算。
+        imageView.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateImageCropMatrix());
+        updateImageCropMatrix();
     }
 
-    // 贴满裁切矩阵：按较大边缩放填满，横向恒居中，纵向按 focusY 在可裁范围内平移。
     private void updateImageCropMatrix() {
         if (imageView == null || imageDrawable == null) return;
         if (imageView.getScaleType() != ImageView.ScaleType.MATRIX) return;
@@ -145,13 +135,29 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         int dw = imageDrawable.getIntrinsicWidth();
         int dh = imageDrawable.getIntrinsicHeight();
         if (vw <= 0 || vh <= 0 || dw <= 0 || dh <= 0) return;
-        float scale = Math.max((float) vw / dw, (float) vh / dh);
+
+        float zoom = Math.max(1f, source.zoom / 100f);
+        Matrix matrix = new Matrix();
+        if (source.scaleMode == BackgroundContract.CONTACTS_DIALPAD_SCALE_STRETCH) {
+            // 拉伸填充：XY 各自铺满（变形），再整体乘 zoom，围绕中心放大。
+            float sx = (float) vw / dw * zoom;
+            float sy = (float) vh / dh * zoom;
+            matrix.setScale(sx, sy, vw / 2f, vh / 2f);
+            imageView.setImageMatrix(matrix);
+            return;
+        }
+        float base = source.scaleMode == BackgroundContract.CONTACTS_DIALPAD_SCALE_FIT
+                ? Math.min((float) vw / dw, (float) vh / dh)   // 完整显示：短边贴合、留边
+                : Math.max((float) vw / dw, (float) vh / dh);  // 贴满裁切：长边填满、裁溢出
+        float scale = base * zoom;
         float scaledW = dw * scale;
         float scaledH = dh * scale;
-        float dx = (vw - scaledW) / 2f;                       // 横向居中
+        float dx = (vw - scaledW) / 2f;                        // 横向居中
         float focus = Math.max(0, Math.min(100, source.focusY)) / 100f;
-        float dy = (vh - scaledH) * focus;                    // 纵向按焦点在 [vh-scaledH, 0] 内平移
-        Matrix matrix = new Matrix();
+        // 完整显示纵向也留边、居中即可；贴满裁切时按焦点在可裁范围内平移。
+        float dy = source.scaleMode == BackgroundContract.CONTACTS_DIALPAD_SCALE_FIT
+                ? (vh - scaledH) / 2f
+                : (vh - scaledH) * focus;
         matrix.setScale(scale, scale);
         matrix.postTranslate(Math.round(dx), Math.round(dy));
         imageView.setImageMatrix(matrix);
@@ -232,10 +238,12 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         if (viewWidth <= 0 || viewHeight <= 0) return;
 
         // TextureView 默认已把内容拉伸铺满视图（相当于 FIT_XY），因此以「铺满」为基准，
-        // 再叠加缩放矩阵得到不同缩放方式：贴满裁切按较大边、完整显示按较小边、拉伸不变。
+        // 再叠加缩放矩阵得到不同缩放方式：贴满裁切按较大边、完整显示按较小边、拉伸不变；末尾统一乘 zoom。
+        float zoom = Math.max(1f, source.zoom / 100f);
         Matrix matrix = new Matrix();
         if (source.scaleMode == BackgroundContract.CONTACTS_DIALPAD_SCALE_STRETCH) {
-            // 拉伸填充：保持默认铺满，无需额外矩阵。
+            // 拉伸填充：保持默认铺满，仅按 zoom 围绕中心放大。
+            matrix.setScale(zoom, zoom, viewWidth / 2f, viewHeight / 2f);
             textureView.setTransform(matrix);
             return;
         }
@@ -245,8 +253,8 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         float baseScale = source.scaleMode == BackgroundContract.CONTACTS_DIALPAD_SCALE_FIT
                 ? Math.min((float) viewWidth / videoWidth, (float) viewHeight / videoHeight)
                 : coverScale;
-        float scaledWidth = videoWidth * baseScale;
-        float scaledHeight = videoHeight * baseScale;
+        float scaledWidth = videoWidth * baseScale * zoom;
+        float scaledHeight = videoHeight * baseScale * zoom;
         float scaleX = scaledWidth / viewWidth;
         float scaleY = scaledHeight / viewHeight;
 

@@ -334,6 +334,13 @@ final class BackgroundApplier {
                     container.setAlpha(1f);
                     setBackgroundDrawableAlpha(container, a);
                 }
+                // 诊断：确认默认模式下不透明度实际作用对象与 drawable 类型，排查“默认模式滑块失效”。
+                HookRuntime.log("HyperBG-DPOP default enabled=" + enabled + " opacity=" + opacity
+                        + " a=" + a
+                        + " bgView=" + (bgView == null ? "null" : bgView.getClass().getSimpleName()
+                            + " bg=" + drawableInfo(bgView.getBackground()))
+                        + " container=" + (container == null ? "null" : container.getClass().getSimpleName()
+                            + " bg=" + drawableInfo(container.getBackground())));
             }
         } catch (Throwable error) { log("applyDialpadOnInflate", error); }
     }
@@ -367,6 +374,17 @@ final class BackgroundApplier {
             mutable.setAlpha(Math.round(Math.max(0f, Math.min(1f, alpha)) * 255));
             view.setBackground(mutable);
         } catch (Throwable ignored) {}
+    }
+
+    // 诊断：输出 drawable 的类型与当前 alpha（部分 drawable 不支持 getAlpha，则标 n/a）。
+    private static String drawableInfo(Drawable d) {
+        if (d == null) return "null";
+        String type = d.getClass().getSimpleName();
+        try {
+            return type + "(alpha=" + d.getAlpha() + ")";
+        } catch (Throwable ignored) {
+            return type + "(alpha=n/a)";
+        }
     }
 
     // 把自定义模式下换成透明的 dialer_background_view 原生 9-patch 底还原回去（若曾保存）。

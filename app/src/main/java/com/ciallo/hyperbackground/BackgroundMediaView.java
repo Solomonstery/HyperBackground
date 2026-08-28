@@ -159,6 +159,11 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         matrix.setScale(scale, scale);
         matrix.postTranslate(Math.round(dx), Math.round(dy));
         imageView.setImageMatrix(matrix);
+        // 诊断：确认 hook 侧实际读到的定位/缩放值及算出的偏移，用于排查“位置滑块不生效”。
+        HookRuntime.log("HyperBG-DPPOS slot=" + source.slot + " focusX=" + source.focusX
+                + " focusY=" + source.focusY + " zoom=" + source.zoom
+                + " vw=" + vw + " vh=" + vh + " dw=" + dw + " dh=" + dh
+                + " scale=" + scale + " dx=" + Math.round(dx) + " dy=" + Math.round(dy));
     }
 
     private void createVideoView() {

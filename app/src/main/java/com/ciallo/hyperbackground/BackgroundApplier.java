@@ -102,12 +102,14 @@ final class BackgroundApplier {
             View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
             if (decor != null) adaptPinnedHeaders(decor, enabled);
 
-            // 【诊断】每个 Activity 实例 dump 一次完整视图树（含背景类型/颜色/alpha），
-            // 用于定位浅色白底 / 深色黑条遮挡背景的真实句柄。定位完成后移除。
-            if (decor != null && !Boolean.TRUE.equals(XposedHelpers.getAdditionalInstanceField(activity, CONTACTS_DUMPED))) {
+            // 【诊断】视图树真正布局完成后（DecorView 有尺寸且有子节点）dump 一次完整视图树，
+            // 含背景类型/颜色/alpha，用于定位浅色白底 / 深色黑条遮挡背景的真实句柄。定位完成后移除。
+            boolean laidOut = decor != null && decor.getWidth() > 0 && decor.getHeight() > 0
+                    && (decor instanceof ViewGroup) && ((ViewGroup) decor).getChildCount() > 0;
+            if (laidOut && !Boolean.TRUE.equals(XposedHelpers.getAdditionalInstanceField(activity, CONTACTS_DUMPED))) {
                 XposedHelpers.setAdditionalInstanceField(activity, CONTACTS_DUMPED, Boolean.TRUE);
                 XposedBridge.log("[HyperBG-DUMP] ===== BEGIN " + activity.getClass().getName()
-                        + " night=" + isNightMode(activity) + " =====");
+                        + " night=" + isNightMode(activity) + " decor=" + decor.getWidth() + "x" + decor.getHeight() + " =====");
                 dumpViewTree(decor, 0);
                 XposedBridge.log("[HyperBG-DUMP] ===== END =====");
             }
@@ -124,9 +126,12 @@ final class BackgroundApplier {
     }
 
     // 【诊断】递归打印视图树：层级缩进、类名、id 名、可见性、尺寸、背景描述。
-    // 只打印有背景或体积较大的节点，控制日志量。定位完成后连同调用一起移除。
+    // 打印所有带背景的节点 + 所有 ViewGroup 容器（便于看层级），总行数封顶防刷屏。定位后移除。
+    private static int dumpLineCount = 0;
     private static void dumpViewTree(View view, int depth) {
-        if (view == null || depth > 25) return;
+        if (view == null || depth > 30) return;
+        if (depth == 0) dumpLineCount = 0;
+        if (dumpLineCount > 400) return;
         try {
             android.graphics.drawable.Drawable bg = view.getBackground();
             String idName = "no-id";
@@ -134,9 +139,10 @@ final class BackgroundApplier {
                 try { idName = view.getResources().getResourceEntryName(view.getId()); }
                 catch (Throwable ignored) { idName = "0x" + Integer.toHexString(view.getId()); }
             }
-            // 只打印带背景的节点，或尺寸铺满疑似遮挡层的容器，避免刷屏。
-            boolean big = view.getWidth() > 400 && view.getHeight() > 60;
-            if (bg != null || big) {
+            // 打印带背景的节点，或作为容器的 ViewGroup（无背景的纯 leaf 才跳过，避免海量 TextView/ImageView 刷屏）。
+            boolean isContainer = view instanceof ViewGroup;
+            if (bg != null || isContainer) {
+                dumpLineCount++;
                 StringBuilder sb = new StringBuilder("[HyperBG-DUMP] ");
                 for (int i = 0; i < depth; i++) sb.append("  ");
                 sb.append(view.getClass().getName())
@@ -154,17 +160,27 @@ final class BackgroundApplier {
         }
     }
 
-    // 【诊断】描述一个 Drawable：类型 + 主色/透明度信息，用于判断是否不透明中性色遮挡。
+    // 【诊断】描述一个 Drawable：类型 + 实际合成色（采样到 1x1 bitmap），用于判断是否不透明中性色遮挡。
     private static String describeDrawable(android.graphics.drawable.Drawable d) {
         if (d == null) return "null";
         String type = d.getClass().getName();
         try {
             if (d instanceof android.graphics.drawable.ColorDrawable) {
                 int c = ((android.graphics.drawable.ColorDrawable) d).getColor();
-                return type + "(#" + Integer.toHexString(c) + ")";
+                return type + "(color=#" + Integer.toHexString(c) + ")";
             }
-            return type + "(alpha=" + d.getAlpha() + ")";
-        } catch (Throwable ignored) { return type; }
+            // 其它 Drawable（GradientDrawable/LayerDrawable/9-patch 等）渲染到 1x1 bitmap 采其合成色，
+            // 最能反映实际盖在背景上的颜色与透明度。
+            android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas canvas = new android.graphics.Canvas(bmp);
+            android.graphics.drawable.Drawable copy = d.getConstantState() != null
+                    ? d.getConstantState().newDrawable().mutate() : d;
+            copy.setBounds(0, 0, 1, 1);
+            copy.draw(canvas);
+            int px = bmp.getPixel(0, 0);
+            bmp.recycle();
+            return type + "(sampled=#" + Integer.toHexString(px) + " drawableAlpha=" + d.getAlpha() + ")";
+        } catch (Throwable ignored) { return type + "(alpha=" + d.getAlpha() + ")"; }
     }
 
     // 递归遍历，命中 ContactListPinnedHeaderView（字母分组吸顶头）后清除其自身及子 TextView 的

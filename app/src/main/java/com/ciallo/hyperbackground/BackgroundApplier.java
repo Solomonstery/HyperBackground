@@ -306,8 +306,10 @@ final class BackgroundApplier {
                 BackgroundMediaView media = new BackgroundMediaView(ctx, source);
                 // 拨号盘键盘面板不透明度滑块也作用于自定义图：与该图自身 opacity 叠乘，滑块不再失效。
                 media.setAlpha((enabled ? padAlpha : 1f) * (source.opacity / 100f));
-                // 还原被原生底裁出的顶部圆角（dialer_background_pad 顶角 30dp、底角为直角），否则图是直角矩形。
-                clipDialpadCorners(media, ctx);
+                // 给自定义背景图裁出四角圆角（30dp）：用 BackgroundMediaView 内部 dispatchDraw 自绘裁切，
+                // 逐帧按当前尺寸构造路径，不受面板从底部弹出动画的影响。
+                float density = ctx.getResources().getDisplayMetrics().density;
+                media.setTopCornerRadius(30f * density);
                 bgHost.addView(media, 0, new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                 XposedHelpers.setAdditionalInstanceField(dialpad, DIALPAD_SESSION, media);
@@ -335,31 +337,6 @@ final class BackgroundApplier {
                 }
             }
         } catch (Throwable error) { log("applyDialpadOnInflate", error); }
-    }
-
-    // 给自定义背景图裁出与原生面板底一致的圆角：顶部左右 30dp、底部直角。整块拨号盘底本身贴屏幕
-    // 下缘、底部无圆角，只需圆顶。用 ViewOutlineProvider + setClipToOutline 硬件裁切，随视图尺寸自适应。
-    private static void clipDialpadCorners(View media, Context ctx) {
-        try {
-            float density = ctx.getResources().getDisplayMetrics().density;
-            final float topRadius = 30f * density;
-            media.setOutlineProvider(new android.view.ViewOutlineProvider() {
-                @Override public void getOutline(View view, android.graphics.Outline outline) {
-                    int w = view.getWidth();
-                    int h = view.getHeight();
-                    if (w <= 0 || h <= 0) return;
-                    // 轮廓下沿超出底边 topRadius，使底部两角落在视图外→呈直角，仅保留顶部圆角。
-                    outline.setRoundRect(0, 0, w, (int) (h + topRadius), topRadius);
-                }
-            });
-            media.setClipToOutline(true);
-            // 首帧 media 尺寸为 0，getOutline 会直接 return 而不设轮廓；待布局拿到非零尺寸后需主动
-            // invalidateOutline 重算，否则圆角始终不出现（表现为直角）。尺寸变化时也重算以自适应。
-            media.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-                if ((r - l) != (or - ol) || (b - t) != (ob - ot)) v.invalidateOutline();
-            });
-            media.post(media::invalidateOutline);
-        } catch (Throwable ignored) {}
     }
 
     // 把自定义模式下换成透明的 dialer_background_view 原生 9-patch 底还原回去（若曾保存）。

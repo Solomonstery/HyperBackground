@@ -35,6 +35,11 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
     private int videoWidth;
     private int videoHeight;
     private boolean hostResumed = true;
+    // 顶部圆角半径（px，>0 才裁切）。用自绘 clipPath 而非 setClipToOutline，后者对内部 MATRIX 绘制的
+    // ImageView 内容裁切不稳定，直接在 dispatchDraw 裁路径可确保对任意子内容一定生效。
+    private float topCornerRadius;
+    private final android.graphics.Path clipPath = new android.graphics.Path();
+    private final android.graphics.RectF clipRect = new android.graphics.RectF();
 
     BackgroundMediaView(Context context, BackgroundContract.Source source) throws IOException {
         super(context);
@@ -99,6 +104,36 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         }
         imageLayoutListener = null;
         removeAllViews();
+    }
+
+    // 设置圆角半径（px）：四角同半径圆角裁切。
+    void setTopCornerRadius(float radiusPx) {
+        this.topCornerRadius = Math.max(0f, radiusPx);
+        setWillNotDraw(false);
+        invalidate();
+    }
+
+    @Override
+    protected void dispatchDraw(android.graphics.Canvas canvas) {
+        if (topCornerRadius <= 0f) {
+            super.dispatchDraw(canvas);
+            return;
+        }
+        int w = getWidth();
+        int h = getHeight();
+        if (w <= 0 || h <= 0) {
+            super.dispatchDraw(canvas);
+            return;
+        }
+        // 四角同半径圆角。半径不超过宽/高一半，避免面板从底部往上弹出、动画中途高度较小时圆角画不全。
+        float r = Math.min(topCornerRadius, Math.min(w, h) / 2f);
+        clipPath.reset();
+        clipRect.set(0f, 0f, w, h);
+        clipPath.addRoundRect(clipRect, r, r, android.graphics.Path.Direction.CW);
+        int save = canvas.save();
+        canvas.clipPath(clipPath);
+        super.dispatchDraw(canvas);
+        canvas.restoreToCount(save);
     }
 
     private void createImageView() throws IOException {

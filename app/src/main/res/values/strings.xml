@@ -23,12 +23,9 @@
     <string name="contacts_dialpad_bg_mode">Dialpad background</string>
     <string name="contacts_dialpad_bg_default">Default</string>
     <string name="contacts_dialpad_bg_custom">Custom</string>
-    <string name="contacts_dialpad_scale">Scaling</string>
-    <string name="contacts_dialpad_scale_crop">Fill (crop)</string>
-    <string name="contacts_dialpad_scale_fit">Fit (letterbox)</string>
-    <string name="contacts_dialpad_scale_stretch">Stretch</string>
-    <string name="contacts_dialpad_focus_y">Vertical position</string>
     <string name="contacts_dialpad_zoom">Zoom</string>
+    <string name="contacts_dialpad_focus_x">Horizontal position</string>
+    <string name="contacts_dialpad_focus_y">Vertical position</string>
     <string name="contacts_theme">Color mode</string>
     <string name="back">Back</string>
     <string name="choose_image">Choose image</string>

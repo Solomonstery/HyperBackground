@@ -187,12 +187,11 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
             ),
         )
     }
-    var scaleMode by remember {
-        mutableIntStateOf(
-            config.getInt(
-                BackgroundContract.CONTACTS_DIALPAD_SCALE_MODE,
-                BackgroundContract.CONTACTS_DIALPAD_SCALE_CROP,
-            ),
+    var focusX by remember {
+        mutableFloatStateOf(
+            config.getInt(BackgroundContract.CONTACTS_DIALPAD_FOCUS_X, 50)
+                .coerceIn(0, 100)
+                .toFloat(),
         )
     }
     var focusY by remember {
@@ -206,7 +205,7 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
         mutableFloatStateOf(
             config.getInt(
                 BackgroundContract.CONTACTS_DIALPAD_ZOOM,
-                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX,
+                BackgroundContract.CONTACTS_DIALPAD_ZOOM_DEFAULT,
             ).coerceIn(
                 BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN,
                 BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX,
@@ -216,11 +215,6 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
     val dialpadModeOptions = listOf(
         stringResource(R.string.contacts_dialpad_bg_default),
         stringResource(R.string.contacts_dialpad_bg_custom),
-    )
-    val scaleModeOptions = listOf(
-        stringResource(R.string.contacts_dialpad_scale_crop),
-        stringResource(R.string.contacts_dialpad_scale_fit),
-        stringResource(R.string.contacts_dialpad_scale_stretch),
     )
     UiCard(activity, Modifier.fillMaxWidth()) {
         Column(Modifier.padding(vertical = 8.dp)) {
@@ -272,17 +266,7 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
                     key(revision) {
                         BackgroundPickerPreference(activity = activity, slot = BackgroundContract.CONTACTS_DIALPAD)
                     }
-                    // 缩放方式：贴满裁切 / 完整显示 / 拉伸填充，解决拨号盘区域比例与图片不一致导致的裁切 / 变形。
-                    OverlayDropdownPreference(
-                        title = stringResource(R.string.contacts_dialpad_scale),
-                        items = scaleModeOptions,
-                        selectedIndex = scaleMode.coerceIn(scaleModeOptions.indices),
-                        onSelectedIndexChange = {
-                            scaleMode = it
-                            config.edit().putInt(BackgroundContract.CONTACTS_DIALPAD_SCALE_MODE, it).apply()
-                        },
-                    )
-                    // 缩放大小：在所选缩放方式基础上按比例缩小（100% 为原始基准），三种模式均生效。
+                    // 缩放大小：等比缩放，100% 为贴满基准，可放大到 200% 或缩小到 1%。
                     SliderPreference(
                         label = stringResource(R.string.contacts_dialpad_zoom),
                         value = zoom,
@@ -296,25 +280,32 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
                                 .apply()
                         },
                     )
-                    // 纵向位置：仅「贴满裁切」时有意义，决定裁掉上/下哪部分（0 顶、50 中、100 底）。
-                    AnimatedVisibility(
-                        visible = scaleMode == BackgroundContract.CONTACTS_DIALPAD_SCALE_CROP,
-                        enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(220)),
-                        exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(180)),
-                    ) {
-                        SliderPreference(
-                            label = stringResource(R.string.contacts_dialpad_focus_y),
-                            value = focusY,
-                            range = 0f..100f,
-                            suffix = "%",
-                            onValueChange = { focusY = it },
-                            onValueChangeFinished = {
-                                config.edit()
-                                    .putInt(BackgroundContract.CONTACTS_DIALPAD_FOCUS_Y, focusY.toInt())
-                                    .apply()
-                            },
-                        )
-                    }
+                    // 横向位置：0 左、50 中、100 右，默认居中，缩放后可自由左右定位。
+                    SliderPreference(
+                        label = stringResource(R.string.contacts_dialpad_focus_x),
+                        value = focusX,
+                        range = 0f..100f,
+                        suffix = "%",
+                        onValueChange = { focusX = it },
+                        onValueChangeFinished = {
+                            config.edit()
+                                .putInt(BackgroundContract.CONTACTS_DIALPAD_FOCUS_X, focusX.toInt())
+                                .apply()
+                        },
+                    )
+                    // 纵向位置：0 上、50 中、100 下，默认居中，缩放后可自由上下定位。
+                    SliderPreference(
+                        label = stringResource(R.string.contacts_dialpad_focus_y),
+                        value = focusY,
+                        range = 0f..100f,
+                        suffix = "%",
+                        onValueChange = { focusY = it },
+                        onValueChangeFinished = {
+                            config.edit()
+                                .putInt(BackgroundContract.CONTACTS_DIALPAD_FOCUS_Y, focusY.toInt())
+                                .apply()
+                        },
+                    )
                 }
             }
         }

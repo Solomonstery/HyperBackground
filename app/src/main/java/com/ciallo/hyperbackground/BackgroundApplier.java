@@ -290,7 +290,10 @@ final class BackgroundApplier {
             ViewGroup bgHost = bgView instanceof ViewGroup ? (ViewGroup) bgView : dialpad;
 
             BackgroundContract.Source source = BackgroundContract.query(ctx, BackgroundContract.CONTACTS_DIALPAD);
-            boolean custom = enabled && mode == BackgroundContract.CONTACTS_DIALPAD_BG_CUSTOM && source.exists;
+            // 拨号盘背景仅支持图片：新选图入口已限定 image/*，此处再兜底排除历史遗留的视频配置，
+            // 视频源直接回退默认模式、不在拨号盘播放。
+            boolean custom = enabled && mode == BackgroundContract.CONTACTS_DIALPAD_BG_CUSTOM
+                    && source.exists && !source.isVideo();
 
             // 先清旧会话：拨号盘复用时避免叠加多层，并还原上次改动的面板底。
             removeDialpadMedia(dialpad);

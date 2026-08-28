@@ -157,13 +157,19 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         float scaledH = dh * scale;
         float fx = Math.max(0, Math.min(100, source.focusX)) / 100f;
         float fy = Math.max(0, Math.min(100, source.focusY)) / 100f;
-        float dx = (vw - scaledW) * fx;   // 横向定位（默认 0.5 居中）
-        float dy = (vh - scaledH) * fy;   // 纵向定位（默认 0.5 居中）
+        // 诊断阶段维持旧的绝对定位公式，保证日志的 dx/dy 与你肉眼所见一致，便于用实测“居中点”反推校准。
+        float dx = (vw - scaledW) * fx;   // 横向定位
+        float dy = (vh - scaledH) * fy;   // 纵向定位
 
         Matrix matrix = new Matrix();
         matrix.setScale(scale, scale);
         matrix.postTranslate(Math.round(dx), Math.round(dy));
         imageView.setImageMatrix(matrix);
+        // 诊断：抓真实坐标关系，用于精确校准“横纵向居中点”。拖动位置滑块后重开拨号盘即可看到。
+        HookRuntime.log("HyperBG-POS focusX=" + source.focusX + " focusY=" + source.focusY
+                + " zoom=" + source.zoom + " vw=" + vw + " vh=" + vh + " dw=" + dw + " dh=" + dh
+                + " scaledW=" + Math.round(scaledW) + " scaledH=" + Math.round(scaledH)
+                + " dx=" + Math.round(dx) + " dy=" + Math.round(dy));
     }
 
     private void createVideoView() {

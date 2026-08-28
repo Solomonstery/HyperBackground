@@ -337,6 +337,9 @@ final class BackgroundApplier {
                     container.setAlpha(1f);
                     applyDialpadPanelAlpha(container, a);
                 }
+                // 诊断：布局稳定后 dump 拨号盘整棵子树的 view + 背景类型 + 尺寸，定位“面板底”真正挂在哪个
+                // view（排查默认模式面板不透明度无效）。只在默认模式抓一次。
+                dialpad.post(() -> dumpDialpadTree(dialpad, 0));
             }
         } catch (Throwable error) { log("applyDialpadOnInflate", error); }
     }
@@ -357,6 +360,37 @@ final class BackgroundApplier {
                 }
             });
             media.setClipToOutline(true);
+        } catch (Throwable ignored) {}
+    }
+
+    // 诊断：递归打印拨号盘子树，输出每个 view 的 id 名、类、尺寸、背景 drawable 类型与 alpha，
+    // 用于定位“面板底 / 灰底”究竟挂在哪个 view 上（排查默认模式面板不透明度无效）。
+    private static void dumpDialpadTree(View view, int depth) {
+        if (view == null) return;
+        try {
+            StringBuilder indent = new StringBuilder();
+            for (int i = 0; i < depth; i++) indent.append("  ");
+            String idName;
+            try {
+                idName = view.getId() == View.NO_ID ? "no-id"
+                        : view.getResources().getResourceEntryName(view.getId());
+            } catch (Throwable t) { idName = "id?"; }
+            Drawable bg = view.getBackground();
+            String bgInfo = "null";
+            if (bg != null) {
+                String alpha;
+                try { alpha = String.valueOf(bg.getAlpha()); } catch (Throwable t) { alpha = "n/a"; }
+                bgInfo = bg.getClass().getSimpleName() + "(alpha=" + alpha + ")";
+            }
+            HookRuntime.log("HyperBG-PANEL " + indent + idName + " " + view.getClass().getSimpleName()
+                    + " " + view.getWidth() + "x" + view.getHeight()
+                    + " vAlpha=" + view.getAlpha() + " bg=" + bgInfo);
+            if (view instanceof ViewGroup) {
+                ViewGroup group = (ViewGroup) view;
+                for (int i = 0; i < group.getChildCount(); i++) {
+                    dumpDialpadTree(group.getChildAt(i), depth + 1);
+                }
+            }
         } catch (Throwable ignored) {}
     }
 

@@ -105,18 +105,23 @@ final class BackgroundApplier {
         } catch (Throwable error) { log("adaptContactsSurfaces", error); }
     }
 
-    // 递归遍历：enabled 时清除采样为「不透明中性色（黑/白/灰）」的背景（清前用 tag 保存原背景以便还原），
-    // disabled 时还原之前清掉的背景。只处理不透明中性色，半透明卡片/渐变遮罩（如 #b3000000 输入框、
-    // #80ffffff 渐变、#cc000000）不动，保留其层次；全透明背景（#0）本就不挡背景，也跳过。
+    // 递归遍历：enabled 时把采样为「不透明中性色（黑/白/灰）」的背景替换为透明占位（清前把原背景存到
+    // 该 View 的 Xposed 附加字段以便还原），disabled 时还原。只处理不透明中性色，半透明卡片/渐变遮罩
+    // （如 #b3000000 输入框、#80ffffff 渐变、#cc000000）不动，保留其层次；全透明背景（#0）本就不挡，跳过。
+    // 关键：用透明 ColorDrawable 占位而非 setBackground(null)——列表条目随 RecyclerView 复用滚动，
+    // 若清成 null 会失去覆盖整块区域的背景，硬件加速脏区重绘无法擦除上一帧内容而留下残影/拖拽；
+    // 保留一个铺满的透明背景即可让绘制系统正常重绘，同时背景仍透出。
     private static void adaptContactsOpaqueSurfaces(View view, boolean enabled) {
         if (view == null) return;
         try {
             if (enabled) {
                 Drawable bg = view.getBackground();
-                Object saved = XposedHelpers.getAdditionalInstanceField(view, CONTACTS_BG_SAVED);
-                if (bg != null && saved == null && isOpaqueNeutralSurface(bg)) {
-                    XposedHelpers.setAdditionalInstanceField(view, CONTACTS_BG_SAVED, bg);
-                    view.setBackground(null);
+                // 列表条目随 RecyclerView 复用可能被重新赋上不透明白底：只要当前背景仍是不透明中性色就替换；
+                // saved 仅在首次记录原始背景（供还原），后续复用不覆盖它。
+                if (bg != null && isOpaqueNeutralSurface(bg)) {
+                    Object saved = XposedHelpers.getAdditionalInstanceField(view, CONTACTS_BG_SAVED);
+                    if (saved == null) XposedHelpers.setAdditionalInstanceField(view, CONTACTS_BG_SAVED, bg);
+                    view.setBackground(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
                 }
             } else {
                 Object saved = XposedHelpers.getAdditionalInstanceField(view, CONTACTS_BG_SAVED);

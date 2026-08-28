@@ -297,6 +297,10 @@ final class BackgroundApplier {
                 // 自定义图塞进 dialer_background_view 内铺满（置底、不挡数字键）；原生 9-patch 底随
                 // 背景板 alpha 归零而隐去；面板底 dialer_background_pad 换透明占位让图透出。
                 BackgroundMediaView media = new BackgroundMediaView(ctx, source);
+                // 拨号盘键盘面板不透明度滑块也作用于自定义图：与该图自身 opacity 叠乘，滑块不再失效。
+                media.setAlpha((enabled ? padAlpha : 1f) * (source.opacity / 100f));
+                // 还原被原生底裁出的顶部圆角（dialer_background_pad 顶角 30dp、底角为直角），否则图是直角矩形。
+                clipDialpadCorners(media, ctx);
                 bgHost.addView(media, 0, new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                 XposedHelpers.setAdditionalInstanceField(dialpad, DIALPAD_SESSION, media);
@@ -311,6 +315,25 @@ final class BackgroundApplier {
                 restoreDialpadPanelBackground(container);
             }
         } catch (Throwable error) { log("applyDialpadOnInflate", error); }
+    }
+
+    // 给自定义背景图裁出与原生面板底一致的圆角：顶部左右 30dp、底部直角。整块拨号盘底本身贴屏幕
+    // 下缘、底部无圆角，只需圆顶。用 ViewOutlineProvider + setClipToOutline 硬件裁切，随视图尺寸自适应。
+    private static void clipDialpadCorners(View media, Context ctx) {
+        try {
+            float density = ctx.getResources().getDisplayMetrics().density;
+            final float topRadius = 30f * density;
+            media.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                @Override public void getOutline(View view, android.graphics.Outline outline) {
+                    int w = view.getWidth();
+                    int h = view.getHeight();
+                    if (w <= 0 || h <= 0) return;
+                    // 轮廓下沿超出底边 topRadius，使底部两角落在视图外→呈直角，仅保留顶部圆角。
+                    outline.setRoundRect(0, 0, w, (int) (h + topRadius), topRadius);
+                }
+            });
+            media.setClipToOutline(true);
+        } catch (Throwable ignored) {}
     }
 
     // 自定义模式下把 dialpad_container 的不透明面板底换成透明占位（首次记录原背景供还原）。

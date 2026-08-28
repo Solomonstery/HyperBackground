@@ -97,7 +97,6 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
 
     private void createImageView() throws IOException {
         imageView = new ImageView(getContext());
-        imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
         imageView.setAdjustViewBounds(false);
         ImageDecoder.Source decoderSource = ImageDecoder.createSource(() ->
                 new AssetFileDescriptor(
@@ -106,6 +105,7 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
                         AssetFileDescriptor.UNKNOWN_LENGTH));
         imageDrawable = ImageDecoder.decodeDrawable(decoderSource);
         imageView.setImageDrawable(imageDrawable);
+        applyImageScale();
         addView(imageView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
@@ -114,6 +114,47 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
             animated.setRepeatCount(AnimatedImageDrawable.REPEAT_INFINITE);
             animated.start();
         }
+    }
+
+    // 按通道的缩放方式设定 ImageView：完整显示=FIT_CENTER（保比例、留边），拉伸=FIT_XY（变形铺满），
+    // 贴满裁切=保比例填满、裁掉溢出——用 MATRIX 自绘以便按 focusY 决定纵向取景（0 顶、50 中、100 底）。
+    private void applyImageScale() {
+        if (imageView == null) return;
+        switch (source.scaleMode) {
+            case BackgroundContract.CONTACTS_DIALPAD_SCALE_FIT:
+                imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                break;
+            case BackgroundContract.CONTACTS_DIALPAD_SCALE_STRETCH:
+                imageView.setScaleType(ImageView.ScaleType.FIT_XY);
+                break;
+            default:
+                imageView.setScaleType(ImageView.ScaleType.MATRIX);
+                // 视图尺寸在布局后才确定，且随宿主尺寸变化重算；焦点裁景在此计算。
+                imageView.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateImageCropMatrix());
+                updateImageCropMatrix();
+                break;
+        }
+    }
+
+    // 贴满裁切矩阵：按较大边缩放填满，横向恒居中，纵向按 focusY 在可裁范围内平移。
+    private void updateImageCropMatrix() {
+        if (imageView == null || imageDrawable == null) return;
+        if (imageView.getScaleType() != ImageView.ScaleType.MATRIX) return;
+        int vw = imageView.getWidth();
+        int vh = imageView.getHeight();
+        int dw = imageDrawable.getIntrinsicWidth();
+        int dh = imageDrawable.getIntrinsicHeight();
+        if (vw <= 0 || vh <= 0 || dw <= 0 || dh <= 0) return;
+        float scale = Math.max((float) vw / dw, (float) vh / dh);
+        float scaledW = dw * scale;
+        float scaledH = dh * scale;
+        float dx = (vw - scaledW) / 2f;                       // 横向居中
+        float focus = Math.max(0, Math.min(100, source.focusY)) / 100f;
+        float dy = (vh - scaledH) * focus;                    // 纵向按焦点在 [vh-scaledH, 0] 内平移
+        Matrix matrix = new Matrix();
+        matrix.setScale(scale, scale);
+        matrix.postTranslate(Math.round(dx), Math.round(dy));
+        imageView.setImageMatrix(matrix);
     }
 
     private void createVideoView() {
@@ -190,16 +231,33 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         int viewHeight = textureView.getHeight();
         if (viewWidth <= 0 || viewHeight <= 0) return;
 
-        float scale = Math.max(
-                (float) viewWidth / (float) videoWidth,
-                (float) viewHeight / (float) videoHeight);
-        float scaledWidth = videoWidth * scale;
-        float scaledHeight = videoHeight * scale;
+        // TextureView 默认已把内容拉伸铺满视图（相当于 FIT_XY），因此以「铺满」为基准，
+        // 再叠加缩放矩阵得到不同缩放方式：贴满裁切按较大边、完整显示按较小边、拉伸不变。
+        Matrix matrix = new Matrix();
+        if (source.scaleMode == BackgroundContract.CONTACTS_DIALPAD_SCALE_STRETCH) {
+            // 拉伸填充：保持默认铺满，无需额外矩阵。
+            textureView.setTransform(matrix);
+            return;
+        }
+
+        float coverScale = Math.max(
+                (float) viewWidth / videoWidth, (float) viewHeight / videoHeight);
+        float baseScale = source.scaleMode == BackgroundContract.CONTACTS_DIALPAD_SCALE_FIT
+                ? Math.min((float) viewWidth / videoWidth, (float) viewHeight / videoHeight)
+                : coverScale;
+        float scaledWidth = videoWidth * baseScale;
+        float scaledHeight = videoHeight * baseScale;
         float scaleX = scaledWidth / viewWidth;
         float scaleY = scaledHeight / viewHeight;
 
-        Matrix matrix = new Matrix();
         matrix.setScale(scaleX, scaleY, viewWidth / 2f, viewHeight / 2f);
+        // 贴满裁切时按 focusY 做纵向取景平移（完整显示已留边、居中即可）。
+        if (source.scaleMode == BackgroundContract.CONTACTS_DIALPAD_SCALE_CROP) {
+            float focus = Math.max(0, Math.min(100, source.focusY)) / 100f;
+            float centerDy = (viewHeight - scaledHeight) / 2f;   // 居中时的顶偏移
+            float targetDy = (viewHeight - scaledHeight) * focus; // 焦点对应的顶偏移
+            matrix.postTranslate(0f, targetDy - centerDy);
+        }
         textureView.setTransform(matrix);
     }
 

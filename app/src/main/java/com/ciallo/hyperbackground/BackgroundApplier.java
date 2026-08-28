@@ -27,8 +27,7 @@ final class BackgroundApplier {
     private static final String CONTACTS_RESCAN = FIELD_PREFIX + "contacts.rescan";
     private static final String CONTACTS_ADAPT_AT = FIELD_PREFIX + "contacts.adapt.at";
     // 缓存联系人进程内的资源 id（进程内固定），避免每次布局回调都走 getIdentifier 慢查询。-1=未解析。
-    private static int contactsDrawerId = -1;
-    private static int contactsDialpadId = -1;
+    private static int contactsBgViewId = -1;
     private static final String DEVICE_ACTIVE = FIELD_PREFIX + "device.active";
     private static final String ORIGINAL_TEXT_COLOR = FIELD_PREFIX + "original.text.color";
     private static final String GLOBAL_DIAGNOSTIC = FIELD_PREFIX + "global.diagnostic";
@@ -69,9 +68,12 @@ final class BackgroundApplier {
         installContactsSurfaceRescan(activity);
     }
 
-    // 拨号盘 / 列表适配：开关开启时清除联系人列表的纯黑窗口底（drawer_layout 的
-    // ?android:windowBackground 在深色下是不透明黑，挡住自定义背景），并把拨号盘键盘
-    // 面板（dialpad_container）设为可调半透明，让背景透出的同时保持按键可读。关闭时还原。
+    // 拨号盘 / 列表适配：
+    //  1) 拨号盘背景板（dialer_background_view，背景是 dialer_background_new 9-patch，浅/深色都不透明）
+    //     整体设 alpha 让背景透出，同时不碰装数字键的 dialpad_container，保证按键清晰可读。
+    //  2) 联系人字母分组吸顶头（ContactListPinnedHeaderView 内 TextView 的
+    //     list_view_item_group_header_bg_light，浅色浅灰/深色深黑，均为不透明板）——遍历视图树清其背景，
+    //     露出自定义背景；分组头在 RecyclerView 中滚动复用，靠常驻布局监听持续补清。
     // throttled=true 时对高频布局回调做 200ms 节流，避免滚动列表时反复无谓执行。
     private static void adaptContactsSurfaces(Activity activity, boolean throttled) {
         try {
@@ -84,22 +86,43 @@ final class BackgroundApplier {
 
             boolean enabled = HookRuntime.preferences().getBoolean(BackgroundContract.CONTACTS_SURFACE_ADAPT, true);
             int opacity = HookRuntime.preferences().getInt(BackgroundContract.CONTACTS_DIALPAD_OPACITY, 60);
-            float dialpadAlpha = Math.max(0, Math.min(100, opacity)) / 100f;
+            float padAlpha = Math.max(0, Math.min(100, opacity)) / 100f;
 
             // 资源 id 进程内固定，只解析一次后缓存复用。
-            if (contactsDrawerId == -1) contactsDrawerId = resolveId(activity, "drawer_layout");
-            if (contactsDialpadId == -1) contactsDialpadId = resolveId(activity, "dialpad_container");
+            if (contactsBgViewId == -1) contactsBgViewId = resolveId(activity, "dialer_background_view");
 
-            // 列表底板：清除纯黑（含深色 windowBackground）后露出背景，关闭时靠会话 restore 还原。
-            View drawer = contactsDrawerId == 0 ? null : activity.findViewById(contactsDrawerId);
-            LayerSession session = (LayerSession) XposedHelpers.getAdditionalInstanceField(activity, CONTACTS_SESSION);
-            if (drawer != null && session != null && enabled) session.clear(drawer);
-
-            // 拨号盘键盘面板整体设 alpha（背景是 9-patch 图，不能采色清除，否则圆角丢失）。
+            // 拨号盘背景板整体设 alpha（背景是 9-patch 图，不能采色清除否则圆角丢失）。
             // 键盘由 ViewStub 在展开时才 inflate，故靠布局监听在其出现后补设。
-            View dialpad = contactsDialpadId == 0 ? null : activity.findViewById(contactsDialpadId);
-            if (dialpad != null) dialpad.setAlpha(enabled ? dialpadAlpha : 1f);
+            View bgView = contactsBgViewId == 0 ? null : activity.findViewById(contactsBgViewId);
+            if (bgView != null) bgView.setAlpha(enabled ? padAlpha : 1f);
+
+            // 遍历视图树处理列表字母分组吸顶头背景。
+            View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
+            if (decor != null) adaptPinnedHeaders(decor, enabled);
         } catch (Throwable error) { log("adaptContactsSurfaces", error); }
+    }
+
+    // 递归遍历，命中 ContactListPinnedHeaderView（字母分组吸顶头）后清除其自身及子 TextView 的
+    // 不透明分组头背景；关闭适配时不主动还原（分组头随列表复用重建，恢复原背景即可）。
+    private static void adaptPinnedHeaders(View view, boolean enabled) {
+        if (view == null) return;
+        if (view.getClass().getName().endsWith("ContactListPinnedHeaderView")) {
+            if (enabled) {
+                if (view.getBackground() != null) view.setBackground(null);
+                if (view instanceof ViewGroup) {
+                    ViewGroup g = (ViewGroup) view;
+                    for (int i = 0; i < g.getChildCount(); i++) {
+                        View child = g.getChildAt(i);
+                        if (child.getBackground() != null) child.setBackground(null);
+                    }
+                }
+            }
+            return;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) view;
+            for (int i = 0; i < g.getChildCount(); i++) adaptPinnedHeaders(g.getChildAt(i), enabled);
+        }
     }
 
     // 拨号盘键盘是点击后异步 inflate 的，Activity 生命周期回调抓不到它出现的那一刻；挂一个

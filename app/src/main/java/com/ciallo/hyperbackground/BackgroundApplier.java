@@ -102,8 +102,10 @@ final class BackgroundApplier {
             // 只从内容层（android.R.id.content）往下清，绝不碰 DecorView / content_parent 等窗口级
             // 顶层容器——那些不透明中性底是整个窗口的“实底”，抹成透明会让多任务缩放动画时穿透看到
             // 底层桌面/上个应用（频闪），且破坏页面明度层次（观感变暗变平）。
+            // 同时跳过拨号盘背景板 bgView 及其子树：它由上面的 setAlpha 专门调透明度，若被通用中性底
+            // 清除逻辑把背景换成透明，setAlpha 滑块就再无视觉效果（键盘恒定透明），即透明度调节失效。
             View content = activity.findViewById(android.R.id.content);
-            if (content != null) adaptContactsOpaqueSurfaces(content, enabled, content);
+            if (content != null) adaptContactsOpaqueSurfaces(content, enabled, content, bgView);
         } catch (Throwable error) { log("adaptContactsSurfaces", error); }
     }
 
@@ -112,11 +114,14 @@ final class BackgroundApplier {
     // （如 #b3000000 输入框、#80ffffff 渐变、#cc000000）不动，保留其层次；全透明背景（#0）本就不挡，跳过。
     // contentRoot 是 android.R.id.content 本身——它是内容层实底，透明化会让整页失去底色、动画时穿透，
     // 故跳过其自身背景，只清它内部的列表条目/容器等中间层。
+    // skip 是拨号盘背景板 dialer_background_view——由 setAlpha 专门处理，跳过其自身及整棵子树，
+    // 避免其 9-patch 背景被清成透明导致透明度滑块失效。
     // 关键：用透明 ColorDrawable 占位而非 setBackground(null)——列表条目随 RecyclerView 复用滚动，
     // 若清成 null 会失去覆盖整块区域的背景，硬件加速脏区重绘无法擦除上一帧内容而留下残影/拖拽；
     // 保留一个铺满的透明背景即可让绘制系统正常重绘，同时背景仍透出。
-    private static void adaptContactsOpaqueSurfaces(View view, boolean enabled, View contentRoot) {
+    private static void adaptContactsOpaqueSurfaces(View view, boolean enabled, View contentRoot, View skip) {
         if (view == null) return;
+        if (view == skip) return;
         if (view != contentRoot) {
         try {
             if (enabled) {
@@ -139,7 +144,7 @@ final class BackgroundApplier {
         }
         if (view instanceof ViewGroup) {
             ViewGroup g = (ViewGroup) view;
-            for (int i = 0; i < g.getChildCount(); i++) adaptContactsOpaqueSurfaces(g.getChildAt(i), enabled, contentRoot);
+            for (int i = 0; i < g.getChildCount(); i++) adaptContactsOpaqueSurfaces(g.getChildAt(i), enabled, contentRoot, skip);
         }
     }
 

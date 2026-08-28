@@ -27,7 +27,12 @@ import de.robv.android.xposed.XposedHelpers;
 final class SettingsThemeOverride {
     private SettingsThemeOverride() {}
 
-    static void install() {
+    // 当前被注入进程的包名。通讯录与拨号（com.android.contacts）读联系人专属深浅色键，
+    // 与全局强制深浅色独立并存；其余进程读全局键。static 字段在每个进程各持一份。
+    private static volatile String currentPackage;
+
+    static void install(String packageName) {
+        currentPackage = packageName;
         // 方案 A-1：替换 attachBaseContext 的 Context（覆盖走资源限定符的普通页面）。
         try {
             XposedHelpers.findAndHookMethod(
@@ -101,6 +106,12 @@ final class SettingsThemeOverride {
 
     private static int resolveMode(Context context) {
         try {
+            // 联系人进程：读联系人专属深浅色键（与全局独立并存）。setApplicationNightMode 是进程级单值，
+            // 联系人进程只受这一个键控制，不与全局键互相覆盖。其余进程沿用全局强制深浅色。
+            if (BackgroundContract.PACKAGE_CONTACTS.equals(currentPackage)) {
+                return HookRuntime.preferences().getInt(
+                        BackgroundContract.CONTACTS_THEME_MODE, BackgroundContract.SETTINGS_THEME_FOLLOW);
+            }
             return BackgroundContract.query(context, BackgroundContract.HOME).settingsThemeMode;
         } catch (Throwable ignored) {
             return BackgroundContract.SETTINGS_THEME_FOLLOW;

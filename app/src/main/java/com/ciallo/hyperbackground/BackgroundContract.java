@@ -28,6 +28,9 @@ public final class BackgroundContract {
     public static final String GLOBAL = "global";
     // 通讯录与拨号（com.android.contacts）主界面背景通道，与 home/device/global 同构。
     public static final String CONTACTS = "contacts";
+    // 拨号盘独立背景通道：与 contacts 同构的一条媒体通道，但只注入到拨号盘键盘容器（DialpadLayout）内，
+    // 与 contacts 整页背景叠加共存——整页背景照旧，拨号盘弹出时在键盘区额外叠这张图。
+    public static final String CONTACTS_DIALPAD = "contacts_dialpad";
     public static final String PREFS = "backgrounds";
     public static final String MIME_PREFIX = "mime_";
     public static final String SIZE_PREFIX = "size_";
@@ -44,6 +47,13 @@ public final class BackgroundContract {
     public static final String CONTACTS_SURFACE_ADAPT = "contacts_surface_adapt";
     // 拨号盘键盘面板不透明度（0-100，默认 60），仅在适配开关开启时生效。
     public static final String CONTACTS_DIALPAD_OPACITY = "contacts_dialpad_opacity";
+    // 拨号盘背景模式：默认（用系统原生拨号盘底、仅按上面的不透明度设 alpha）/ 自定义（叠加用户选的图）。
+    public static final String CONTACTS_DIALPAD_BG_MODE = "contacts_dialpad_bg_mode";
+    public static final int CONTACTS_DIALPAD_BG_DEFAULT = 0;
+    public static final int CONTACTS_DIALPAD_BG_CUSTOM = 1;
+    // 通讯录与拨号进程专属深浅色（与全局强制深浅色独立并存，仅作用于 com.android.contacts 进程）。
+    // 三态取值复用 SETTINGS_THEME_FOLLOW/LIGHT/DARK。
+    public static final String CONTACTS_THEME_MODE = "contacts_theme_mode";
 
     public static final String UI_MONET = "ui_monet";
     public static final String UI_THEME_COLOR_ENABLED = "ui_theme_color_enabled";
@@ -87,7 +97,8 @@ public final class BackgroundContract {
     }
 
     public static String remoteMediaName(String slot) {
-        if (!HOME.equals(slot) && !DEVICE.equals(slot) && !GLOBAL.equals(slot) && !CONTACTS.equals(slot)) {
+        if (!HOME.equals(slot) && !DEVICE.equals(slot) && !GLOBAL.equals(slot)
+                && !CONTACTS.equals(slot) && !CONTACTS_DIALPAD.equals(slot)) {
             throw new IllegalArgumentException("Unknown background slot: " + slot);
         }
         return "background_" + slot + ".bin";

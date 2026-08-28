@@ -24,7 +24,7 @@ public final class SettingsBackgroundHook {
 
         // 主题（深浅色）与文字色强制对所有支持的作用域进程生效，不再局限于设置进程，
         // 这样应用详情页等由其它进程提供的页面也能被强制控制。
-        SettingsThemeOverride.install();
+        SettingsThemeOverride.install(packageName);
         TextColorOverride.install();
 
         if (settings) {
@@ -37,6 +37,7 @@ public final class SettingsBackgroundHook {
 
         if (contacts) {
             hookContactsActivity(classLoader);
+            hookDialpadLayout(classLoader);
         }
     }
 
@@ -225,6 +226,24 @@ public final class SettingsBackgroundHook {
                     });
             XposedBridge.log("[HyperBackground] Installed contacts PeopleActivity background hooks");
         } catch (Throwable error) { logHookError("PeopleActivity", error); }
+    }
+
+    // 拨号盘键盘容器 DialpadLayout 在 onFinishInflate 时（其子 view 已 findViewById 完毕、绘制第一帧之前）
+    // 同步处理拨号盘背景（默认设 alpha / 自定义叠加独立背景图），根除“先露原生底色再变透”的先灰后透闪烁。
+    private static void hookDialpadLayout(ClassLoader classLoader) {
+        final String className = "com.android.contacts.dialer.view.DialpadLayout";
+        try {
+            XposedHelpers.findAndHookMethod(
+                    className, classLoader, "onFinishInflate",
+                    new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.thisObject instanceof View) {
+                                BackgroundApplier.applyDialpadOnInflate((View) param.thisObject);
+                            }
+                        }
+                    });
+            XposedBridge.log("[HyperBackground] Installed DialpadLayout background hook");
+        } catch (Throwable error) { logHookError("DialpadLayout", error); }
     }
 
     private static void hookHomeActivity(ClassLoader classLoader) {

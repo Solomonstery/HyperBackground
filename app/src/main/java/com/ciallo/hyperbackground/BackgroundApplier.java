@@ -24,6 +24,8 @@ final class BackgroundApplier {
     private static final String GLOBAL_SESSION = FIELD_PREFIX + "global.session";
     private static final String DEVICE_SESSION = FIELD_PREFIX + "device.session";
     private static final String CONTACTS_SESSION = FIELD_PREFIX + "contacts.session";
+    // 拨号盘独立背景层的会话，存到 DialpadLayout 实例上（拨号盘可被反复 inflate/复用）。
+    private static final String DIALPAD_SESSION = FIELD_PREFIX + "dialpad.session";
     private static final String CONTACTS_RESCAN = FIELD_PREFIX + "contacts.rescan";
     private static final String CONTACTS_ADAPT_AT = FIELD_PREFIX + "contacts.adapt.at";
     // 清除列表不透明中性色背景前，把原背景存到该 View 的 Xposed 附加字段，便于开关关闭时还原。
@@ -189,11 +191,14 @@ final class BackgroundApplier {
                 Drawable.ConstantState state = bg.getConstantState();
                 if (state == null) return false;
                 Drawable copy = state.newDrawable().mutate();
-                android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888);
+                // 渲染 8x8 后取中心像素，而非 1x1。9-patch（如分组吸顶头 list_view_item_group_header_bg）
+                // 的可拉伸区/内容区划分会让 1x1 采样落到边缘透明 padding 区，深色不透明黑条被误判为透明
+                // 而漏清；用稍大的画布取中心点采到真正的填充色，判定才准确。
+                android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888);
                 android.graphics.Canvas canvas = new android.graphics.Canvas(bmp);
-                copy.setBounds(0, 0, 1, 1);
+                copy.setBounds(0, 0, 8, 8);
                 copy.draw(canvas);
-                color = bmp.getPixel(0, 0);
+                color = bmp.getPixel(4, 4);
                 bmp.recycle();
             } catch (Throwable ignored) { return false; }
         }
@@ -246,6 +251,61 @@ final class BackgroundApplier {
     static void stopContacts(Activity activity) { stopLayer(activity, CONTACTS_SESSION); }
 
     static void destroyContacts(Activity activity) { removeContacts(activity); }
+
+    // 拨号盘键盘由 ViewStub 点击后异步 inflate，Activity 生命周期回调抓不到它「刚 inflate、绘制第一帧
+    // 之前」的时机，只能靠布局监听在其出现后补设，但布局回调总在绘制后一帧，导致先露出原生不透明底色、
+    // 再变半透（先灰后透闪烁）。这里由 Hook DialpadLayout.onFinishInflate（after）在首帧绘制前同步处理：
+    //  · 默认模式：把 dialer_background_view 整体设 alpha（背景是 9-patch，不能采色清除否则圆角丢失）。
+    //  · 自定义模式：在拨号盘容器内叠一层用户选的独立背景（BackgroundMediaView，透明度由该通道 opacity 控制），
+    //    与 contacts 整页背景共存——整页背景照旧，键盘区额外叠这张图；原生底 dialer_background_view 同时隐藏。
+    // dialpadView 是 DialpadLayout 实例本身（一个 FrameLayout）。
+    static void applyDialpadOnInflate(View dialpadView) {
+        if (!(dialpadView instanceof ViewGroup)) return;
+        try {
+            ViewGroup dialpad = (ViewGroup) dialpadView;
+            boolean enabled = HookRuntime.preferences().getBoolean(BackgroundContract.CONTACTS_SURFACE_ADAPT, true);
+            int opacity = HookRuntime.preferences().getInt(BackgroundContract.CONTACTS_DIALPAD_OPACITY, 60);
+            float padAlpha = Math.max(0, Math.min(100, opacity)) / 100f;
+            int mode = HookRuntime.preferences().getInt(
+                    BackgroundContract.CONTACTS_DIALPAD_BG_MODE, BackgroundContract.CONTACTS_DIALPAD_BG_DEFAULT);
+
+            int bgId = dialpad.getResources().getIdentifier(
+                    "dialer_background_view", "id", dialpad.getContext().getPackageName());
+            View bgView = bgId == 0 ? null : dialpad.findViewById(bgId);
+
+            BackgroundContract.Source source = BackgroundContract.query(dialpad.getContext(), BackgroundContract.CONTACTS_DIALPAD);
+            boolean custom = enabled && mode == BackgroundContract.CONTACTS_DIALPAD_BG_CUSTOM && source.exists;
+
+            // 先处理旧会话：拨号盘复用时避免叠加多层。
+            removeDialpadMedia(dialpad);
+
+            if (custom) {
+                // 自定义图铺满拨号盘容器，放在 index 0（原生底之下、数字键之上均可，这里置底不挡按键）。
+                // 原生底 dialer_background_view 设为全透明，让自定义图透出。
+                BackgroundMediaView media = new BackgroundMediaView(dialpad.getContext(), source);
+                dialpad.addView(media, 0, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                XposedHelpers.setAdditionalInstanceField(dialpad, DIALPAD_SESSION, media);
+                if (bgView != null) bgView.setAlpha(0f);
+            } else if (bgView != null) {
+                // 默认模式：仅按不透明度设 dialer_background_view 的 alpha。
+                bgView.setAlpha(enabled ? padAlpha : 1f);
+            }
+        } catch (Throwable error) { log("applyDialpadOnInflate", error); }
+    }
+
+    // 移除拨号盘上已叠加的自定义背景层（若有），并复位原生底的可见性由后续逻辑重设。
+    private static void removeDialpadMedia(ViewGroup dialpad) {
+        try {
+            Object old = XposedHelpers.getAdditionalInstanceField(dialpad, DIALPAD_SESSION);
+            if (old instanceof BackgroundMediaView) {
+                BackgroundMediaView media = (BackgroundMediaView) old;
+                if (media.getParent() instanceof ViewGroup) ((ViewGroup) media.getParent()).removeView(media);
+                media.dispose();
+            }
+            XposedHelpers.removeAdditionalInstanceField(dialpad, DIALPAD_SESSION);
+        } catch (Throwable ignored) {}
+    }
 
     private static void removeContacts(Activity activity) {
         if (activity == null) return;

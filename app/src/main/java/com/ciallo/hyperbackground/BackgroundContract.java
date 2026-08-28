@@ -58,10 +58,10 @@ public final class BackgroundContract {
     public static final int CONTACTS_DIALPAD_SCALE_STRETCH = 2;
     // 贴满裁切模式下的纵向取景焦点（0=顶部，50=居中，100=底部），决定裁掉上/下哪部分。
     public static final String CONTACTS_DIALPAD_FOCUS_Y = "contacts_dialpad_focus_y";
-    // 拨号盘自定义背景额外放大倍数（100=原始基准，>100 在缩放模式基础上再放大后按焦点取景）。
+    // 拨号盘自定义背景缩放大小（1-100，100=原始基准大小，往下按比例缩小、四周留边）。
     public static final String CONTACTS_DIALPAD_ZOOM = "contacts_dialpad_zoom";
-    public static final int CONTACTS_DIALPAD_ZOOM_MIN = 100;
-    public static final int CONTACTS_DIALPAD_ZOOM_MAX = 300;
+    public static final int CONTACTS_DIALPAD_ZOOM_MIN = 1;
+    public static final int CONTACTS_DIALPAD_ZOOM_MAX = 100;
     // 通讯录与拨号进程专属深浅色（与全局强制深浅色独立并存，仅作用于 com.android.contacts 进程）。
     // 三态取值复用 SETTINGS_THEME_FOLLOW/LIGHT/DARK。
     public static final String CONTACTS_THEME_MODE = "contacts_theme_mode";
@@ -135,7 +135,7 @@ public final class BackgroundContract {
                 prefs.getInt(SETTINGS_THEME_MODE, SETTINGS_THEME_FOLLOW),
                 prefs.getInt(CONTACTS_DIALPAD_SCALE_MODE, CONTACTS_DIALPAD_SCALE_CROP),
                 prefs.getInt(CONTACTS_DIALPAD_FOCUS_Y, 50),
-                prefs.getInt(CONTACTS_DIALPAD_ZOOM, CONTACTS_DIALPAD_ZOOM_MIN)
+                prefs.getInt(CONTACTS_DIALPAD_ZOOM, CONTACTS_DIALPAD_ZOOM_MAX)
         );
     }
 

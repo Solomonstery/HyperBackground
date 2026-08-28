@@ -206,7 +206,7 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
         mutableFloatStateOf(
             config.getInt(
                 BackgroundContract.CONTACTS_DIALPAD_ZOOM,
-                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN,
+                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX,
             ).coerceIn(
                 BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN,
                 BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX,

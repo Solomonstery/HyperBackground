@@ -26,6 +26,9 @@ final class BackgroundApplier {
     private static final String CONTACTS_SESSION = FIELD_PREFIX + "contacts.session";
     // 拨号盘独立背景层的会话，存到 DialpadLayout 实例上（拨号盘可被反复 inflate/复用）。
     private static final String DIALPAD_SESSION = FIELD_PREFIX + "dialpad.session";
+    // 上次应用到该 DialpadLayout 的“有效配置签名”。onVisibilityChanged/onAttachedToWindow 会被高频回调，
+    // 若签名未变则整段跳过（不重新解码大图 / 不重复 addView），否则每帧重建会 OOM+主线程卡死→黑屏死机。
+    private static final String DIALPAD_APPLIED_SIG = FIELD_PREFIX + "dialpad.applied.sig";
     private static final String CONTACTS_RESCAN = FIELD_PREFIX + "contacts.rescan";
     private static final String CONTACTS_ADAPT_AT = FIELD_PREFIX + "contacts.adapt.at";
     // 清除列表不透明中性色背景前，把原背景存到该 View 的 Xposed 附加字段，便于开关关闭时还原。
@@ -292,6 +295,15 @@ final class BackgroundApplier {
             BackgroundContract.Source source = BackgroundContract.query(ctx, BackgroundContract.CONTACTS_DIALPAD);
             boolean custom = enabled && mode == BackgroundContract.CONTACTS_DIALPAD_BG_CUSTOM && source.exists;
 
+            // 有效配置签名：模式 + 开关 + 面板不透明度 + 图片配置（cacheKey，含缩放/焦点/zoom/opacity）。
+            // onVisibilityChanged/onAttachedToWindow 高频回调时若签名不变则直接返回，避免每次重解码/重建导致 OOM 卡死。
+            String sig = enabled + "|" + mode + "|" + opacity + "|" + (custom ? source.cacheKey() : "default");
+            Object prevSig = XposedHelpers.getAdditionalInstanceField(dialpad, DIALPAD_APPLIED_SIG);
+            Object session = XposedHelpers.getAdditionalInstanceField(dialpad, DIALPAD_SESSION);
+            boolean sessionOk = !custom || (session instanceof BackgroundMediaView
+                    && ((BackgroundMediaView) session).getParent() != null);
+            if (sig.equals(prevSig) && sessionOk) return; // 配置与已应用一致且会话仍在，跳过重建
+
             // 先清旧会话：拨号盘复用时避免叠加多层，并还原上次改动的面板底。
             removeDialpadMedia(dialpad);
 
@@ -332,6 +344,7 @@ final class BackgroundApplier {
                     setBackgroundDrawableAlpha(container, a);
                 }
             }
+            XposedHelpers.setAdditionalInstanceField(dialpad, DIALPAD_APPLIED_SIG, sig);
         } catch (Throwable error) { log("applyDialpadOnInflate", error); }
     }
 

@@ -136,10 +136,11 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         int dh = imageDrawable.getIntrinsicHeight();
         if (vw <= 0 || vh <= 0 || dw <= 0 || dh <= 0) return;
 
-        float zoom = Math.max(1f, source.zoom / 100f);
+        // 缩放大小 1-100 → 倍数 0.01-1.0（100=原始基准大小，往下按比例缩小四周留边）。
+        float zoom = Math.max(0.01f, Math.min(1f, source.zoom / 100f));
         Matrix matrix = new Matrix();
         if (source.scaleMode == BackgroundContract.CONTACTS_DIALPAD_SCALE_STRETCH) {
-            // 拉伸填充：XY 各自铺满（变形），再整体乘 zoom，围绕中心放大。
+            // 拉伸填充：XY 各自铺满（变形），再整体乘 zoom，围绕中心缩放。
             float sx = (float) vw / dw * zoom;
             float sy = (float) vh / dh * zoom;
             matrix.setScale(sx, sy, vw / 2f, vh / 2f);
@@ -239,10 +240,11 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
 
         // TextureView 默认已把内容拉伸铺满视图（相当于 FIT_XY），因此以「铺满」为基准，
         // 再叠加缩放矩阵得到不同缩放方式：贴满裁切按较大边、完整显示按较小边、拉伸不变；末尾统一乘 zoom。
-        float zoom = Math.max(1f, source.zoom / 100f);
+        // 缩放大小 1-100 → 倍数 0.01-1.0（100=原始基准，往下缩小留边）。
+        float zoom = Math.max(0.01f, Math.min(1f, source.zoom / 100f));
         Matrix matrix = new Matrix();
         if (source.scaleMode == BackgroundContract.CONTACTS_DIALPAD_SCALE_STRETCH) {
-            // 拉伸填充：保持默认铺满，仅按 zoom 围绕中心放大。
+            // 拉伸填充：保持默认铺满，仅按 zoom 围绕中心缩放。
             matrix.setScale(zoom, zoom, viewWidth / 2f, viewHeight / 2f);
             textureView.setTransform(matrix);
             return;

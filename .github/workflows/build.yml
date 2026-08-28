@@ -102,11 +102,11 @@ jobs:
           ACTUAL="$(printf '%s' "$RAW" | tr '[:lower:]' '[:upper:]' | sed 's/../&:/g;s/:$//')"
           test "$ACTUAL" = "$EXPECTED"
           unzip -p "$APK" META-INF/xposed/scope.list > "$RUNNER_TEMP/scope.list"
-          test "$(wc -l < "$RUNNER_TEMP/scope.list")" -eq 9
+          test "$(wc -l < "$RUNNER_TEMP/scope.list")" -eq 10
           for package_name in \
             com.android.settings com.milink.service com.android.phone com.xiaomi.account \
             com.android.thememanager com.miui.home com.miui.securitycenter com.miui.powerkeeper \
-            com.xiaomi.misettings; do
+            com.xiaomi.misettings com.android.contacts; do
             grep -Fxq "$package_name" "$RUNNER_TEMP/scope.list"
           done
           TARGET="HyperBackground-v$VERSION.apk"

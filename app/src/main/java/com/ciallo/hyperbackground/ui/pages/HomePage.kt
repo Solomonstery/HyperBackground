@@ -86,6 +86,11 @@ fun HomePage(
                     title = stringResource(R.string.background_global),
                     summary = stringResource(R.string.background_global_summary),
                 ) { onOpenBackground(BackgroundContract.GLOBAL) }
+                ScopeEntry(
+                    icon = MiuixIcons.Phone,
+                    title = stringResource(R.string.background_contacts),
+                    summary = stringResource(R.string.background_contacts_summary),
+                ) { onOpenBackground(BackgroundContract.CONTACTS) }
             }
         }
     }

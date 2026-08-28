@@ -14,6 +14,8 @@
     <string name="background_device_summary">Images, GIF, WebP, MP4 and WebM</string>
     <string name="background_global">Global settings</string>
     <string name="background_global_summary">Background and colors for secondary system pages</string>
+    <string name="background_contacts">Contacts &amp; Dialer</string>
+    <string name="background_contacts_summary">Background for the Contacts and Dialer main screen</string>
     <string name="back">Back</string>
     <string name="choose_image">Choose image</string>
     <string name="choose_media">Choose media</string>
@@ -124,5 +126,6 @@
         <item>com.android.settings</item><item>com.milink.service</item><item>com.android.phone</item>
         <item>com.xiaomi.account</item><item>com.android.thememanager</item><item>com.miui.home</item>
         <item>com.miui.securitycenter</item><item>com.miui.powerkeeper</item><item>com.xiaomi.misettings</item>
+        <item>com.android.contacts</item>
     </string-array>
 </resources>

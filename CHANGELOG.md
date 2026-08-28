@@ -2,6 +2,11 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.4.2-beta1
+
+- 新增：「通讯录与拨号」独立背景通道，主页新增第四张卡片，选图方式与其它三个通道完全一致。
+- 说明：通过 Hook `com.android.contacts` 进程注入背景，仅作用于拨号盘 / 联系人主界面（`PeopleActivity`，`TwelveKeyDialer` 等启动图标均为其别名，共用同一 Activity），不影响联系人详情、编辑等二级页面。
+
 ## 1.4.1
 
 本版本在 1.4.0 重构基础上修复深浅色残留、二级页进入闪烁与安全中心系页面底块残留，并补齐更新日志与更新提示。

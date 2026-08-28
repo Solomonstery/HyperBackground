@@ -7,6 +7,7 @@
     <string name="background_home">设置主页</string><string name="background_home_summary">独立控制 HyperOS 设置首页</string>
     <string name="background_device">我的设备</string><string name="background_device_summary">图片、GIF、WebP、MP4 和 WebM</string>
     <string name="background_global">全局设置</string><string name="background_global_summary">设置二级页面的背景与颜色</string>
+    <string name="background_contacts">通讯录与拨号</string><string name="background_contacts_summary">通讯录与拨号主界面的背景</string>
     <string name="back">返回</string><string name="choose_image">选择图片</string><string name="choose_media">选择媒体</string><string name="replace_image">更换图片</string><string name="restore_default">恢复默认</string>
     <string name="enabled_size">已启用 · %1$s</string><string name="system_default">跟随系统默认</string>
     <string name="opacity">不透明度</string><string name="background_blur">背景模糊</string><string name="background_blur_summary">仅模糊背景媒体</string><string name="blur_strength">模糊强度</string>

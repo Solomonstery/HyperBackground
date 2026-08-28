@@ -15,16 +15,19 @@ public final class BackgroundContract {
     public static final String PACKAGE_SECURITY_CENTER = "com.miui.securitycenter";
     public static final String PACKAGE_POWER_KEEPER = "com.miui.powerkeeper";
     public static final String PACKAGE_MI_SETTINGS = "com.xiaomi.misettings";
+    public static final String PACKAGE_CONTACTS = "com.android.contacts";
 
     private static final String[] SUPPORTED_PACKAGES = new String[] {
             PACKAGE_SETTINGS, PACKAGE_MILINK, PACKAGE_PHONE, PACKAGE_ACCOUNT,
             PACKAGE_THEME_MANAGER, PACKAGE_HOME, PACKAGE_SECURITY_CENTER,
-            PACKAGE_POWER_KEEPER, PACKAGE_MI_SETTINGS
+            PACKAGE_POWER_KEEPER, PACKAGE_MI_SETTINGS, PACKAGE_CONTACTS
     };
 
     public static final String HOME = "home";
     public static final String DEVICE = "device";
     public static final String GLOBAL = "global";
+    // 通讯录与拨号（com.android.contacts）主界面背景通道，与 home/device/global 同构。
+    public static final String CONTACTS = "contacts";
     public static final String PREFS = "backgrounds";
     public static final String MIME_PREFIX = "mime_";
     public static final String SIZE_PREFIX = "size_";
@@ -80,7 +83,7 @@ public final class BackgroundContract {
     }
 
     public static String remoteMediaName(String slot) {
-        if (!HOME.equals(slot) && !DEVICE.equals(slot) && !GLOBAL.equals(slot)) {
+        if (!HOME.equals(slot) && !DEVICE.equals(slot) && !GLOBAL.equals(slot) && !CONTACTS.equals(slot)) {
             throw new IllegalArgumentException("Unknown background slot: " + slot);
         }
         return "background_" + slot + ".bin";

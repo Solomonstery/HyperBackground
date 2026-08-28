@@ -512,6 +512,7 @@ class MainActivity : ComponentActivity() {
         val title = when (slot) {
             BackgroundContract.HOME -> getString(R.string.background_home)
             BackgroundContract.DEVICE -> getString(R.string.background_device)
+            BackgroundContract.CONTACTS -> getString(R.string.background_contacts)
             else -> getString(R.string.background_global)
         }
         Scaffold(

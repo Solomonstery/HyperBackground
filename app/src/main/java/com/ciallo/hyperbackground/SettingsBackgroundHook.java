@@ -16,6 +16,7 @@ public final class SettingsBackgroundHook {
     private static final Map<Activity, Runnable> PENDING_GLOBAL = Collections.synchronizedMap(new WeakHashMap<>());
     static void install(String packageName, ClassLoader classLoader) {
         boolean settings = BackgroundContract.PACKAGE_SETTINGS.equals(packageName);
+        boolean contacts = BackgroundContract.PACKAGE_CONTACTS.equals(packageName);
 
         hookGlobalActivities();
         hookInstrumentationLifecycle();
@@ -32,6 +33,10 @@ public final class SettingsBackgroundHook {
             hookHomeActivity(classLoader);
             hookHomeFragment(classLoader);
             hookDeviceFragment(classLoader);
+        }
+
+        if (contacts) {
+            hookContactsActivity(classLoader);
         }
     }
 
@@ -178,6 +183,48 @@ public final class SettingsBackgroundHook {
         } catch (Throwable ignored) {
             BackgroundApplier.applyGlobal(activity);
         }
+    }
+
+    private static void hookContactsActivity(ClassLoader classLoader) {
+        final String className = "com.android.contacts.activities.PeopleActivity";
+        try {
+            XposedHelpers.findAndHookMethod(
+                    className, classLoader, "onCreate", Bundle.class,
+                    new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.thisObject instanceof Activity) BackgroundApplier.applyContacts((Activity) param.thisObject);
+                        }
+                    });
+            XposedHelpers.findAndHookMethod(
+                    className, classLoader, "onResume",
+                    new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.thisObject instanceof Activity) BackgroundApplier.applyContacts((Activity) param.thisObject);
+                        }
+                    });
+            XposedHelpers.findAndHookMethod(
+                    className, classLoader, "onContentChanged",
+                    new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.thisObject instanceof Activity) BackgroundApplier.applyContacts((Activity) param.thisObject);
+                        }
+                    });
+            XposedHelpers.findAndHookMethod(
+                    className, classLoader, "onStop",
+                    new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.thisObject instanceof Activity) BackgroundApplier.stopContacts((Activity) param.thisObject);
+                        }
+                    });
+            XposedHelpers.findAndHookMethod(
+                    className, classLoader, "onDestroy",
+                    new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.thisObject instanceof Activity) BackgroundApplier.destroyContacts((Activity) param.thisObject);
+                        }
+                    });
+            XposedBridge.log("[HyperBackground] Installed contacts PeopleActivity background hooks");
+        } catch (Throwable error) { logHookError("PeopleActivity", error); }
     }
 
     private static void hookHomeActivity(ClassLoader classLoader) {

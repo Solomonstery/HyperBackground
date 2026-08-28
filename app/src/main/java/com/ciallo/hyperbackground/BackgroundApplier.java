@@ -23,6 +23,7 @@ final class BackgroundApplier {
     private static final String HOME_SESSION = FIELD_PREFIX + "home.session";
     private static final String GLOBAL_SESSION = FIELD_PREFIX + "global.session";
     private static final String DEVICE_SESSION = FIELD_PREFIX + "device.session";
+    private static final String CONTACTS_SESSION = FIELD_PREFIX + "contacts.session";
     private static final String DEVICE_ACTIVE = FIELD_PREFIX + "device.active";
     private static final String ORIGINAL_TEXT_COLOR = FIELD_PREFIX + "original.text.color";
     private static final String GLOBAL_DIAGNOSTIC = FIELD_PREFIX + "global.diagnostic";
@@ -50,6 +51,28 @@ final class BackgroundApplier {
     static void stopGlobal(Activity activity) { stopLayer(activity, GLOBAL_SESSION); }
 
     static void destroyGlobal(Activity activity) { removeGlobal(activity); }
+
+    // 通讯录与拨号主界面（PeopleActivity，拨号盘/联系人共用同一 Activity）独立背景通道。
+    static void applyContacts(Activity activity) {
+        if (activity == null) return;
+        if (!matchesContactsSettings(activity.getClass().getName())) {
+            removeContacts(activity);
+            return;
+        }
+        applyLayer(activity, BackgroundContract.CONTACTS, CONTACTS_SESSION, false);
+    }
+
+    static void stopContacts(Activity activity) { stopLayer(activity, CONTACTS_SESSION); }
+
+    static void destroyContacts(Activity activity) { removeContacts(activity); }
+
+    private static void removeContacts(Activity activity) {
+        if (activity == null) return;
+        try {
+            LayerSession old = (LayerSession) XposedHelpers.getAdditionalInstanceField(activity, CONTACTS_SESSION);
+            if (old != null) removeLayer(activity, CONTACTS_SESSION, old);
+        } catch (Throwable error) { log("removeContacts", error); }
+    }
 
     static void enterDevice(Activity activity) {
         if (activity == null) return;
@@ -113,6 +136,11 @@ final class BackgroundApplier {
 
         if (BackgroundContract.PACKAGE_MI_SETTINGS.equals(packageName)) {
             return !matchesMiSettings(className);
+        }
+
+        // 通讯录与拨号由独立的 contacts 通道处理，global 一律跳过。
+        if (BackgroundContract.PACKAGE_CONTACTS.equals(packageName)) {
+            return true;
         }
 
         return true;
@@ -250,6 +278,13 @@ final class BackgroundApplier {
                 || n.contains("appusage")
                 || n.contains("screen")
                 || n.contains("settings");
+    }
+
+    // 通讯录与拨号的拨号盘/联系人/最近通话主界面统一由 PeopleActivity 承载
+    // （TwelveKeyDialer/ContactsFrontDoor 等均为其 alias），只对该主界面注入背景，
+    // 天然排除编辑、来电、快速联系卡、权限弹窗等其它页面。
+    private static boolean matchesContactsSettings(String className) {
+        return className != null && className.equals("com.android.contacts.activities.PeopleActivity");
     }
 
     private static void removeGlobal(Activity activity) {

@@ -61,6 +61,10 @@ fun BackgroundDetailPage(
         item {
             UiCard(activity, Modifier.fillMaxWidth()) {
                 BackgroundPickerPreference(activity = activity, slot = slot)
+                // 通讯录：把「颜色模式」并入「背景」卡，作为「设置背景」下方的同卡条目（无独立分组标题）。
+                if (slot == BackgroundContract.CONTACTS) {
+                    ContactsThemePreference(activity)
+                }
             }
         }
         if (slot == BackgroundContract.HOME) {
@@ -69,11 +73,8 @@ fun BackgroundDetailPage(
         }
         if (slot == BackgroundContract.CONTACTS) {
             item { SectionTitle(stringResource(R.string.contacts_surface_title)) }
-            item { ContactsSurfaceCard(activity) }
-            item { SectionTitle(stringResource(R.string.contacts_dialpad_bg_title)) }
-            item { ContactsDialpadBackgroundCard(activity, revision) }
-            item { SectionTitle(stringResource(R.string.contacts_appearance_title)) }
-            item { ContactsAppearanceCard(activity) }
+            // 「拨号盘与列表」卡内含：适配开关、键盘不透明度、以及并入的「拨号盘背景」下拉。
+            item { ContactsSurfaceCard(activity, revision) }
         }
         if (slot == BackgroundContract.GLOBAL) {
             item { SectionTitle(stringResource(R.string.settings_appearance)) }
@@ -166,7 +167,7 @@ private fun TopBlurCard(activity: MainActivity) {
 }
 
 @Composable
-private fun ContactsSurfaceCard(activity: MainActivity) {
+private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
     val config = activity.config
     var enabled by remember {
         mutableStateOf(config.getBoolean(BackgroundContract.CONTACTS_SURFACE_ADAPT, true))
@@ -178,6 +179,18 @@ private fun ContactsSurfaceCard(activity: MainActivity) {
                 .toFloat(),
         )
     }
+    var dialpadMode by remember {
+        mutableIntStateOf(
+            config.getInt(
+                BackgroundContract.CONTACTS_DIALPAD_BG_MODE,
+                BackgroundContract.CONTACTS_DIALPAD_BG_DEFAULT,
+            ),
+        )
+    }
+    val dialpadModeOptions = listOf(
+        stringResource(R.string.contacts_dialpad_bg_default),
+        stringResource(R.string.contacts_dialpad_bg_custom),
+    )
     UiCard(activity, Modifier.fillMaxWidth()) {
         Column(Modifier.padding(vertical = 8.dp)) {
             SwitchPreference(
@@ -209,8 +222,57 @@ private fun ContactsSurfaceCard(activity: MainActivity) {
                     )
                 }
             }
+            // 「拨号盘背景 默认/自定义」并入本卡：选「自定义」展开与其它通道一致的选图 + 透明度 + 清除。
+            OverlayDropdownPreference(
+                title = stringResource(R.string.contacts_dialpad_bg_mode),
+                items = dialpadModeOptions,
+                selectedIndex = dialpadMode.coerceIn(dialpadModeOptions.indices),
+                onSelectedIndexChange = {
+                    dialpadMode = it
+                    config.edit().putInt(BackgroundContract.CONTACTS_DIALPAD_BG_MODE, it).apply()
+                },
+            )
+            AnimatedVisibility(
+                visible = dialpadMode == BackgroundContract.CONTACTS_DIALPAD_BG_CUSTOM,
+                enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(220)),
+                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(180)),
+            ) {
+                Column(Modifier.padding(bottom = 8.dp)) {
+                    key(revision) {
+                        BackgroundPickerPreference(activity = activity, slot = BackgroundContract.CONTACTS_DIALPAD)
+                    }
+                }
+            }
         }
     }
+}
+
+/**
+ * 通讯录与拨号进程专属深浅色下拉（并入「背景」卡，无独立卡壳）。三态：跟随系统 / 浅色 / 深色。
+ * 写 CONTACTS_THEME_MODE；FOLLOW 时 hook 侧会主动撤销 per-app 覆盖。
+ */
+@Composable
+private fun ContactsThemePreference(activity: MainActivity) {
+    val config = activity.config
+    var contactsTheme by remember {
+        mutableIntStateOf(
+            config.getInt(BackgroundContract.CONTACTS_THEME_MODE, BackgroundContract.SETTINGS_THEME_FOLLOW),
+        )
+    }
+    val themeOptions = listOf(
+        stringResource(R.string.follow_system),
+        stringResource(R.string.light),
+        stringResource(R.string.dark),
+    )
+    OverlayDropdownPreference(
+        title = stringResource(R.string.contacts_theme),
+        items = themeOptions,
+        selectedIndex = contactsTheme.coerceIn(themeOptions.indices),
+        onSelectedIndexChange = {
+            contactsTheme = it
+            config.edit().putInt(BackgroundContract.CONTACTS_THEME_MODE, it).apply()
+        },
+    )
 }
 
 @Composable
@@ -251,84 +313,6 @@ private fun SettingsAppearanceCard(activity: MainActivity) {
                 onSelectedIndexChange = {
                     fontMode = it
                     config.edit().putInt(BackgroundContract.FONT_MODE, it).apply()
-                },
-            )
-        }
-    }
-}
-
-/**
- * 拨号盘独立背景卡片：默认（用系统原生拨号盘底、仅按不透明度设 alpha）/ 自定义（叠加用户选的图）。
- * 选“自定义”时展开一个与其它通道完全一致的选图 + 透明度 + 清除组件（slot = CONTACTS_DIALPAD），
- * 与联系人整页背景独立并存。revision 用于选图/清除后刷新预览。
- */
-@Composable
-private fun ContactsDialpadBackgroundCard(activity: MainActivity, revision: Int) {
-    val config = activity.config
-    var mode by remember {
-        mutableIntStateOf(
-            config.getInt(
-                BackgroundContract.CONTACTS_DIALPAD_BG_MODE,
-                BackgroundContract.CONTACTS_DIALPAD_BG_DEFAULT,
-            ),
-        )
-    }
-    val modeOptions = listOf(
-        stringResource(R.string.contacts_dialpad_bg_default),
-        stringResource(R.string.contacts_dialpad_bg_custom),
-    )
-    UiCard(activity, Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(vertical = 8.dp)) {
-            OverlayDropdownPreference(
-                title = stringResource(R.string.contacts_dialpad_bg_mode),
-                items = modeOptions,
-                selectedIndex = mode.coerceIn(modeOptions.indices),
-                onSelectedIndexChange = {
-                    mode = it
-                    config.edit().putInt(BackgroundContract.CONTACTS_DIALPAD_BG_MODE, it).apply()
-                },
-            )
-            AnimatedVisibility(
-                visible = mode == BackgroundContract.CONTACTS_DIALPAD_BG_CUSTOM,
-                enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(220)),
-                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(180)),
-            ) {
-                Column(Modifier.padding(bottom = 8.dp)) {
-                    key(revision) {
-                        BackgroundPickerPreference(activity = activity, slot = BackgroundContract.CONTACTS_DIALPAD)
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * 通讯录与拨号进程专属深浅色卡片（与全局强制深浅色独立并存，仅作用于 com.android.contacts 进程）。
- * 三态：跟随系统 / 浅色 / 深色。写 CONTACTS_THEME_MODE；FOLLOW 时 hook 侧会主动撤销 per-app 覆盖。
- */
-@Composable
-private fun ContactsAppearanceCard(activity: MainActivity) {
-    val config = activity.config
-    var contactsTheme by remember {
-        mutableIntStateOf(
-            config.getInt(BackgroundContract.CONTACTS_THEME_MODE, BackgroundContract.SETTINGS_THEME_FOLLOW),
-        )
-    }
-    val themeOptions = listOf(
-        stringResource(R.string.follow_system),
-        stringResource(R.string.light),
-        stringResource(R.string.dark),
-    )
-    UiCard(activity, Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(vertical = 8.dp)) {
-            OverlayDropdownPreference(
-                title = stringResource(R.string.contacts_theme),
-                items = themeOptions,
-                selectedIndex = contactsTheme.coerceIn(themeOptions.indices),
-                onSelectedIndexChange = {
-                    contactsTheme = it
-                    config.edit().putInt(BackgroundContract.CONTACTS_THEME_MODE, it).apply()
                 },
             )
         }

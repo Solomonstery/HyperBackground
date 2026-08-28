@@ -20,11 +20,9 @@
     <string name="contacts_surface_adapt">Adapt surfaces</string>
     <string name="contacts_surface_adapt_summary">Clear the list\'s solid background and make the dialpad panel translucent</string>
     <string name="contacts_dialpad_opacity">Dialpad panel opacity</string>
-    <string name="contacts_dialpad_bg_title">Dialpad background</string>
     <string name="contacts_dialpad_bg_mode">Dialpad background</string>
     <string name="contacts_dialpad_bg_default">Default</string>
     <string name="contacts_dialpad_bg_custom">Custom</string>
-    <string name="contacts_appearance_title">Contacts colors</string>
     <string name="contacts_theme">Color mode</string>
     <string name="back">Back</string>
     <string name="choose_image">Choose image</string>

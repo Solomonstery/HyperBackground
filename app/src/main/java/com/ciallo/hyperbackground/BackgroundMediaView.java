@@ -111,10 +111,12 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
                         AssetFileDescriptor.UNKNOWN_LENGTH));
         imageDrawable = ImageDecoder.decodeDrawable(decoderSource);
         imageView.setImageDrawable(imageDrawable);
-        applyImageScale();
         addView(imageView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
+        // 必须在 addView 之后再配置矩阵缩放/定位：此前 imageView 尚未进入视图树、宽高为 0，
+        // updateImageCropMatrix 会因尺寸为 0 直接返回，导致 focus/zoom 定位永不生效。
+        applyImageScale();
         if (imageDrawable instanceof AnimatedImageDrawable) {
             AnimatedImageDrawable animated = (AnimatedImageDrawable) imageDrawable;
             animated.setRepeatCount(AnimatedImageDrawable.REPEAT_INFINITE);
@@ -133,6 +135,9 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         imageLayoutListener = (v, l, t, r, b, ol, ot, or, ob) -> updateImageCropMatrix();
         imageView.addOnLayoutChangeListener(imageLayoutListener);
         updateImageCropMatrix();
+        // 兜底：addView 当帧 imageView 宽高仍为 0，layout 监听在个别机型可能因尺寸未变化而不回调，
+        // 故再 post 到下一帧强制重算一次，确保 focus/zoom 定位一定落地。
+        imageView.post(this::updateImageCropMatrix);
     }
 
     private void updateImageCropMatrix() {
@@ -159,11 +164,6 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         matrix.setScale(scale, scale);
         matrix.postTranslate(Math.round(dx), Math.round(dy));
         imageView.setImageMatrix(matrix);
-        // 诊断：确认 hook 侧实际读到的定位/缩放值及算出的偏移，用于排查“位置滑块不生效”。
-        HookRuntime.log("HyperBG-DPPOS slot=" + source.slot + " focusX=" + source.focusX
-                + " focusY=" + source.focusY + " zoom=" + source.zoom
-                + " vw=" + vw + " vh=" + vh + " dw=" + dw + " dh=" + dh
-                + " scale=" + scale + " dx=" + Math.round(dx) + " dy=" + Math.round(dy));
     }
 
     private void createVideoView() {

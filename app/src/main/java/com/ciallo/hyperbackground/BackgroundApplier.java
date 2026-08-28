@@ -32,6 +32,8 @@ final class BackgroundApplier {
     private static final String CONTACTS_BG_SAVED = FIELD_PREFIX + "contacts.bg.saved";
     // 自定义模式把 dialer_background_view 的原生 9-patch 底换成透明前，先存原背景到该字段供切回默认时还原。
     private static final String DIALPAD_BGVIEW_SAVED = FIELD_PREFIX + "dialpad.bgview.saved";
+    // 默认模式下承载面板底、可整体调 alpha 的置底纯背景 view（作为 dialpad_container 的第一个子 view）。
+    private static final String DIALPAD_PANEL_ALPHA_VIEW = FIELD_PREFIX + "dialpad.panel.alpha.view";
     // 缓存联系人进程内的资源 id（进程内固定），避免每次布局回调都走 getIdentifier 慢查询。-1=未解析。
     private static int contactsBgViewId = -1;
     private static final String DEVICE_ACTIVE = FIELD_PREFIX + "device.active";
@@ -320,27 +322,21 @@ final class BackgroundApplier {
                 }
                 clearDialpadPanelBackground(container);
             } else {
-                // 默认模式：只对两层「背景 drawable」设 alpha（不动 view 本身），否则 dialpad_container 上
-                // 的 setAlpha 会连它承载的数字键一起变透明（这是“改透明度数字键也跟着透”的根因）。
+                // 默认模式：先复位可能被上次自定义模式改动的背景 / 面板底。
                 float a = enabled ? padAlpha : 1f;
-                // 复位可能被上次自定义模式改动的背景 / 面板底，再对其 drawable 设 alpha。
                 if (bgView != null) {
                     bgView.setAlpha(1f);
                     restoreDialpadBgView(bgView);
-                    setBackgroundDrawableAlpha(bgView, a);
                 }
                 restoreDialpadPanelBackground(container);
+                // 面板底 dialer_background_pad 是 9-patch，drawable.setAlpha() 视觉上不生效，导致
+                // “面板不透明度”滑块失效。改为：把面板底搬到一个新插入的置底纯背景 view 上，对该 view
+                // 本身 setAlpha —— view.setAlpha 确定有效；数字键是 dialpad_container 的子 view、不在
+                // 这个背景 view 下，故不受连累（避免 beta5 “数字键也跟着透”的老问题）。
                 if (container != null) {
                     container.setAlpha(1f);
-                    setBackgroundDrawableAlpha(container, a);
+                    applyDialpadPanelAlpha(container, a);
                 }
-                // 诊断：确认默认模式下不透明度实际作用对象与 drawable 类型，排查“默认模式滑块失效”。
-                HookRuntime.log("HyperBG-DPOP default enabled=" + enabled + " opacity=" + opacity
-                        + " a=" + a
-                        + " bgView=" + (bgView == null ? "null" : bgView.getClass().getSimpleName()
-                            + " bg=" + drawableInfo(bgView.getBackground()))
-                        + " container=" + (container == null ? "null" : container.getClass().getSimpleName()
-                            + " bg=" + drawableInfo(container.getBackground())));
             }
         } catch (Throwable error) { log("applyDialpadOnInflate", error); }
     }
@@ -364,27 +360,35 @@ final class BackgroundApplier {
         } catch (Throwable ignored) {}
     }
 
-    // 只对 view 的背景 drawable 设 alpha（0-255），不影响其上承载的子 view（如数字键）。
-    private static void setBackgroundDrawableAlpha(View view, float alpha) {
-        if (view == null) return;
+    // 默认模式下让「面板不透明度」滑块生效：面板底 dialer_background_pad 是 9-patch，直接对 drawable
+    // setAlpha 视觉不生效，故把面板底搬到 dialpad_container 内一个置底的纯背景 view 上，对该 view 本身
+    // setAlpha（确定有效）。数字键是 container 的其它子 view、层级在此背景 view 之上，故不受影响。
+    private static void applyDialpadPanelAlpha(View container, float alpha) {
+        if (!(container instanceof ViewGroup)) return;
         try {
-            Drawable bg = view.getBackground();
-            if (bg == null) return;
-            Drawable mutable = bg.mutate();
-            mutable.setAlpha(Math.round(Math.max(0f, Math.min(1f, alpha)) * 255));
-            view.setBackground(mutable);
+            ViewGroup group = (ViewGroup) container;
+            float a = Math.max(0f, Math.min(1f, alpha));
+            View panel = null;
+            Object saved = XposedHelpers.getAdditionalInstanceField(container, DIALPAD_PANEL_ALPHA_VIEW);
+            if (saved instanceof View && ((View) saved).getParent() == group) {
+                panel = (View) saved; // 复用已插入的背景 view，避免重复叠加
+            }
+            if (panel == null) {
+                Drawable bg = container.getBackground();
+                if (bg == null) return; // 没有面板底可搬，无需处理
+                // 记录原面板底供切回还原，再把 container 自身背景清透明、交给背景 view 承载。
+                if (XposedHelpers.getAdditionalInstanceField(container, CONTACTS_BG_SAVED) == null) {
+                    XposedHelpers.setAdditionalInstanceField(container, CONTACTS_BG_SAVED, bg);
+                }
+                container.setBackground(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+                panel = new View(container.getContext());
+                panel.setBackground(bg);
+                group.addView(panel, 0, new ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                XposedHelpers.setAdditionalInstanceField(container, DIALPAD_PANEL_ALPHA_VIEW, panel);
+            }
+            panel.setAlpha(a);
         } catch (Throwable ignored) {}
-    }
-
-    // 诊断：输出 drawable 的类型与当前 alpha（部分 drawable 不支持 getAlpha，则标 n/a）。
-    private static String drawableInfo(Drawable d) {
-        if (d == null) return "null";
-        String type = d.getClass().getSimpleName();
-        try {
-            return type + "(alpha=" + d.getAlpha() + ")";
-        } catch (Throwable ignored) {
-            return type + "(alpha=n/a)";
-        }
     }
 
     // 把自定义模式下换成透明的 dialer_background_view 原生 9-patch 底还原回去（若曾保存）。
@@ -416,6 +420,13 @@ final class BackgroundApplier {
     private static void restoreDialpadPanelBackground(View container) {
         if (container == null) return;
         try {
+            // 先撤销默认模式插入的置底面板背景 view：移除它并把面板底还给 container 自身。
+            Object panel = XposedHelpers.getAdditionalInstanceField(container, DIALPAD_PANEL_ALPHA_VIEW);
+            if (panel instanceof View) {
+                View pv = (View) panel;
+                if (pv.getParent() instanceof ViewGroup) ((ViewGroup) pv.getParent()).removeView(pv);
+                XposedHelpers.removeAdditionalInstanceField(container, DIALPAD_PANEL_ALPHA_VIEW);
+            }
             Object saved = XposedHelpers.getAdditionalInstanceField(container, CONTACTS_BG_SAVED);
             if (saved instanceof Drawable) {
                 container.setBackground((Drawable) saved);

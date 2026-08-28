@@ -26,8 +26,8 @@ final class BackgroundApplier {
     private static final String CONTACTS_SESSION = FIELD_PREFIX + "contacts.session";
     private static final String CONTACTS_RESCAN = FIELD_PREFIX + "contacts.rescan";
     private static final String CONTACTS_ADAPT_AT = FIELD_PREFIX + "contacts.adapt.at";
-    // 【诊断】每个 Activity 实例只 dump 一次视图树的标记，避免布局回调刷屏。
-    private static final String CONTACTS_DUMPED = FIELD_PREFIX + "contacts.dumped";
+    // 清除列表不透明中性色背景前，把原背景存到该 View 的 Xposed 附加字段，便于开关关闭时还原。
+    private static final String CONTACTS_BG_SAVED = FIELD_PREFIX + "contacts.bg.saved";
     // 缓存联系人进程内的资源 id（进程内固定），避免每次布局回调都走 getIdentifier 慢查询。-1=未解析。
     private static int contactsBgViewId = -1;
     private static final String DEVICE_ACTIVE = FIELD_PREFIX + "device.active";
@@ -73,9 +73,10 @@ final class BackgroundApplier {
     // 拨号盘 / 列表适配：
     //  1) 拨号盘背景板（dialer_background_view，背景是 dialer_background_new 9-patch，浅/深色都不透明）
     //     整体设 alpha 让背景透出，同时不碰装数字键的 dialpad_container，保证按键清晰可读。
-    //  2) 联系人字母分组吸顶头（ContactListPinnedHeaderView 内 TextView 的
-    //     list_view_item_group_header_bg_light，浅色浅灰/深色深黑，均为不透明板）——遍历视图树清其背景，
-    //     露出自定义背景；分组头在 RecyclerView 中滚动复用，靠常驻布局监听持续补清。
+    //  2) 联系人列表遮挡背景的不透明中性色（黑/白/灰）背景层——深色下现有逻辑已透出，但浅色下列表
+    //     条目（HyperCellLayout content_layout）、列表容器（drawer_layout）等会铺满不透明白，挡住背景。
+    //     遍历视图树，对「不透明中性色」背景的 View 清除背景（深浅通吃），保留半透明卡片/渐变遮罩不动。
+    //     列表条目随 RecyclerView 滚动复用重建，靠常驻布局监听持续补清。
     // throttled=true 时对高频布局回调做 200ms 节流，避免滚动列表时反复无谓执行。
     private static void adaptContactsSurfaces(Activity activity, boolean throttled) {
         try {
@@ -98,112 +99,63 @@ final class BackgroundApplier {
             View bgView = contactsBgViewId == 0 ? null : activity.findViewById(contactsBgViewId);
             if (bgView != null) bgView.setAlpha(enabled ? padAlpha : 1f);
 
-            // 遍历视图树处理列表字母分组吸顶头背景。
+            // 遍历视图树清除/还原列表的不透明中性色背景层。
             View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
-            if (decor != null) adaptPinnedHeaders(decor, enabled);
-
-            // 【诊断】视图树真正布局完成后（DecorView 有尺寸且有子节点）dump 一次完整视图树，
-            // 含背景类型/颜色/alpha，用于定位浅色白底 / 深色黑条遮挡背景的真实句柄。定位完成后移除。
-            boolean laidOut = decor != null && decor.getWidth() > 0 && decor.getHeight() > 0
-                    && (decor instanceof ViewGroup) && ((ViewGroup) decor).getChildCount() > 0;
-            if (laidOut && !Boolean.TRUE.equals(XposedHelpers.getAdditionalInstanceField(activity, CONTACTS_DUMPED))) {
-                XposedHelpers.setAdditionalInstanceField(activity, CONTACTS_DUMPED, Boolean.TRUE);
-                XposedBridge.log("[HyperBG-DUMP] ===== BEGIN " + activity.getClass().getName()
-                        + " night=" + isNightMode(activity) + " decor=" + decor.getWidth() + "x" + decor.getHeight() + " =====");
-                dumpViewTree(decor, 0);
-                XposedBridge.log("[HyperBG-DUMP] ===== END =====");
-            }
+            if (decor != null) adaptContactsOpaqueSurfaces(decor, enabled);
         } catch (Throwable error) { log("adaptContactsSurfaces", error); }
     }
 
-    // 【诊断】判断当前是否深色模式。
-    private static boolean isNightMode(Activity activity) {
+    // 递归遍历：enabled 时清除采样为「不透明中性色（黑/白/灰）」的背景（清前用 tag 保存原背景以便还原），
+    // disabled 时还原之前清掉的背景。只处理不透明中性色，半透明卡片/渐变遮罩（如 #b3000000 输入框、
+    // #80ffffff 渐变、#cc000000）不动，保留其层次；全透明背景（#0）本就不挡背景，也跳过。
+    private static void adaptContactsOpaqueSurfaces(View view, boolean enabled) {
+        if (view == null) return;
         try {
-            int flag = activity.getResources().getConfiguration().uiMode
-                    & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
-            return flag == android.content.res.Configuration.UI_MODE_NIGHT_YES;
-        } catch (Throwable ignored) { return false; }
-    }
-
-    // 【诊断】递归打印视图树：层级缩进、类名、id 名、可见性、尺寸、背景描述。
-    // 打印所有带背景的节点 + 所有 ViewGroup 容器（便于看层级），总行数封顶防刷屏。定位后移除。
-    private static int dumpLineCount = 0;
-    private static void dumpViewTree(View view, int depth) {
-        if (view == null || depth > 30) return;
-        if (depth == 0) dumpLineCount = 0;
-        if (dumpLineCount > 400) return;
-        try {
-            android.graphics.drawable.Drawable bg = view.getBackground();
-            String idName = "no-id";
-            if (view.getId() != View.NO_ID) {
-                try { idName = view.getResources().getResourceEntryName(view.getId()); }
-                catch (Throwable ignored) { idName = "0x" + Integer.toHexString(view.getId()); }
-            }
-            // 打印带背景的节点，或作为容器的 ViewGroup（无背景的纯 leaf 才跳过，避免海量 TextView/ImageView 刷屏）。
-            boolean isContainer = view instanceof ViewGroup;
-            if (bg != null || isContainer) {
-                dumpLineCount++;
-                StringBuilder sb = new StringBuilder("[HyperBG-DUMP] ");
-                for (int i = 0; i < depth; i++) sb.append("  ");
-                sb.append(view.getClass().getName())
-                        .append(" id=").append(idName)
-                        .append(" vis=").append(view.getVisibility())
-                        .append(" ").append(view.getWidth()).append("x").append(view.getHeight())
-                        .append(" alpha=").append(view.getAlpha())
-                        .append(" bg=").append(describeDrawable(bg));
-                XposedBridge.log(sb.toString());
+            if (enabled) {
+                Drawable bg = view.getBackground();
+                Object saved = XposedHelpers.getAdditionalInstanceField(view, CONTACTS_BG_SAVED);
+                if (bg != null && saved == null && isOpaqueNeutralSurface(bg)) {
+                    XposedHelpers.setAdditionalInstanceField(view, CONTACTS_BG_SAVED, bg);
+                    view.setBackground(null);
+                }
+            } else {
+                Object saved = XposedHelpers.getAdditionalInstanceField(view, CONTACTS_BG_SAVED);
+                if (saved instanceof Drawable) {
+                    view.setBackground((Drawable) saved);
+                    XposedHelpers.removeAdditionalInstanceField(view, CONTACTS_BG_SAVED);
+                }
             }
         } catch (Throwable ignored) {}
         if (view instanceof ViewGroup) {
             ViewGroup g = (ViewGroup) view;
-            for (int i = 0; i < g.getChildCount(); i++) dumpViewTree(g.getChildAt(i), depth + 1);
+            for (int i = 0; i < g.getChildCount(); i++) adaptContactsOpaqueSurfaces(g.getChildAt(i), enabled);
         }
     }
 
-    // 【诊断】描述一个 Drawable：类型 + 实际合成色（采样到 1x1 bitmap），用于判断是否不透明中性色遮挡。
-    private static String describeDrawable(android.graphics.drawable.Drawable d) {
-        if (d == null) return "null";
-        String type = d.getClass().getName();
-        try {
-            if (d instanceof android.graphics.drawable.ColorDrawable) {
-                int c = ((android.graphics.drawable.ColorDrawable) d).getColor();
-                return type + "(color=#" + Integer.toHexString(c) + ")";
-            }
-            // 其它 Drawable（GradientDrawable/LayerDrawable/9-patch 等）渲染到 1x1 bitmap 采其合成色，
-            // 最能反映实际盖在背景上的颜色与透明度。
-            android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888);
-            android.graphics.Canvas canvas = new android.graphics.Canvas(bmp);
-            android.graphics.drawable.Drawable copy = d.getConstantState() != null
-                    ? d.getConstantState().newDrawable().mutate() : d;
-            copy.setBounds(0, 0, 1, 1);
-            copy.draw(canvas);
-            int px = bmp.getPixel(0, 0);
-            bmp.recycle();
-            return type + "(sampled=#" + Integer.toHexString(px) + " drawableAlpha=" + d.getAlpha() + ")";
-        } catch (Throwable ignored) { return type + "(alpha=" + d.getAlpha() + ")"; }
-    }
-
-    // 递归遍历，命中 ContactListPinnedHeaderView（字母分组吸顶头）后清除其自身及子 TextView 的
-    // 不透明分组头背景；关闭适配时不主动还原（分组头随列表复用重建，恢复原背景即可）。
-    private static void adaptPinnedHeaders(View view, boolean enabled) {
-        if (view == null) return;
-        if (view.getClass().getName().endsWith("ContactListPinnedHeaderView")) {
-            if (enabled) {
-                if (view.getBackground() != null) view.setBackground(null);
-                if (view instanceof ViewGroup) {
-                    ViewGroup g = (ViewGroup) view;
-                    for (int i = 0; i < g.getChildCount(); i++) {
-                        View child = g.getChildAt(i);
-                        if (child.getBackground() != null) child.setBackground(null);
-                    }
-                }
-            }
-            return;
+    // 背景采样为完全不透明（alpha=255）且中性（R≈G≈B，无明显色相）：黑 / 白 / 灰。
+    // ColorDrawable 直接读色；其它（GradientDrawable/StateListDrawable/LayerDrawable/9-patch）
+    // 渲染 COPY 到 1x1 bitmap 采其合成色，绝不改动原 drawable。
+    private static boolean isOpaqueNeutralSurface(Drawable bg) {
+        if (bg == null) return false;
+        int color;
+        if (bg instanceof android.graphics.drawable.ColorDrawable) {
+            color = ((android.graphics.drawable.ColorDrawable) bg).getColor();
+        } else {
+            try {
+                Drawable.ConstantState state = bg.getConstantState();
+                if (state == null) return false;
+                Drawable copy = state.newDrawable().mutate();
+                android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888);
+                android.graphics.Canvas canvas = new android.graphics.Canvas(bmp);
+                copy.setBounds(0, 0, 1, 1);
+                copy.draw(canvas);
+                color = bmp.getPixel(0, 0);
+                bmp.recycle();
+            } catch (Throwable ignored) { return false; }
         }
-        if (view instanceof ViewGroup) {
-            ViewGroup g = (ViewGroup) view;
-            for (int i = 0; i < g.getChildCount(); i++) adaptPinnedHeaders(g.getChildAt(i), enabled);
-        }
+        if (Color.alpha(color) != 255) return false;
+        int r = Color.red(color), g = Color.green(color), b = Color.blue(color);
+        return (Math.max(r, Math.max(g, b)) - Math.min(r, Math.min(g, b))) <= 24;
     }
 
     // 拨号盘键盘是点击后异步 inflate 的，Activity 生命周期回调抓不到它出现的那一刻；挂一个

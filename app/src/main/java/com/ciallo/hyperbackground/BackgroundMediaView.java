@@ -15,6 +15,7 @@ import android.os.ParcelFileDescriptor;
 import android.util.Log;
 import android.view.Surface;
 import android.view.TextureView;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -30,6 +31,7 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
     private Drawable imageDrawable;
     private MediaPlayer mediaPlayer;
     private ParcelFileDescriptor dataDescriptor;
+    private View.OnLayoutChangeListener imageLayoutListener;
     private int videoWidth;
     private int videoHeight;
     private boolean hostResumed = true;
@@ -92,6 +94,10 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         }
         releasePlayer();
         if (textureView != null) textureView.setSurfaceTextureListener(null);
+        if (imageView != null && imageLayoutListener != null) {
+            imageView.removeOnLayoutChangeListener(imageLayoutListener);
+        }
+        imageLayoutListener = null;
         removeAllViews();
     }
 
@@ -122,8 +128,10 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
     private void applyImageScale() {
         if (imageView == null) return;
         imageView.setScaleType(ImageView.ScaleType.MATRIX);
-        // 视图尺寸在布局后才确定，且随宿主尺寸变化重算。
-        imageView.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateImageCropMatrix());
+        // 视图尺寸在布局后才确定，且随宿主尺寸变化重算。先移除旧监听再注册，避免反复注册累积泄漏。
+        if (imageLayoutListener != null) imageView.removeOnLayoutChangeListener(imageLayoutListener);
+        imageLayoutListener = (v, l, t, r, b, ol, ot, or, ob) -> updateImageCropMatrix();
+        imageView.addOnLayoutChangeListener(imageLayoutListener);
         updateImageCropMatrix();
     }
 

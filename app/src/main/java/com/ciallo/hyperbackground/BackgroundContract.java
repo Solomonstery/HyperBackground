@@ -119,6 +119,15 @@ public final class BackgroundContract {
         SharedPreferences prefs = HookRuntime.preferences();
         long size = prefs.getLong(SIZE_PREFIX + slot, -1L);
         long modified = prefs.getLong(MODIFIED_PREFIX + slot, -1L);
+        // 缩放方式/纵向焦点/缩放大小仅对「拨号盘自定义背景」通道生效；其它通道（home/device/global/contacts
+        // 整页背景等）必须用中性默认值（CROP + 焦点居中 + zoom=100=原始大小不缩放），否则调拨号盘的
+        // 「缩放大小」会把这三个全局键读进整页背景的 Source，导致整页背景也被一起缩放（“缩放到本来的背景上去”）。
+        boolean isDialpad = CONTACTS_DIALPAD.equals(slot);
+        int scaleMode = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_SCALE_MODE, CONTACTS_DIALPAD_SCALE_CROP)
+                : CONTACTS_DIALPAD_SCALE_CROP;
+        int focusY = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_FOCUS_Y, 50) : 50;
+        int zoom = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_ZOOM, CONTACTS_DIALPAD_ZOOM_MAX)
+                : CONTACTS_DIALPAD_ZOOM_MAX;
         return new Source(
                 slot,
                 prefs.getString(MIME_PREFIX + slot, "application/octet-stream"),
@@ -133,9 +142,9 @@ public final class BackgroundContract {
                 prefs.getString(DEVICE_LOGO_TEXT, "HyperOS"),
                 prefs.getInt(DEVICE_LOGO_COLOR, 0xFF111111),
                 prefs.getInt(SETTINGS_THEME_MODE, SETTINGS_THEME_FOLLOW),
-                prefs.getInt(CONTACTS_DIALPAD_SCALE_MODE, CONTACTS_DIALPAD_SCALE_CROP),
-                prefs.getInt(CONTACTS_DIALPAD_FOCUS_Y, 50),
-                prefs.getInt(CONTACTS_DIALPAD_ZOOM, CONTACTS_DIALPAD_ZOOM_MAX)
+                scaleMode,
+                focusY,
+                zoom
         );
     }
 

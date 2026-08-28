@@ -322,24 +322,17 @@ final class BackgroundApplier {
                 }
                 clearDialpadPanelBackground(container);
             } else {
-                // 默认模式：先复位可能被上次自定义模式改动的背景 / 面板底。
+                // 默认模式（beta5 已验证有效的做法）：不透明度直接对拨号盘背景板 dialer_background_view
+                // 本身 setAlpha —— 保留它原生的 9-patch 底作为 setAlpha 的作用对象（清除遍历已跳过它及
+                // 其子树，见 adaptContactsSurfaces 的 skip，故其底不会被通用中性底清成透明而使滑块失效）。
+                // 先撤销上次自定义模式对 bgView / container 的改动，再对 bgView 施加透明度。
                 float a = enabled ? padAlpha : 1f;
-                if (bgView != null) {
-                    bgView.setAlpha(1f);
-                    restoreDialpadBgView(bgView);
-                }
                 restoreDialpadPanelBackground(container);
-                // 面板底 dialer_background_pad 是 9-patch，drawable.setAlpha() 视觉上不生效，导致
-                // “面板不透明度”滑块失效。改为：把面板底搬到一个新插入的置底纯背景 view 上，对该 view
-                // 本身 setAlpha —— view.setAlpha 确定有效；数字键是 dialpad_container 的子 view、不在
-                // 这个背景 view 下，故不受连累（避免 beta5 “数字键也跟着透”的老问题）。
-                if (container != null) {
-                    container.setAlpha(1f);
-                    applyDialpadPanelAlpha(container, a);
+                if (container != null) container.setAlpha(1f);
+                if (bgView != null) {
+                    restoreDialpadBgView(bgView);   // 若曾在自定义模式换成透明底，先还原原生 9-patch 底
+                    bgView.setAlpha(a);
                 }
-                // 诊断：布局稳定后 dump 拨号盘整棵子树的 view + 背景类型 + 尺寸，定位“面板底”真正挂在哪个
-                // view（排查默认模式面板不透明度无效）。只在默认模式抓一次。
-                dialpad.post(() -> dumpDialpadTree(dialpad, 0));
             }
         } catch (Throwable error) { log("applyDialpadOnInflate", error); }
     }
@@ -360,68 +353,6 @@ final class BackgroundApplier {
                 }
             });
             media.setClipToOutline(true);
-        } catch (Throwable ignored) {}
-    }
-
-    // 诊断：递归打印拨号盘子树，输出每个 view 的 id 名、类、尺寸、背景 drawable 类型与 alpha，
-    // 用于定位“面板底 / 灰底”究竟挂在哪个 view 上（排查默认模式面板不透明度无效）。
-    private static void dumpDialpadTree(View view, int depth) {
-        if (view == null) return;
-        try {
-            StringBuilder indent = new StringBuilder();
-            for (int i = 0; i < depth; i++) indent.append("  ");
-            String idName;
-            try {
-                idName = view.getId() == View.NO_ID ? "no-id"
-                        : view.getResources().getResourceEntryName(view.getId());
-            } catch (Throwable t) { idName = "id?"; }
-            Drawable bg = view.getBackground();
-            String bgInfo = "null";
-            if (bg != null) {
-                String alpha;
-                try { alpha = String.valueOf(bg.getAlpha()); } catch (Throwable t) { alpha = "n/a"; }
-                bgInfo = bg.getClass().getSimpleName() + "(alpha=" + alpha + ")";
-            }
-            HookRuntime.log("HyperBG-PANEL " + indent + idName + " " + view.getClass().getSimpleName()
-                    + " " + view.getWidth() + "x" + view.getHeight()
-                    + " vAlpha=" + view.getAlpha() + " bg=" + bgInfo);
-            if (view instanceof ViewGroup) {
-                ViewGroup group = (ViewGroup) view;
-                for (int i = 0; i < group.getChildCount(); i++) {
-                    dumpDialpadTree(group.getChildAt(i), depth + 1);
-                }
-            }
-        } catch (Throwable ignored) {}
-    }
-
-    // 默认模式下让「面板不透明度」滑块生效：面板底 dialer_background_pad 是 9-patch，直接对 drawable
-    // setAlpha 视觉不生效，故把面板底搬到 dialpad_container 内一个置底的纯背景 view 上，对该 view 本身
-    // setAlpha（确定有效）。数字键是 container 的其它子 view、层级在此背景 view 之上，故不受影响。
-    private static void applyDialpadPanelAlpha(View container, float alpha) {
-        if (!(container instanceof ViewGroup)) return;
-        try {
-            ViewGroup group = (ViewGroup) container;
-            float a = Math.max(0f, Math.min(1f, alpha));
-            View panel = null;
-            Object saved = XposedHelpers.getAdditionalInstanceField(container, DIALPAD_PANEL_ALPHA_VIEW);
-            if (saved instanceof View && ((View) saved).getParent() == group) {
-                panel = (View) saved; // 复用已插入的背景 view，避免重复叠加
-            }
-            if (panel == null) {
-                Drawable bg = container.getBackground();
-                if (bg == null) return; // 没有面板底可搬，无需处理
-                // 记录原面板底供切回还原，再把 container 自身背景清透明、交给背景 view 承载。
-                if (XposedHelpers.getAdditionalInstanceField(container, CONTACTS_BG_SAVED) == null) {
-                    XposedHelpers.setAdditionalInstanceField(container, CONTACTS_BG_SAVED, bg);
-                }
-                container.setBackground(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
-                panel = new View(container.getContext());
-                panel.setBackground(bg);
-                group.addView(panel, 0, new ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-                XposedHelpers.setAdditionalInstanceField(container, DIALPAD_PANEL_ALPHA_VIEW, panel);
-            }
-            panel.setAlpha(a);
         } catch (Throwable ignored) {}
     }
 

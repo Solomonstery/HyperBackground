@@ -114,8 +114,8 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         addView(imageView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
-        // 必须在 addView 之后再配置矩阵缩放/定位：此前 imageView 尚未进入视图树、宽高为 0，
-        // updateImageCropMatrix 会因尺寸为 0 直接返回，导致 focus/zoom 定位永不生效。
+        // 方案 A：默认（zoom=100 且横纵向居中）直接用系统 CENTER_CROP，等比铺满并自动居中，对任意宽高比
+        // 的图都精确铺满不错位；仅当用户动了缩放 / 位置滑块时才切到 MATRIX 微调（以 CENTER_CROP 为基准）。
         applyImageScale();
         if (imageDrawable instanceof AnimatedImageDrawable) {
             AnimatedImageDrawable animated = (AnimatedImageDrawable) imageDrawable;
@@ -124,22 +124,30 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         }
     }
 
-    // 单一缩放模式（等比不变形）：以「贴满基准」等比缩放（长边填满、cover），再乘以缩放大小 zoom，
-    // 最后按横纵向定位焦点在区域内摆放。定位公式 (view - scaled) * focus 对放大/缩小都成立：
-    //   focus=0.5 恒取中点（放大→居中裁切、缩小→居中留边），focus=0/1 贴向对应边，默认 50 居中。
+    // 是否需要手动微调：只要缩放不为 100% 或横纵向偏离居中，就进入 MATRIX 模式；否则用 CENTER_CROP。
+    private boolean needsManualMatrix() {
+        return source.zoom != 100 || source.focusX != 50 || source.focusY != 50;
+    }
+
+    // 默认走系统 CENTER_CROP（铺满 + 居中，任意图零错位）；用户动过滑块才切 MATRIX 微调。
     private void applyImageScale() {
         if (imageView == null) return;
-        imageView.setScaleType(ImageView.ScaleType.MATRIX);
-        // 视图尺寸在布局后才确定，且随宿主尺寸变化重算。先移除旧监听再注册，避免反复注册累积泄漏。
         if (imageLayoutListener != null) imageView.removeOnLayoutChangeListener(imageLayoutListener);
+        if (!needsManualMatrix()) {
+            imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            imageLayoutListener = null;
+            return;
+        }
+        // 手动微调模式：MATRIX 下 setImageMatrix 需要在布局后（拿到非零尺寸）计算，注册监听并兜底 post。
+        imageView.setScaleType(ImageView.ScaleType.MATRIX);
         imageLayoutListener = (v, l, t, r, b, ol, ot, or, ob) -> updateImageCropMatrix();
         imageView.addOnLayoutChangeListener(imageLayoutListener);
         updateImageCropMatrix();
-        // 兜底：addView 当帧 imageView 宽高仍为 0，layout 监听在个别机型可能因尺寸未变化而不回调，
-        // 故再 post 到下一帧强制重算一次，确保 focus/zoom 定位一定落地。
         imageView.post(this::updateImageCropMatrix);
     }
 
+    // 手动微调：以 CENTER_CROP（铺满居中）为基准，叠加用户缩放倍率与相对中心的位移。zoom=100、focus=50
+    // 时结果与 CENTER_CROP 完全一致（对任意图都居中铺满），根治“不同图居中点不同”。
     private void updateImageCropMatrix() {
         if (imageView == null || imageDrawable == null) return;
         if (imageView.getScaleType() != ImageView.ScaleType.MATRIX) return;
@@ -149,27 +157,25 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         int dh = imageDrawable.getIntrinsicHeight();
         if (vw <= 0 || vh <= 0 || dw <= 0 || dh <= 0) return;
 
-        // 缩放大小 1-200 → 倍数 0.01-2.0（100=贴满基准，>100 放大溢出、<100 缩小留边）。
-        float zoom = source.zoom / 100f;
-        float base = Math.max((float) vw / dw, (float) vh / dh);   // 贴满基准（cover）
-        float scale = base * zoom;
+        // 基准 = CENTER_CROP：等比铺满（cover）后在容器内居中。
+        float cover = Math.max((float) vw / dw, (float) vh / dh);
+        float zoom = Math.max(1, Math.min(200, source.zoom)) / 100f;
+        float scale = cover * zoom;
         float scaledW = dw * scale;
         float scaledH = dh * scale;
+        // 居中偏移（focus=50 时用此值，等价 CENTER_CROP）：把缩放后的图在容器内居中。
+        float centerDx = (vw - scaledW) / 2f;
+        float centerDy = (vh - scaledH) / 2f;
+        // 相对中心的位移：focus=50 → 0（居中）；0/100 → 向一端各偏移半个可移动范围 (scaled - view)/2。
         float fx = Math.max(0, Math.min(100, source.focusX)) / 100f;
         float fy = Math.max(0, Math.min(100, source.focusY)) / 100f;
-        // 诊断阶段维持旧的绝对定位公式，保证日志的 dx/dy 与你肉眼所见一致，便于用实测“居中点”反推校准。
-        float dx = (vw - scaledW) * fx;   // 横向定位
-        float dy = (vh - scaledH) * fy;   // 纵向定位
+        float dx = centerDx + (scaledW - vw) / 2f * (2f * fx - 1f);
+        float dy = centerDy + (scaledH - vh) / 2f * (2f * fy - 1f);
 
         Matrix matrix = new Matrix();
         matrix.setScale(scale, scale);
         matrix.postTranslate(Math.round(dx), Math.round(dy));
         imageView.setImageMatrix(matrix);
-        // 诊断：抓真实坐标关系，用于精确校准“横纵向居中点”。拖动位置滑块后重开拨号盘即可看到。
-        HookRuntime.log("HyperBG-POS focusX=" + source.focusX + " focusY=" + source.focusY
-                + " zoom=" + source.zoom + " vw=" + vw + " vh=" + vh + " dw=" + dw + " dh=" + dh
-                + " scaledW=" + Math.round(scaledW) + " scaledH=" + Math.round(scaledH)
-                + " dx=" + Math.round(dx) + " dy=" + Math.round(dy));
     }
 
     private void createVideoView() {

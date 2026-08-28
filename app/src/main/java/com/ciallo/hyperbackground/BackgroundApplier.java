@@ -106,7 +106,35 @@ final class BackgroundApplier {
             // 清除逻辑把背景换成透明，setAlpha 滑块就再无视觉效果（键盘恒定透明），即透明度调节失效。
             View content = activity.findViewById(android.R.id.content);
             if (content != null) adaptContactsOpaqueSurfaces(content, enabled, content, bgView);
+
+            // 搜索是 Miuix SearchActionMode 拉起的覆盖层（ContactsSearchFragment 的 DispatchFrameLayout），
+            // 挂在 DecorView 下、android.R.id.content 之外，故上面按 content 收窄的遍历扫不到它——搜索后
+            // 结果列表里某层不透明白容器会挡住背景（上半白、下半透出的分界即源于此）。这里按 Miuix 框架
+            // id search_mask 从 DecorView 定位该覆盖层，只清其内部子树（跳过 mask 自身：那是设计用的搜索
+            // 遮罩层，且清它无意义），把搜索结果列表里的不透明中性底一并透出。search_mask 未出现时（未进入
+            // 搜索）findViewById 返回 null，直接跳过。
+            View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
+            if (decor != null) {
+                int maskId = resolveFrameworkId(activity, "search_mask");
+                View searchMask = maskId == 0 ? null : decor.findViewById(maskId);
+                if (searchMask instanceof ViewGroup) {
+                    ViewGroup maskGroup = (ViewGroup) searchMask;
+                    for (int i = 0; i < maskGroup.getChildCount(); i++) {
+                        adaptContactsOpaqueSurfaces(maskGroup.getChildAt(i), enabled, null, bgView);
+                    }
+                }
+            }
         } catch (Throwable error) { log("adaptContactsSurfaces", error); }
+    }
+
+    // 解析 Miuix / 框架层的资源 id（如 search_mask）。这些 id 定义在 miuix appcompat 库里，运行期在
+    // 联系人进程内以其包名注册，用 getIdentifier 查询；查不到返回 0。
+    private static int resolveFrameworkId(Activity activity, String name) {
+        try {
+            int id = activity.getResources().getIdentifier(name, "id", activity.getPackageName());
+            if (id != 0) return id;
+            return activity.getResources().getIdentifier(name, "id", "android");
+        } catch (Throwable ignored) { return 0; }
     }
 
     // 递归遍历：enabled 时把采样为「不透明中性色（黑/白/灰）」的背景替换为透明占位（清前把原背景存到

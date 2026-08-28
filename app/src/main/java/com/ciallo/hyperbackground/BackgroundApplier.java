@@ -25,6 +25,10 @@ final class BackgroundApplier {
     private static final String DEVICE_SESSION = FIELD_PREFIX + "device.session";
     private static final String CONTACTS_SESSION = FIELD_PREFIX + "contacts.session";
     private static final String CONTACTS_RESCAN = FIELD_PREFIX + "contacts.rescan";
+    private static final String CONTACTS_ADAPT_AT = FIELD_PREFIX + "contacts.adapt.at";
+    // 缓存联系人进程内的资源 id（进程内固定），避免每次布局回调都走 getIdentifier 慢查询。-1=未解析。
+    private static int contactsDrawerId = -1;
+    private static int contactsDialpadId = -1;
     private static final String DEVICE_ACTIVE = FIELD_PREFIX + "device.active";
     private static final String ORIGINAL_TEXT_COLOR = FIELD_PREFIX + "original.text.color";
     private static final String GLOBAL_DIAGNOSTIC = FIELD_PREFIX + "global.diagnostic";
@@ -61,54 +65,82 @@ final class BackgroundApplier {
             return;
         }
         applyLayer(activity, BackgroundContract.CONTACTS, CONTACTS_SESSION, false);
-        adaptContactsSurfaces(activity);
+        adaptContactsSurfaces(activity, false);
         installContactsSurfaceRescan(activity);
     }
 
     // 拨号盘 / 列表适配：开关开启时清除联系人列表的纯黑窗口底（drawer_layout 的
     // ?android:windowBackground 在深色下是不透明黑，挡住自定义背景），并把拨号盘键盘
     // 面板（dialpad_container）设为可调半透明，让背景透出的同时保持按键可读。关闭时还原。
-    private static void adaptContactsSurfaces(Activity activity) {
+    // throttled=true 时对高频布局回调做 200ms 节流，避免滚动列表时反复无谓执行。
+    private static void adaptContactsSurfaces(Activity activity, boolean throttled) {
         try {
+            if (throttled) {
+                Long last = (Long) XposedHelpers.getAdditionalInstanceField(activity, CONTACTS_ADAPT_AT);
+                long now = android.os.SystemClock.uptimeMillis();
+                if (last != null && now - last < 200L) return;
+                XposedHelpers.setAdditionalInstanceField(activity, CONTACTS_ADAPT_AT, now);
+            }
+
             boolean enabled = HookRuntime.preferences().getBoolean(BackgroundContract.CONTACTS_SURFACE_ADAPT, true);
             int opacity = HookRuntime.preferences().getInt(BackgroundContract.CONTACTS_DIALPAD_OPACITY, 60);
             float dialpadAlpha = Math.max(0, Math.min(100, opacity)) / 100f;
 
+            // 资源 id 进程内固定，只解析一次后缓存复用。
+            if (contactsDrawerId == -1) contactsDrawerId = resolveId(activity, "drawer_layout");
+            if (contactsDialpadId == -1) contactsDialpadId = resolveId(activity, "dialpad_container");
+
             // 列表底板：清除纯黑（含深色 windowBackground）后露出背景，关闭时靠会话 restore 还原。
-            View drawer = findByName(activity, "drawer_layout");
+            View drawer = contactsDrawerId == 0 ? null : activity.findViewById(contactsDrawerId);
             LayerSession session = (LayerSession) XposedHelpers.getAdditionalInstanceField(activity, CONTACTS_SESSION);
             if (drawer != null && session != null && enabled) session.clear(drawer);
 
             // 拨号盘键盘面板整体设 alpha（背景是 9-patch 图，不能采色清除，否则圆角丢失）。
             // 键盘由 ViewStub 在展开时才 inflate，故靠布局监听在其出现后补设。
-            View dialpad = findByName(activity, "dialpad_container");
+            View dialpad = contactsDialpadId == 0 ? null : activity.findViewById(contactsDialpadId);
             if (dialpad != null) dialpad.setAlpha(enabled ? dialpadAlpha : 1f);
         } catch (Throwable error) { log("adaptContactsSurfaces", error); }
     }
 
     // 拨号盘键盘是点击后异步 inflate 的，Activity 生命周期回调抓不到它出现的那一刻；挂一个
-    // 常驻的轻量布局监听，每次布局变化都补设一次 alpha / 清一次列表底，保证展开即生效。
+    // 常驻的轻量布局监听（带 200ms 节流），在其出现时补设 alpha / 清一次列表底，保证展开即生效。
     private static void installContactsSurfaceRescan(final Activity activity) {
         try {
             if (Boolean.TRUE.equals(XposedHelpers.getAdditionalInstanceField(activity, CONTACTS_RESCAN))) return;
             View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
             if (!(decor instanceof ViewGroup)) return;
-            android.view.ViewTreeObserver observer = decor.getViewTreeObserver();
+            final android.view.ViewTreeObserver observer = decor.getViewTreeObserver();
             if (observer == null || !observer.isAlive()) return;
             android.view.ViewTreeObserver.OnGlobalLayoutListener listener = () -> {
                 if (activity.isFinishing() || activity.isDestroyed()) return;
-                adaptContactsSurfaces(activity);
+                adaptContactsSurfaces(activity, true);
             };
             observer.addOnGlobalLayoutListener(listener);
-            XposedHelpers.setAdditionalInstanceField(activity, CONTACTS_RESCAN, Boolean.TRUE);
+            // 保存引用，便于 Activity 销毁时摘除，避免监听器悬挂。
+            XposedHelpers.setAdditionalInstanceField(activity, CONTACTS_RESCAN, listener);
         } catch (Throwable error) { log("installContactsSurfaceRescan", error); }
     }
 
-    private static View findByName(Activity activity, String name) {
+    private static void removeContactsSurfaceRescan(Activity activity) {
         try {
-            int id = activity.getResources().getIdentifier(name, "id", activity.getPackageName());
-            return id == 0 ? null : activity.findViewById(id);
-        } catch (Throwable ignored) { return null; }
+            Object listener = XposedHelpers.getAdditionalInstanceField(activity, CONTACTS_RESCAN);
+            if (!(listener instanceof android.view.ViewTreeObserver.OnGlobalLayoutListener)) return;
+            View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
+            if (decor != null) {
+                android.view.ViewTreeObserver observer = decor.getViewTreeObserver();
+                if (observer != null && observer.isAlive()) {
+                    observer.removeOnGlobalLayoutListener(
+                            (android.view.ViewTreeObserver.OnGlobalLayoutListener) listener);
+                }
+            }
+            XposedHelpers.setAdditionalInstanceField(activity, CONTACTS_RESCAN, null);
+        } catch (Throwable ignored) { }
+    }
+
+    private static int resolveId(Activity activity, String name) {
+        try {
+            return activity.getResources().getIdentifier(name, "id", activity.getPackageName());
+        } catch (Throwable ignored) { return 0; }
     }
 
     static void stopContacts(Activity activity) { stopLayer(activity, CONTACTS_SESSION); }
@@ -118,6 +150,7 @@ final class BackgroundApplier {
     private static void removeContacts(Activity activity) {
         if (activity == null) return;
         try {
+            removeContactsSurfaceRescan(activity);
             LayerSession old = (LayerSession) XposedHelpers.getAdditionalInstanceField(activity, CONTACTS_SESSION);
             if (old != null) removeLayer(activity, CONTACTS_SESSION, old);
         } catch (Throwable error) { log("removeContacts", error); }

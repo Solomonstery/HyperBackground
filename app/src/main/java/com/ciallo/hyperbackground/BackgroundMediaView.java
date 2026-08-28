@@ -124,21 +124,13 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         }
     }
 
-    // 是否需要手动微调：只要缩放不为 100% 或横纵向偏离居中，就进入 MATRIX 模式；否则用 CENTER_CROP。
-    private boolean needsManualMatrix() {
-        return source.zoom != 100 || source.focusX != 50 || source.focusY != 50;
-    }
-
-    // 默认走系统 CENTER_CROP（铺满 + 居中，任意图零错位）；用户动过滑块才切 MATRIX 微调。
+    // 默认走系统 MATRIX 屏幕坐标系定位（图钉在整块屏幕上、横向铺满居中，拨号盘只是窗口）。此定位以屏幕
+    // 为参照系，与 CENTER_CROP（以拨号盘区域为参照）不同，故即便 zoom=100/focusY=50 也需自绘矩阵。
     private void applyImageScale() {
         if (imageView == null) return;
         if (imageLayoutListener != null) imageView.removeOnLayoutChangeListener(imageLayoutListener);
-        if (!needsManualMatrix()) {
-            imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            imageLayoutListener = null;
-            return;
-        }
-        // 手动微调模式：MATRIX 下 setImageMatrix 需要在布局后（拿到非零尺寸）计算，注册监听并兜底 post。
+        // MATRIX 定位依赖 media 的屏幕坐标（getLocationOnScreen），需在布局后（进入视图树、位置确定）计算，
+        // 故注册 layout 监听并兜底 post 到下一帧，确保定位一定落地。
         imageView.setScaleType(ImageView.ScaleType.MATRIX);
         imageLayoutListener = (v, l, t, r, b, ol, ot, or, ob) -> updateImageCropMatrix();
         imageView.addOnLayoutChangeListener(imageLayoutListener);
@@ -146,31 +138,39 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         imageView.post(this::updateImageCropMatrix);
     }
 
-    // 手动微调：以 CENTER_CROP（铺满居中）为基准，叠加用户缩放倍率与相对中心的位移。zoom=100、focus=50
-    // 时结果与 CENTER_CROP 完全一致（对任意图都居中铺满），根治“不同图居中点不同”。
+    // 屏幕坐标系定位：图按「屏幕宽度」等比缩放并钉在整块屏幕上（横向恒铺满、居中），拨号盘只是浮在
+    // 图上的一个窗口——透过它看到的就是全屏图对应位置的那一块。基准用屏幕尺寸（DisplayMetrics，同步且
+    // 恒定），不依赖 imageView 布局时机，根治此前依赖 getWidth() 导致的“缩到一角 / 闪一下才对位”。
+    // zoom：以屏幕宽为基准放大/缩小。focusY：纵向取景偏移（0=顶部，100=底部），横向不再需要（恒居中）。
     private void updateImageCropMatrix() {
         if (imageView == null || imageDrawable == null) return;
         if (imageView.getScaleType() != ImageView.ScaleType.MATRIX) return;
-        int vw = imageView.getWidth();
-        int vh = imageView.getHeight();
         int dw = imageDrawable.getIntrinsicWidth();
         int dh = imageDrawable.getIntrinsicHeight();
-        if (vw <= 0 || vh <= 0 || dw <= 0 || dh <= 0) return;
+        if (dw <= 0 || dh <= 0) return;
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        int screenW = dm.widthPixels;
+        int screenH = dm.heightPixels;
+        if (screenW <= 0 || screenH <= 0) return;
 
-        // 基准 = CENTER_CROP：等比铺满（cover）后在容器内居中。
-        float cover = Math.max((float) vw / dw, (float) vh / dh);
+        // 以屏幕宽度铺满为基准（图宽 = 屏幕宽），再乘缩放大小 zoom。100%=正好等于屏幕宽。
         float zoom = Math.max(1, Math.min(200, source.zoom)) / 100f;
-        float scale = cover * zoom;
-        float scaledW = dw * scale;
-        float scaledH = dh * scale;
-        // 居中偏移（focus=50 时用此值，等价 CENTER_CROP）：把缩放后的图在容器内居中。
-        float centerDx = (vw - scaledW) / 2f;
-        float centerDy = (vh - scaledH) / 2f;
-        // 相对中心的位移：focus=50 → 0（居中）；0/100 → 向一端各偏移半个可移动范围 (scaled - view)/2。
-        float fx = Math.max(0, Math.min(100, source.focusX)) / 100f;
+        float scale = (float) screenW / dw * zoom;
+        float scaledW = dw * scale;   // 缩放后图宽（zoom=100 时 = screenW）
+        float scaledH = dh * scale;   // 缩放后图高（竖图通常 > screenH）
+
+        // media（本视图）在屏幕上的绝对位置：把图钉在屏幕坐标系，需减去 media 的屏幕偏移，
+        // 使图的“屏幕坐标原点”对齐到屏幕左上，而非 media 左上。
+        int[] loc = new int[2];
+        imageView.getLocationOnScreen(loc);
+        int mediaX = loc[0];
+        int mediaY = loc[1];
+
+        // 横向：图相对屏幕居中（(screenW - scaledW)/2），再换算到 media 局部坐标（减 mediaX）。
+        float dx = (screenW - scaledW) / 2f - mediaX;
+        // 纵向：focusY 决定图相对屏幕的纵向摆放（0=顶部对齐、100=底部对齐、50=居中），再换算到 media 局部。
         float fy = Math.max(0, Math.min(100, source.focusY)) / 100f;
-        float dx = centerDx + (scaledW - vw) / 2f * (2f * fx - 1f);
-        float dy = centerDy + (scaledH - vh) / 2f * (2f * fy - 1f);
+        float dy = (screenH - scaledH) * fy - mediaY;
 
         Matrix matrix = new Matrix();
         matrix.setScale(scale, scale);

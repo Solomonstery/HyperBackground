@@ -30,6 +30,7 @@ import com.ciallo.hyperbackground.ui.MainActivity
 import com.ciallo.hyperbackground.ui.components.SectionTitle
 import com.ciallo.hyperbackground.ui.components.BackgroundPickerPreference
 import com.ciallo.hyperbackground.ui.components.SliderPreference
+import com.ciallo.hyperbackground.ui.components.SliderWithInputPreference
 import com.ciallo.hyperbackground.ui.components.UiCard
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -187,13 +188,6 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
             ),
         )
     }
-    var focusX by remember {
-        mutableFloatStateOf(
-            config.getInt(BackgroundContract.CONTACTS_DIALPAD_FOCUS_X, 50)
-                .coerceIn(0, 100)
-                .toFloat(),
-        )
-    }
     var focusY by remember {
         mutableFloatStateOf(
             config.getInt(BackgroundContract.CONTACTS_DIALPAD_FOCUS_Y, 50)
@@ -280,21 +274,9 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
                                 .apply()
                         },
                     )
-                    // 横向位置：0 左、50 中、100 右，默认居中，缩放后可自由左右定位。
-                    SliderPreference(
-                        label = stringResource(R.string.contacts_dialpad_focus_x),
-                        value = focusX,
-                        range = 0f..100f,
-                        suffix = "%",
-                        onValueChange = { focusX = it },
-                        onValueChangeFinished = {
-                            config.edit()
-                                .putInt(BackgroundContract.CONTACTS_DIALPAD_FOCUS_X, focusX.toInt())
-                                .apply()
-                        },
-                    )
-                    // 纵向位置：0 上、50 中、100 下，默认居中，缩放后可自由上下定位。
-                    SliderPreference(
+                    // 纵向位置（屏幕坐标系）：0 图顶部对齐、50 居中、100 底部对齐，控制透过拨号盘看到图的哪一段。
+                    // 横向恒居中铺满（以屏幕宽为基准），故不再提供横向位置。滑块 + 数值输入框可精确调节。
+                    SliderWithInputPreference(
                         label = stringResource(R.string.contacts_dialpad_focus_y),
                         value = focusY,
                         range = 0f..100f,

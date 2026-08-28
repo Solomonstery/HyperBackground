@@ -121,7 +121,8 @@ public final class BackgroundContract {
         // 整页背景等）必须用中性默认值（焦点居中 + zoom=100=等比贴满不额外缩放），否则调拨号盘的
         // 「缩放/位置」会把这些全局键读进整页背景的 Source，导致整页背景也被一起缩放位移。
         boolean isDialpad = CONTACTS_DIALPAD.equals(slot);
-        int focusX = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_FOCUS_X, 50) : 50;
+        // 屏幕坐标系定位：横向恒居中铺满，focusX 不再由 UI 控制、恒为 50；纵向偏移由 focusY 决定。
+        int focusX = 50;
         int focusY = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_FOCUS_Y, 50) : 50;
         int zoom = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_ZOOM, CONTACTS_DIALPAD_ZOOM_DEFAULT)
                 : CONTACTS_DIALPAD_ZOOM_DEFAULT;

@@ -99,20 +99,25 @@ final class BackgroundApplier {
             View bgView = contactsBgViewId == 0 ? null : activity.findViewById(contactsBgViewId);
             if (bgView != null) bgView.setAlpha(enabled ? padAlpha : 1f);
 
-            // 遍历视图树清除/还原列表的不透明中性色背景层。
-            View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
-            if (decor != null) adaptContactsOpaqueSurfaces(decor, enabled);
+            // 只从内容层（android.R.id.content）往下清，绝不碰 DecorView / content_parent 等窗口级
+            // 顶层容器——那些不透明中性底是整个窗口的“实底”，抹成透明会让多任务缩放动画时穿透看到
+            // 底层桌面/上个应用（频闪），且破坏页面明度层次（观感变暗变平）。
+            View content = activity.findViewById(android.R.id.content);
+            if (content != null) adaptContactsOpaqueSurfaces(content, enabled, content);
         } catch (Throwable error) { log("adaptContactsSurfaces", error); }
     }
 
     // 递归遍历：enabled 时把采样为「不透明中性色（黑/白/灰）」的背景替换为透明占位（清前把原背景存到
     // 该 View 的 Xposed 附加字段以便还原），disabled 时还原。只处理不透明中性色，半透明卡片/渐变遮罩
     // （如 #b3000000 输入框、#80ffffff 渐变、#cc000000）不动，保留其层次；全透明背景（#0）本就不挡，跳过。
+    // contentRoot 是 android.R.id.content 本身——它是内容层实底，透明化会让整页失去底色、动画时穿透，
+    // 故跳过其自身背景，只清它内部的列表条目/容器等中间层。
     // 关键：用透明 ColorDrawable 占位而非 setBackground(null)——列表条目随 RecyclerView 复用滚动，
     // 若清成 null 会失去覆盖整块区域的背景，硬件加速脏区重绘无法擦除上一帧内容而留下残影/拖拽；
     // 保留一个铺满的透明背景即可让绘制系统正常重绘，同时背景仍透出。
-    private static void adaptContactsOpaqueSurfaces(View view, boolean enabled) {
+    private static void adaptContactsOpaqueSurfaces(View view, boolean enabled, View contentRoot) {
         if (view == null) return;
+        if (view != contentRoot) {
         try {
             if (enabled) {
                 Drawable bg = view.getBackground();
@@ -131,9 +136,10 @@ final class BackgroundApplier {
                 }
             }
         } catch (Throwable ignored) {}
+        }
         if (view instanceof ViewGroup) {
             ViewGroup g = (ViewGroup) view;
-            for (int i = 0; i < g.getChildCount(); i++) adaptContactsOpaqueSurfaces(g.getChildAt(i), enabled);
+            for (int i = 0; i < g.getChildCount(); i++) adaptContactsOpaqueSurfaces(g.getChildAt(i), enabled, contentRoot);
         }
     }
 

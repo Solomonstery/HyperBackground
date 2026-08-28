@@ -51,17 +51,6 @@ public final class BackgroundContract {
     public static final String CONTACTS_DIALPAD_BG_MODE = "contacts_dialpad_bg_mode";
     public static final int CONTACTS_DIALPAD_BG_DEFAULT = 0;
     public static final int CONTACTS_DIALPAD_BG_CUSTOM = 1;
-    // 拨号盘自定义背景图缩放方式：贴满裁切（保比例填满、裁掉溢出）/ 完整显示（保比例、留边）/ 拉伸填充（变形铺满）。
-    public static final String CONTACTS_DIALPAD_SCALE_MODE = "contacts_dialpad_scale_mode";
-    public static final int CONTACTS_DIALPAD_SCALE_CROP = 0;
-    public static final int CONTACTS_DIALPAD_SCALE_FIT = 1;
-    public static final int CONTACTS_DIALPAD_SCALE_STRETCH = 2;
-    // 贴满裁切模式下的纵向取景焦点（0=顶部，50=居中，100=底部），决定裁掉上/下哪部分。
-    public static final String CONTACTS_DIALPAD_FOCUS_Y = "contacts_dialpad_focus_y";
-    // 拨号盘自定义背景缩放大小（1-100，100=原始基准大小，往下按比例缩小、四周留边）。
-    public static final String CONTACTS_DIALPAD_ZOOM = "contacts_dialpad_zoom";
-    public static final int CONTACTS_DIALPAD_ZOOM_MIN = 1;
-    public static final int CONTACTS_DIALPAD_ZOOM_MAX = 100;
     // 通讯录与拨号进程专属深浅色（与全局强制深浅色独立并存，仅作用于 com.android.contacts 进程）。
     // 三态取值复用 SETTINGS_THEME_FOLLOW/LIGHT/DARK。
     public static final String CONTACTS_THEME_MODE = "contacts_theme_mode";
@@ -119,15 +108,6 @@ public final class BackgroundContract {
         SharedPreferences prefs = HookRuntime.preferences();
         long size = prefs.getLong(SIZE_PREFIX + slot, -1L);
         long modified = prefs.getLong(MODIFIED_PREFIX + slot, -1L);
-        // 缩放方式/纵向焦点/缩放大小仅对「拨号盘自定义背景」通道生效；其它通道（home/device/global/contacts
-        // 整页背景等）必须用中性默认值（CROP + 焦点居中 + zoom=100=原始大小不缩放），否则调拨号盘的
-        // 「缩放大小」会把这三个全局键读进整页背景的 Source，导致整页背景也被一起缩放（“缩放到本来的背景上去”）。
-        boolean isDialpad = CONTACTS_DIALPAD.equals(slot);
-        int scaleMode = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_SCALE_MODE, CONTACTS_DIALPAD_SCALE_CROP)
-                : CONTACTS_DIALPAD_SCALE_CROP;
-        int focusY = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_FOCUS_Y, 50) : 50;
-        int zoom = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_ZOOM, CONTACTS_DIALPAD_ZOOM_MAX)
-                : CONTACTS_DIALPAD_ZOOM_MAX;
         return new Source(
                 slot,
                 prefs.getString(MIME_PREFIX + slot, "application/octet-stream"),
@@ -141,10 +121,7 @@ public final class BackgroundContract {
                 prefs.getInt(DEVICE_LOGO_MODE, DEVICE_LOGO_SYSTEM),
                 prefs.getString(DEVICE_LOGO_TEXT, "HyperOS"),
                 prefs.getInt(DEVICE_LOGO_COLOR, 0xFF111111),
-                prefs.getInt(SETTINGS_THEME_MODE, SETTINGS_THEME_FOLLOW),
-                scaleMode,
-                focusY,
-                zoom
+                prefs.getInt(SETTINGS_THEME_MODE, SETTINGS_THEME_FOLLOW)
         );
     }
 
@@ -166,15 +143,10 @@ public final class BackgroundContract {
         final String deviceLogoText;
         final int deviceLogoColor;
         final int settingsThemeMode;
-        // 拨号盘自定义背景专用：缩放方式与纵向取景焦点（其它通道用默认值 CROP/50，行为与旧版一致）。
-        final int scaleMode;
-        final int focusY;
-        final int zoom;
 
         Source(String slot, String mime, long size, long modified, boolean exists,
                int opacity, boolean blurEnabled, int blurRadius, int fontMode,
-               int deviceLogoMode, String deviceLogoText, int deviceLogoColor, int settingsThemeMode,
-               int scaleMode, int focusY, int zoom) {
+               int deviceLogoMode, String deviceLogoText, int deviceLogoColor, int settingsThemeMode) {
             this.slot = slot;
             this.mime = mime == null ? "application/octet-stream" : mime;
             this.size = size;
@@ -188,9 +160,6 @@ public final class BackgroundContract {
             this.deviceLogoText = deviceLogoText == null ? "HyperOS" : deviceLogoText;
             this.deviceLogoColor = deviceLogoColor;
             this.settingsThemeMode = settingsThemeMode;
-            this.scaleMode = Math.max(CONTACTS_DIALPAD_SCALE_CROP, Math.min(CONTACTS_DIALPAD_SCALE_STRETCH, scaleMode));
-            this.focusY = Math.max(0, Math.min(100, focusY));
-            this.zoom = Math.max(CONTACTS_DIALPAD_ZOOM_MIN, Math.min(CONTACTS_DIALPAD_ZOOM_MAX, zoom));
         }
 
         boolean isVideo() { return mime.startsWith("video/"); }
@@ -202,8 +171,7 @@ public final class BackgroundContract {
         String cacheKey() {
             return slot + ':' + mime + ':' + size + ':' + modified + ':' + opacity + ':'
                     + blurEnabled + ':' + blurRadius + ':' + fontMode + ':' + deviceLogoMode + ':'
-                    + deviceLogoText + ':' + deviceLogoColor + ':' + settingsThemeMode + ':'
-                    + scaleMode + ':' + focusY + ':' + zoom;
+                    + deviceLogoText + ':' + deviceLogoColor + ':' + settingsThemeMode;
         }
     }
 }

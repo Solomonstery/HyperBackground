@@ -26,15 +26,10 @@ final class BackgroundApplier {
     private static final String CONTACTS_SESSION = FIELD_PREFIX + "contacts.session";
     // 拨号盘独立背景层的会话，存到 DialpadLayout 实例上（拨号盘可被反复 inflate/复用）。
     private static final String DIALPAD_SESSION = FIELD_PREFIX + "dialpad.session";
-    // 上次应用到该 DialpadLayout 的“有效配置签名”。onVisibilityChanged/onAttachedToWindow 会被高频回调，
-    // 若签名未变则整段跳过（不重新解码大图 / 不重复 addView），否则每帧重建会 OOM+主线程卡死→黑屏死机。
-    private static final String DIALPAD_APPLIED_SIG = FIELD_PREFIX + "dialpad.applied.sig";
     private static final String CONTACTS_RESCAN = FIELD_PREFIX + "contacts.rescan";
     private static final String CONTACTS_ADAPT_AT = FIELD_PREFIX + "contacts.adapt.at";
     // 清除列表不透明中性色背景前，把原背景存到该 View 的 Xposed 附加字段，便于开关关闭时还原。
     private static final String CONTACTS_BG_SAVED = FIELD_PREFIX + "contacts.bg.saved";
-    // 自定义模式把 dialer_background_view 的原生 9-patch 底换成透明前，先存原背景到该字段供切回默认时还原。
-    private static final String DIALPAD_BGVIEW_SAVED = FIELD_PREFIX + "dialpad.bgview.saved";
     // 缓存联系人进程内的资源 id（进程内固定），避免每次布局回调都走 getIdentifier 慢查询。-1=未解析。
     private static int contactsBgViewId = -1;
     private static final String DEVICE_ACTIVE = FIELD_PREFIX + "device.active";
@@ -295,15 +290,6 @@ final class BackgroundApplier {
             BackgroundContract.Source source = BackgroundContract.query(ctx, BackgroundContract.CONTACTS_DIALPAD);
             boolean custom = enabled && mode == BackgroundContract.CONTACTS_DIALPAD_BG_CUSTOM && source.exists;
 
-            // 有效配置签名：模式 + 开关 + 面板不透明度 + 图片配置（cacheKey，含缩放/焦点/zoom/opacity）。
-            // onVisibilityChanged/onAttachedToWindow 高频回调时若签名不变则直接返回，避免每次重解码/重建导致 OOM 卡死。
-            String sig = enabled + "|" + mode + "|" + opacity + "|" + (custom ? source.cacheKey() : "default");
-            Object prevSig = XposedHelpers.getAdditionalInstanceField(dialpad, DIALPAD_APPLIED_SIG);
-            Object session = XposedHelpers.getAdditionalInstanceField(dialpad, DIALPAD_SESSION);
-            boolean sessionOk = !custom || (session instanceof BackgroundMediaView
-                    && ((BackgroundMediaView) session).getParent() != null);
-            if (sig.equals(prevSig) && sessionOk) return; // 配置与已应用一致且会话仍在，跳过重建
-
             // 先清旧会话：拨号盘复用时避免叠加多层，并还原上次改动的面板底。
             removeDialpadMedia(dialpad);
 
@@ -311,60 +297,20 @@ final class BackgroundApplier {
                 // 自定义图塞进 dialer_background_view 内铺满（置底、不挡数字键）；原生 9-patch 底随
                 // 背景板 alpha 归零而隐去；面板底 dialer_background_pad 换透明占位让图透出。
                 BackgroundMediaView media = new BackgroundMediaView(ctx, source);
-                // 拨号盘键盘面板不透明度滑块也作用于自定义图：与该图自身 opacity 叠乘，滑块不再失效。
-                media.setAlpha((enabled ? padAlpha : 1f) * (source.opacity / 100f));
-                // 还原被原生底裁出的顶部圆角（dialer_background_pad 顶角 30dp、底角为直角），否则图是直角矩形。
-                clipDialpadCorners(media, ctx);
                 bgHost.addView(media, 0, new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                 XposedHelpers.setAdditionalInstanceField(dialpad, DIALPAD_SESSION, media);
-                // 先存原生 9-patch 底（首次），再换透明，让自定义图透出且切回默认能还原原底。
-                if (bgView != null) {
-                    Drawable orig = bgView.getBackground();
-                    if (orig != null && XposedHelpers.getAdditionalInstanceField(bgView, DIALPAD_BGVIEW_SAVED) == null) {
-                        XposedHelpers.setAdditionalInstanceField(bgView, DIALPAD_BGVIEW_SAVED, orig);
-                    }
-                    bgView.setAlpha(1f);
-                    bgView.setBackground(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
-                }
+                if (bgView != null) bgView.setBackground(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
                 clearDialpadPanelBackground(container);
             } else {
-                // 默认模式：只对两层「背景 drawable」设 alpha（不动 view 本身），否则 dialpad_container 上
-                // 的 setAlpha 会连它承载的数字键一起变透明（这是“改透明度数字键也跟着透”的根因）。
+                // 默认模式：两层底一起按 opacity 设 alpha（关闭适配则复位为 1）。
                 float a = enabled ? padAlpha : 1f;
-                // 复位可能被上次自定义模式改动的背景 / 面板底，再对其 drawable 设 alpha。
-                if (bgView != null) {
-                    bgView.setAlpha(1f);
-                    restoreDialpadBgView(bgView);
-                    setBackgroundDrawableAlpha(bgView, a);
-                }
+                if (bgView != null) bgView.setAlpha(a);
+                if (container != null) container.setAlpha(a);
+                // 复位可能被上次自定义模式清掉的面板底。
                 restoreDialpadPanelBackground(container);
-                if (container != null) {
-                    container.setAlpha(1f);
-                    setBackgroundDrawableAlpha(container, a);
-                }
             }
-            XposedHelpers.setAdditionalInstanceField(dialpad, DIALPAD_APPLIED_SIG, sig);
         } catch (Throwable error) { log("applyDialpadOnInflate", error); }
-    }
-
-    // 给自定义背景图裁出与原生面板底一致的圆角：顶部左右 30dp、底部直角。整块拨号盘底本身贴屏幕
-    // 下缘、底部无圆角，只需圆顶。用 ViewOutlineProvider + setClipToOutline 硬件裁切，随视图尺寸自适应。
-    private static void clipDialpadCorners(View media, Context ctx) {
-        try {
-            float density = ctx.getResources().getDisplayMetrics().density;
-            final float topRadius = 30f * density;
-            media.setOutlineProvider(new android.view.ViewOutlineProvider() {
-                @Override public void getOutline(View view, android.graphics.Outline outline) {
-                    int w = view.getWidth();
-                    int h = view.getHeight();
-                    if (w <= 0 || h <= 0) return;
-                    // 轮廓下沿超出底边 topRadius，使底部两角落在视图外→呈直角，仅保留顶部圆角。
-                    outline.setRoundRect(0, 0, w, (int) (h + topRadius), topRadius);
-                }
-            });
-            media.setClipToOutline(true);
-        } catch (Throwable ignored) {}
     }
 
     // 自定义模式下把 dialpad_container 的不透明面板底换成透明占位（首次记录原背景供还原）。
@@ -378,30 +324,6 @@ final class BackgroundApplier {
                 container.setBackground(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
             }
             container.setAlpha(1f);
-        } catch (Throwable ignored) {}
-    }
-
-    // 只对 view 的背景 drawable 设 alpha（0-255），不影响其上承载的子 view（如数字键）。
-    private static void setBackgroundDrawableAlpha(View view, float alpha) {
-        if (view == null) return;
-        try {
-            Drawable bg = view.getBackground();
-            if (bg == null) return;
-            Drawable mutable = bg.mutate();
-            mutable.setAlpha(Math.round(Math.max(0f, Math.min(1f, alpha)) * 255));
-            view.setBackground(mutable);
-        } catch (Throwable ignored) {}
-    }
-
-    // 把自定义模式下换成透明的 dialer_background_view 原生 9-patch 底还原回去（若曾保存）。
-    private static void restoreDialpadBgView(View bgView) {
-        if (bgView == null) return;
-        try {
-            Object saved = XposedHelpers.getAdditionalInstanceField(bgView, DIALPAD_BGVIEW_SAVED);
-            if (saved instanceof Drawable) {
-                bgView.setBackground((Drawable) saved);
-                XposedHelpers.removeAdditionalInstanceField(bgView, DIALPAD_BGVIEW_SAVED);
-            }
         } catch (Throwable ignored) {}
     }
 

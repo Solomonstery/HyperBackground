@@ -230,34 +230,18 @@ public final class SettingsBackgroundHook {
 
     // 拨号盘键盘容器 DialpadLayout 在 onFinishInflate 时（其子 view 已 findViewById 完毕、绘制第一帧之前）
     // 同步处理拨号盘背景（默认设 alpha / 自定义叠加独立背景图），根除“先露原生底色再变透”的先灰后透闪烁。
-    // 另外 DialpadLayout 实例会被复用：改完设置再打开拨号盘不会重新 inflate，故再挂 onAttachedToWindow /
-    // onVisibilityChanged，让每次拨号盘重新显示都按最新偏好重查并重应用（否则缩放 / 焦点 / 透明度改了不生效）。
     private static void hookDialpadLayout(ClassLoader classLoader) {
         final String className = "com.android.contacts.dialer.view.DialpadLayout";
         try {
-            XC_MethodHook reapply = new XC_MethodHook() {
-                @Override protected void afterHookedMethod(MethodHookParam param) {
-                    if (param.thisObject instanceof View) {
-                        BackgroundApplier.applyDialpadOnInflate((View) param.thisObject);
-                    }
-                }
-            };
-            XposedHelpers.findAndHookMethod(className, classLoader, "onFinishInflate", reapply);
-            XposedHelpers.findAndHookMethod(className, classLoader, "onAttachedToWindow", reapply);
-            try {
-                XposedHelpers.findAndHookMethod(
-                        className, classLoader, "onVisibilityChanged", View.class, int.class,
-                        new XC_MethodHook() {
-                            @Override protected void afterHookedMethod(MethodHookParam param) {
-                                // 仅在变为可见时重应用，隐藏时不必处理。
-                                if (param.args.length >= 2 && param.args[1] instanceof Integer
-                                        && (Integer) param.args[1] == View.VISIBLE
-                                        && param.thisObject instanceof View) {
-                                    BackgroundApplier.applyDialpadOnInflate((View) param.thisObject);
-                                }
+            XposedHelpers.findAndHookMethod(
+                    className, classLoader, "onFinishInflate",
+                    new XC_MethodHook() {
+                        @Override protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.thisObject instanceof View) {
+                                BackgroundApplier.applyDialpadOnInflate((View) param.thisObject);
                             }
-                        });
-            } catch (Throwable ignored) { /* 老版本可能无此签名，忽略 */ }
+                        }
+                    });
             XposedBridge.log("[HyperBackground] Installed DialpadLayout background hook");
         } catch (Throwable error) { logHookError("DialpadLayout", error); }
     }

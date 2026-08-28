@@ -187,40 +187,9 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
             ),
         )
     }
-    var scaleMode by remember {
-        mutableIntStateOf(
-            config.getInt(
-                BackgroundContract.CONTACTS_DIALPAD_SCALE_MODE,
-                BackgroundContract.CONTACTS_DIALPAD_SCALE_CROP,
-            ),
-        )
-    }
-    var focusY by remember {
-        mutableFloatStateOf(
-            config.getInt(BackgroundContract.CONTACTS_DIALPAD_FOCUS_Y, 50)
-                .coerceIn(0, 100)
-                .toFloat(),
-        )
-    }
-    var zoom by remember {
-        mutableFloatStateOf(
-            config.getInt(
-                BackgroundContract.CONTACTS_DIALPAD_ZOOM,
-                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX,
-            ).coerceIn(
-                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN,
-                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX,
-            ).toFloat(),
-        )
-    }
     val dialpadModeOptions = listOf(
         stringResource(R.string.contacts_dialpad_bg_default),
         stringResource(R.string.contacts_dialpad_bg_custom),
-    )
-    val scaleModeOptions = listOf(
-        stringResource(R.string.contacts_dialpad_scale_crop),
-        stringResource(R.string.contacts_dialpad_scale_fit),
-        stringResource(R.string.contacts_dialpad_scale_stretch),
     )
     UiCard(activity, Modifier.fillMaxWidth()) {
         Column(Modifier.padding(vertical = 8.dp)) {
@@ -271,49 +240,6 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
                 Column(Modifier.padding(bottom = 8.dp)) {
                     key(revision) {
                         BackgroundPickerPreference(activity = activity, slot = BackgroundContract.CONTACTS_DIALPAD)
-                    }
-                    // 缩放方式：贴满裁切 / 完整显示 / 拉伸填充，解决拨号盘区域比例与图片不一致导致的裁切 / 变形。
-                    OverlayDropdownPreference(
-                        title = stringResource(R.string.contacts_dialpad_scale),
-                        items = scaleModeOptions,
-                        selectedIndex = scaleMode.coerceIn(scaleModeOptions.indices),
-                        onSelectedIndexChange = {
-                            scaleMode = it
-                            config.edit().putInt(BackgroundContract.CONTACTS_DIALPAD_SCALE_MODE, it).apply()
-                        },
-                    )
-                    // 缩放大小：在所选缩放方式基础上再放大（100% 为原始基准），三种模式均生效。
-                    SliderPreference(
-                        label = stringResource(R.string.contacts_dialpad_zoom),
-                        value = zoom,
-                        range = BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN.toFloat()..
-                            BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX.toFloat(),
-                        suffix = "%",
-                        onValueChange = { zoom = it },
-                        onValueChangeFinished = {
-                            config.edit()
-                                .putInt(BackgroundContract.CONTACTS_DIALPAD_ZOOM, zoom.toInt())
-                                .apply()
-                        },
-                    )
-                    // 纵向位置：仅「贴满裁切」时有意义，决定裁掉上/下哪部分（0 顶、50 中、100 底）。
-                    AnimatedVisibility(
-                        visible = scaleMode == BackgroundContract.CONTACTS_DIALPAD_SCALE_CROP,
-                        enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(220)),
-                        exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(180)),
-                    ) {
-                        SliderPreference(
-                            label = stringResource(R.string.contacts_dialpad_focus_y),
-                            value = focusY,
-                            range = 0f..100f,
-                            suffix = "%",
-                            onValueChange = { focusY = it },
-                            onValueChangeFinished = {
-                                config.edit()
-                                    .putInt(BackgroundContract.CONTACTS_DIALPAD_FOCUS_Y, focusY.toInt())
-                                    .apply()
-                            },
-                        )
                     }
                 }
             }

@@ -26,6 +26,8 @@ final class BackgroundApplier {
     private static final String CONTACTS_SESSION = FIELD_PREFIX + "contacts.session";
     private static final String CONTACTS_RESCAN = FIELD_PREFIX + "contacts.rescan";
     private static final String CONTACTS_ADAPT_AT = FIELD_PREFIX + "contacts.adapt.at";
+    // 【诊断】每个 Activity 实例只 dump 一次视图树的标记，避免布局回调刷屏。
+    private static final String CONTACTS_DUMPED = FIELD_PREFIX + "contacts.dumped";
     // 缓存联系人进程内的资源 id（进程内固定），避免每次布局回调都走 getIdentifier 慢查询。-1=未解析。
     private static int contactsBgViewId = -1;
     private static final String DEVICE_ACTIVE = FIELD_PREFIX + "device.active";
@@ -99,7 +101,70 @@ final class BackgroundApplier {
             // 遍历视图树处理列表字母分组吸顶头背景。
             View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
             if (decor != null) adaptPinnedHeaders(decor, enabled);
+
+            // 【诊断】每个 Activity 实例 dump 一次完整视图树（含背景类型/颜色/alpha），
+            // 用于定位浅色白底 / 深色黑条遮挡背景的真实句柄。定位完成后移除。
+            if (decor != null && !Boolean.TRUE.equals(XposedHelpers.getAdditionalInstanceField(activity, CONTACTS_DUMPED))) {
+                XposedHelpers.setAdditionalInstanceField(activity, CONTACTS_DUMPED, Boolean.TRUE);
+                XposedBridge.log("[HyperBG-DUMP] ===== BEGIN " + activity.getClass().getName()
+                        + " night=" + isNightMode(activity) + " =====");
+                dumpViewTree(decor, 0);
+                XposedBridge.log("[HyperBG-DUMP] ===== END =====");
+            }
         } catch (Throwable error) { log("adaptContactsSurfaces", error); }
+    }
+
+    // 【诊断】判断当前是否深色模式。
+    private static boolean isNightMode(Activity activity) {
+        try {
+            int flag = activity.getResources().getConfiguration().uiMode
+                    & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
+            return flag == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        } catch (Throwable ignored) { return false; }
+    }
+
+    // 【诊断】递归打印视图树：层级缩进、类名、id 名、可见性、尺寸、背景描述。
+    // 只打印有背景或体积较大的节点，控制日志量。定位完成后连同调用一起移除。
+    private static void dumpViewTree(View view, int depth) {
+        if (view == null || depth > 25) return;
+        try {
+            android.graphics.drawable.Drawable bg = view.getBackground();
+            String idName = "no-id";
+            if (view.getId() != View.NO_ID) {
+                try { idName = view.getResources().getResourceEntryName(view.getId()); }
+                catch (Throwable ignored) { idName = "0x" + Integer.toHexString(view.getId()); }
+            }
+            // 只打印带背景的节点，或尺寸铺满疑似遮挡层的容器，避免刷屏。
+            boolean big = view.getWidth() > 400 && view.getHeight() > 60;
+            if (bg != null || big) {
+                StringBuilder sb = new StringBuilder("[HyperBG-DUMP] ");
+                for (int i = 0; i < depth; i++) sb.append("  ");
+                sb.append(view.getClass().getName())
+                        .append(" id=").append(idName)
+                        .append(" vis=").append(view.getVisibility())
+                        .append(" ").append(view.getWidth()).append("x").append(view.getHeight())
+                        .append(" alpha=").append(view.getAlpha())
+                        .append(" bg=").append(describeDrawable(bg));
+                XposedBridge.log(sb.toString());
+            }
+        } catch (Throwable ignored) {}
+        if (view instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) view;
+            for (int i = 0; i < g.getChildCount(); i++) dumpViewTree(g.getChildAt(i), depth + 1);
+        }
+    }
+
+    // 【诊断】描述一个 Drawable：类型 + 主色/透明度信息，用于判断是否不透明中性色遮挡。
+    private static String describeDrawable(android.graphics.drawable.Drawable d) {
+        if (d == null) return "null";
+        String type = d.getClass().getName();
+        try {
+            if (d instanceof android.graphics.drawable.ColorDrawable) {
+                int c = ((android.graphics.drawable.ColorDrawable) d).getColor();
+                return type + "(#" + Integer.toHexString(c) + ")";
+            }
+            return type + "(alpha=" + d.getAlpha() + ")";
+        } catch (Throwable ignored) { return type; }
     }
 
     // 递归遍历，命中 ContactListPinnedHeaderView（字母分组吸顶头）后清除其自身及子 TextView 的

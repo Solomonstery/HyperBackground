@@ -117,17 +117,19 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         if (content != null) content.setAlpha(Math.max(0f, Math.min(1f, alpha)));
     }
 
-    // 设置圆角半径（px）：四角同半径圆角。用 setClipToOutline（View 级裁切，作用于离屏合成层的输出，
-    // 与本视图的 alpha / renderEffect 兼容），比在 dispatchDraw 内 clipPath 更可靠——后者在 View 带
-    // alpha<1 / renderEffect 时走离屏层，canvas 上的非矩形 clip 可能不生效。关键是尺寸就绪后重算轮廓。
+    // 设置圆角半径（px）：四角同半径。圆角 outline 直接作用在「内容视图」（imageView/textureView）而非
+    // media 容器——真正画图的是内容视图（用 MATRIX 把图放大后裁到自身矩形），把 clipToOutline 加在这一层，
+    // 圆角才能压在可视图像上；加在外层 media 容器会被内容视图的矩形绘制盖住，故此前四角一直是直角。
     void setTopCornerRadius(float radiusPx) {
         this.topCornerRadius = Math.max(0f, radiusPx);
+        View content = imageView != null ? imageView : textureView;
+        if (content == null) return;
         if (topCornerRadius <= 0f) {
-            setClipToOutline(false);
-            setOutlineProvider(null);
+            content.setClipToOutline(false);
+            content.setOutlineProvider(null);
             return;
         }
-        setOutlineProvider(new android.view.ViewOutlineProvider() {
+        content.setOutlineProvider(new android.view.ViewOutlineProvider() {
             @Override public void getOutline(View view, android.graphics.Outline outline) {
                 int w = view.getWidth();
                 int h = view.getHeight();
@@ -136,15 +138,18 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
                 outline.setRoundRect(0, 0, w, h, r);
             }
         });
-        setClipToOutline(true);
-        invalidateOutline();
+        content.setClipToOutline(true);
+        content.invalidateOutline();
     }
 
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
-        // 首帧尺寸为 0 时 getOutline 直接 return 不设轮廓；尺寸就绪 / 变化后必须重算，否则圆角不出现。
-        if (topCornerRadius > 0f) invalidateOutline();
+        // 内容视图与 media 同尺寸（MATCH_PARENT）；首帧尺寸为 0 时 getOutline 直接 return，
+        // 待尺寸就绪 / 变化后对内容视图重算轮廓，否则圆角不出现。
+        if (topCornerRadius <= 0f) return;
+        View content = imageView != null ? imageView : textureView;
+        if (content != null) content.invalidateOutline();
     }
 
     private void createImageView() throws IOException {

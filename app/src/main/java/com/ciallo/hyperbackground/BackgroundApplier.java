@@ -26,8 +26,6 @@ final class BackgroundApplier {
     private static final String CONTACTS_SESSION = FIELD_PREFIX + "contacts.session";
     // 拨号盘独立背景层的会话，存到 DialpadLayout 实例上（拨号盘可被反复 inflate/复用）。
     private static final String DIALPAD_SESSION = FIELD_PREFIX + "dialpad.session";
-    private static final String DIALPAD_LAYOUT_LISTENER = FIELD_PREFIX + "dialpad.layout.listener";
-    private static final String DIALPAD_CONTAINER = FIELD_PREFIX + "dialpad.container";
     private static final String CONTACTS_RESCAN = FIELD_PREFIX + "contacts.rescan";
     private static final String CONTACTS_ADAPT_AT = FIELD_PREFIX + "contacts.adapt.at";
     // 清除列表不透明中性色背景前，把原背景存到该 View 的 Xposed 附加字段，便于开关关闭时还原。
@@ -291,6 +289,8 @@ final class BackgroundApplier {
             int containerId = ctx.getResources().getIdentifier("dialpad_container", "id", pkg);
             View bgView = bgId == 0 ? null : dialpad.findViewById(bgId);
             View container = containerId == 0 ? null : dialpad.findViewById(containerId);
+            ViewGroup bgHost = bgView instanceof ViewGroup ? (ViewGroup) bgView : dialpad;
+
             BackgroundContract.Source source = BackgroundContract.query(ctx, BackgroundContract.CONTACTS_DIALPAD);
             // 拨号盘背景仅支持图片：新选图入口已限定 image/*，此处再兜底排除历史遗留的视频配置，
             // 视频源直接回退默认模式、不在拨号盘播放。
@@ -301,22 +301,17 @@ final class BackgroundApplier {
             removeDialpadMedia(dialpad);
 
             if (custom) {
-                // 背景仍放在外层 FrameLayout，避免作为 LinearLayout 子项参与键盘布局；
-                // 但它的矩形严格同步到 dialpad_container，圆角因此作用于真正的面板边界。
-                if (!(bgView instanceof ViewGroup)) throw new IllegalStateException("dialer_background_view is not a ViewGroup");
+                // 自定义图塞进 dialer_background_view 内铺满（置底、不挡数字键）；原生 9-patch 底随
+                // 背景板 alpha 归零而隐去；面板底 dialer_background_pad 换透明占位让图透出。
                 BackgroundMediaView media = new BackgroundMediaView(ctx, source);
+                // 拨号盘键盘面板不透明度滑块也作用于自定义图：与该图自身 opacity 叠乘，滑块不再失效。
                 media.setAlpha((enabled ? padAlpha : 1f) * (source.opacity / 100f));
+                // 给自定义背景图裁出四角圆角（30dp）：用 BackgroundMediaView 内部 dispatchDraw 自绘裁切，
+                // 逐帧按当前尺寸构造路径，不受面板从底部弹出动画的影响。
                 float density = ctx.getResources().getDisplayMetrics().density;
                 media.setTopCornerRadius(30f * density);
-                ViewGroup bgHost = (ViewGroup) bgView;
-                bgHost.addView(media, 0, new FrameLayout.LayoutParams(0, 0));
-                syncDialpadMediaBounds(media, bgView, container);
-                View.OnLayoutChangeListener listener = (v, l, t, r, b, ol, ot, or, ob) ->
-                        syncDialpadMediaBounds(media, bgView, container);
-                container.addOnLayoutChangeListener(listener);
-                XposedHelpers.setAdditionalInstanceField(dialpad, DIALPAD_LAYOUT_LISTENER, listener);
-                XposedHelpers.setAdditionalInstanceField(dialpad, DIALPAD_CONTAINER, container);
-                media.post(() -> syncDialpadMediaBounds(media, bgView, container));
+                bgHost.addView(media, 0, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                 XposedHelpers.setAdditionalInstanceField(dialpad, DIALPAD_SESSION, media);
                 // 先存原生 9-patch 底（首次），再换透明，让自定义图透出且切回默认能还原原底。
                 if (bgView != null) {
@@ -342,20 +337,6 @@ final class BackgroundApplier {
                 }
             }
         } catch (Throwable error) { log("applyDialpadOnInflate", error); }
-    }
-
-    private static void syncDialpadMediaBounds(View media, View bgView, View container) {
-        if (media == null || bgView == null || container == null || media.getParent() != bgView) return;
-        int[] host = new int[2];
-        int[] panel = new int[2];
-        bgView.getLocationOnScreen(host);
-        container.getLocationOnScreen(panel);
-        int left = panel[0] - host[0];
-        int top = panel[1] - host[1];
-        int right = left + container.getWidth();
-        int bottom = top + container.getHeight();
-        if (right <= left || bottom <= top) return;
-        media.layout(left, top, right, bottom);
     }
 
     // 把自定义模式下换成透明的 dialer_background_view 原生 9-patch 底还原回去（若曾保存）。
@@ -405,14 +386,6 @@ final class BackgroundApplier {
     // 移除拨号盘上已叠加的自定义背景层（若有）。原生底 / 面板底的复位由调用方按当前模式重设。
     private static void removeDialpadMedia(ViewGroup dialpad) {
         try {
-            Object listenerObject = XposedHelpers.getAdditionalInstanceField(dialpad, DIALPAD_LAYOUT_LISTENER);
-            Object containerObject = XposedHelpers.getAdditionalInstanceField(dialpad, DIALPAD_CONTAINER);
-            if (listenerObject instanceof View.OnLayoutChangeListener && containerObject instanceof View) {
-                View container = (View) containerObject;
-                container.removeOnLayoutChangeListener((View.OnLayoutChangeListener) listenerObject);
-            }
-            XposedHelpers.removeAdditionalInstanceField(dialpad, DIALPAD_LAYOUT_LISTENER);
-            XposedHelpers.removeAdditionalInstanceField(dialpad, DIALPAD_CONTAINER);
             Object old = XposedHelpers.getAdditionalInstanceField(dialpad, DIALPAD_SESSION);
             if (old instanceof BackgroundMediaView) {
                 BackgroundMediaView media = (BackgroundMediaView) old;

@@ -1,4 +1,4 @@
-﻿﻿package com.ciallo.hyperbackground.ui.pages
+package com.ciallo.hyperbackground.ui.pages
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues

@@ -8,6 +8,7 @@ import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.view.Window;
 import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
 import android.view.ViewParent;
 import android.widget.FrameLayout;
 import android.widget.TextView;
@@ -306,13 +307,15 @@ final class BackgroundApplier {
                 BackgroundMediaView media = new BackgroundMediaView(ctx, source);
                 // 拨号盘键盘面板不透明度滑块也作用于自定义图：与该图自身 opacity 叠乘，滑块不再失效。
                 media.setAlpha((enabled ? padAlpha : 1f) * (source.opacity / 100f));
-                // 给自定义背景图裁出四角圆角（30dp）：用 BackgroundMediaView 内部 dispatchDraw 自绘裁切，
-                // 逐帧按当前尺寸构造路径，不受面板从底部弹出动画的影响。
-                float density = ctx.getResources().getDisplayMetrics().density;
-                media.setTopCornerRadius(30f * density);
                 bgHost.addView(media, 0, new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                 XposedHelpers.setAdditionalInstanceField(dialpad, DIALPAD_SESSION, media);
+                // 四角真圆角（30dp）：原生面板底 dialer_background_pad 只画了顶部两角、底部直角，且自绘
+                // clipPath 裁 BackgroundMediaView 自身矩形与面板边界对不齐、四角常裁不出。改为直接给
+                // 承载键盘的 dialpad_container 设 View 层 outline 裁切——硬件层真裁剪，对面板内所有子 view
+                // （背景图 / 数字键 / 底部按钮）统一生效，圆角边界即面板边界，四角一定圆。
+                float density = ctx.getResources().getDisplayMetrics().density;
+                applyPanelCornerRadius(container, 30f * density);
                 // 先存原生 9-patch 底（首次），再换透明，让自定义图透出且切回默认能还原原底。
                 if (bgView != null) {
                     Drawable orig = bgView.getBackground();
@@ -330,6 +333,7 @@ final class BackgroundApplier {
                 // 先撤销上次自定义模式对 bgView / container 的改动，再对 bgView 施加透明度。
                 float a = enabled ? padAlpha : 1f;
                 restoreDialpadPanelBackground(container);
+                clearPanelCornerRadius(container);
                 if (container != null) container.setAlpha(1f);
                 if (bgView != null) {
                     restoreDialpadBgView(bgView);   // 若曾在自定义模式换成透明底，先还原原生 9-patch 底
@@ -348,6 +352,36 @@ final class BackgroundApplier {
                 bgView.setBackground((Drawable) saved);
                 XposedHelpers.removeAdditionalInstanceField(bgView, DIALPAD_BGVIEW_SAVED);
             }
+        } catch (Throwable ignored) {}
+    }
+
+    // 给 dialpad_container 设 View 层 outline 四角圆角裁切（硬件层真裁剪，对面板内所有子 view 生效）。
+    // 用 ViewOutlineProvider + setClipToOutline，圆角随面板尺寸变化实时重算（弹出动画中途也正确）。
+    private static void applyPanelCornerRadius(View container, float radiusPx) {
+        if (container == null || radiusPx <= 0f) return;
+        try {
+            final float r = radiusPx;
+            container.setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, android.graphics.Outline outline) {
+                    int w = view.getWidth();
+                    int h = view.getHeight();
+                    if (w <= 0 || h <= 0) return;
+                    // 半径不超过宽/高一半，面板从底部弹出、动画中途高度较小时也能画全四角。
+                    float rr = Math.min(r, Math.min(w, h) / 2f);
+                    outline.setRoundRect(0, 0, w, h, rr);
+                }
+            });
+            container.setClipToOutline(true);
+        } catch (Throwable ignored) {}
+    }
+
+    // 切回默认模式时撤销面板 outline 裁切，避免残留圆角。
+    private static void clearPanelCornerRadius(View container) {
+        if (container == null) return;
+        try {
+            container.setClipToOutline(false);
+            container.setOutlineProvider(ViewOutlineProvider.BACKGROUND);
         } catch (Throwable ignored) {}
     }
 

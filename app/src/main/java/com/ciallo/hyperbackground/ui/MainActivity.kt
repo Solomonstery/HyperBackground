@@ -212,6 +212,9 @@ class MainActivity : ComponentActivity() {
         appearanceRevision++
     }
 
+    /** 某外观槽位当前落盘图片文件（可能不存在），供带预览选图组件渲染缩略图。 */
+    fun appearanceImageFile(slot: String) = appearanceController.appearanceFileFor(slot)
+
     fun updateAppearance(transform: (SettingsAppearanceSettings) -> SettingsAppearanceSettings) {
         appearanceController.updateAppearance(transform)
         appearance = appearanceController.appearance

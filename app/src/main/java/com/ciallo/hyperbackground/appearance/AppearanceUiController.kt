@@ -82,6 +82,9 @@ class AppearanceUiController(context: Context) {
     private fun appearanceFile(context: Context, slot: String): File =
         File(File(context.filesDir, "settings_appearance"), "$slot.bin")
 
+    /** 返回某槽位当前已落盘图片文件（可能不存在），供 UI 侧带预览选图组件读取渲染。 */
+    fun appearanceFileFor(slot: String): File = appearanceFile(appContext, slot)
+
     private fun copyAppearanceFile(context: Context, slot: String, uri: Uri): File {
         val directory = File(context.filesDir, "settings_appearance")
         check(directory.exists() || directory.mkdirs()) { "无法创建配置目录" }

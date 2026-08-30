@@ -36,14 +36,11 @@ import com.ciallo.hyperbackground.appearance.withStyle2LogoVerticalOffset
 import com.ciallo.hyperbackground.appearance.withStyle2TextHorizontalOffset
 import com.ciallo.hyperbackground.appearance.withStyle2TextVerticalOffset
 import com.ciallo.hyperbackground.ui.MainActivity
+import com.ciallo.hyperbackground.ui.components.AppearancePickerPreference
 import com.ciallo.hyperbackground.ui.components.SectionTitle
 import com.ciallo.hyperbackground.ui.components.SliderWithInputPreference
 import com.ciallo.hyperbackground.ui.components.UiCard
-import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 
@@ -52,7 +49,7 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
  * 顶部选择「系统默认 / 样式1 / 样式2」，其余分组按所选样式动态展开。
  *
  * 适配点（仅换壳，不改逻辑）：卡片用 [UiCard]，滑块用带输入框的 [SliderWithInputPreference]，
- * 导入/清除行用与主页一致的 [ArrowRow]（BasicComponent + 右箭头）。
+ * 导入/清除行用与主页背景一致的 [AppearancePickerPreference]（BasicComponent 入口 + 预览对话框）。
  */
 @Composable
 fun DeviceCardPage(
@@ -102,15 +99,12 @@ fun DeviceCardPage(
         if (style == DEVICE_INTERFACE_STYLE_SYSTEM) {
             item {
                 UiCard(activity, Modifier.fillMaxWidth()) {
-                    ArrowRow(
-                        title = stringResource(R.string.logo_import),
+                    AppearancePickerPreference(
+                        activity = activity,
+                        slot = APPEARANCE_SLOT_LOGO,
+                        title = stringResource(R.string.group_logo),
                         summary = appearance.logoMime.ifBlank { stringResource(R.string.logo_not_imported) },
-                        onClick = { activity.chooseAppearanceImage(APPEARANCE_SLOT_LOGO, logo = true) },
-                    )
-                    ArrowRow(
-                        title = stringResource(R.string.logo_clear),
-                        summary = if (appearance.logoMime.isBlank()) stringResource(R.string.logo_none) else stringResource(R.string.logo_imported),
-                        onClick = { activity.clearAppearanceImage(APPEARANCE_SLOT_LOGO) },
+                        logo = true,
                     )
                 }
             }
@@ -120,15 +114,11 @@ fun DeviceCardPage(
             item { SectionTitle(stringResource(R.string.group_device_image)) }
             item {
                 UiCard(activity, Modifier.fillMaxWidth()) {
-                    ArrowRow(
-                        title = stringResource(R.string.device_image_import),
-                        summary = appearance.tutorialCardImageMime.ifBlank { stringResource(R.string.logo_not_imported) },
-                        onClick = { activity.chooseAppearanceImage(APPEARANCE_SLOT_DEVICE_IMAGE, logo = false) },
-                    )
-                    ArrowRow(
-                        title = stringResource(R.string.device_image_clear),
-                        summary = if (appearance.tutorialCardImageMime.isBlank()) stringResource(R.string.image_not_imported) else stringResource(R.string.logo_imported),
-                        onClick = { activity.clearAppearanceImage(APPEARANCE_SLOT_DEVICE_IMAGE) },
+                    AppearancePickerPreference(
+                        activity = activity,
+                        slot = APPEARANCE_SLOT_DEVICE_IMAGE,
+                        title = stringResource(R.string.group_device_image),
+                        summary = appearance.tutorialCardImageMime.ifBlank { stringResource(R.string.image_not_imported) },
                     )
                     AppearanceSlider(
                         label = stringResource(R.string.device_image_scale),
@@ -149,15 +139,11 @@ fun DeviceCardPage(
             item { SectionTitle(stringResource(R.string.group_background_image)) }
             item {
                 UiCard(activity, Modifier.fillMaxWidth()) {
-                    ArrowRow(
-                        title = stringResource(R.string.background_image_import),
-                        summary = appearance.tutorialCardBackgroundMime.ifBlank { stringResource(R.string.logo_not_imported) },
-                        onClick = { activity.chooseAppearanceImage(APPEARANCE_SLOT_STYLE1_UPDATE_BACKGROUND, logo = false) },
-                    )
-                    ArrowRow(
-                        title = stringResource(R.string.background_image_clear),
-                        summary = if (appearance.tutorialCardBackgroundMime.isBlank()) stringResource(R.string.image_not_imported) else stringResource(R.string.logo_imported),
-                        onClick = { activity.clearAppearanceImage(APPEARANCE_SLOT_STYLE1_UPDATE_BACKGROUND) },
+                    AppearancePickerPreference(
+                        activity = activity,
+                        slot = APPEARANCE_SLOT_STYLE1_UPDATE_BACKGROUND,
+                        title = stringResource(R.string.group_background_image),
+                        summary = appearance.tutorialCardBackgroundMime.ifBlank { stringResource(R.string.image_not_imported) },
                     )
                     BlurSlider(
                         label = stringResource(R.string.background_image_blur),
@@ -190,15 +176,12 @@ fun DeviceCardPage(
             item { SectionTitle(stringResource(R.string.group_logo)) }
             item {
                 UiCard(activity, Modifier.fillMaxWidth()) {
-                    ArrowRow(
-                        title = stringResource(R.string.logo_import),
+                    AppearancePickerPreference(
+                        activity = activity,
+                        slot = APPEARANCE_SLOT_CUSTOM_DEVICE_LOGO,
+                        title = stringResource(R.string.group_logo),
                         summary = appearance.tutorialCardLogoMime.ifBlank { stringResource(R.string.logo_not_imported) },
-                        onClick = { activity.chooseAppearanceImage(APPEARANCE_SLOT_CUSTOM_DEVICE_LOGO, logo = true) },
-                    )
-                    ArrowRow(
-                        title = stringResource(R.string.logo_clear),
-                        summary = if (appearance.tutorialCardLogoMime.isBlank()) stringResource(R.string.logo_none) else stringResource(R.string.logo_imported),
-                        onClick = { activity.clearAppearanceImage(APPEARANCE_SLOT_CUSTOM_DEVICE_LOGO) },
+                        logo = true,
                     )
                     AppearanceSlider(
                         label = stringResource(R.string.logo_scale),
@@ -239,15 +222,11 @@ fun DeviceCardPage(
             item { SectionTitle(stringResource(R.string.group_device_image)) }
             item {
                 UiCard(activity, Modifier.fillMaxWidth()) {
-                    ArrowRow(
-                        title = stringResource(R.string.device_image_import),
-                        summary = appearance.style2ImageMime.ifBlank { stringResource(R.string.logo_not_imported) },
-                        onClick = { activity.chooseAppearanceImage(APPEARANCE_SLOT_STYLE2_DEVICE_IMAGE, logo = false) },
-                    )
-                    ArrowRow(
-                        title = stringResource(R.string.device_image_clear),
-                        summary = if (appearance.style2ImageMime.isBlank()) stringResource(R.string.image_not_imported) else stringResource(R.string.logo_imported),
-                        onClick = { activity.clearAppearanceImage(APPEARANCE_SLOT_STYLE2_DEVICE_IMAGE) },
+                    AppearancePickerPreference(
+                        activity = activity,
+                        slot = APPEARANCE_SLOT_STYLE2_DEVICE_IMAGE,
+                        title = stringResource(R.string.group_device_image),
+                        summary = appearance.style2ImageMime.ifBlank { stringResource(R.string.image_not_imported) },
                     )
                     AppearanceSlider(
                         label = stringResource(R.string.device_image_scale),
@@ -261,15 +240,11 @@ fun DeviceCardPage(
             item { SectionTitle(stringResource(R.string.group_background_image)) }
             item {
                 UiCard(activity, Modifier.fillMaxWidth()) {
-                    ArrowRow(
-                        title = stringResource(R.string.background_image_import),
-                        summary = appearance.style2BackgroundMime.ifBlank { stringResource(R.string.logo_not_imported) },
-                        onClick = { activity.chooseAppearanceImage(APPEARANCE_SLOT_STYLE2_UPDATE_BACKGROUND, logo = false) },
-                    )
-                    ArrowRow(
-                        title = stringResource(R.string.background_image_clear),
-                        summary = if (appearance.style2BackgroundMime.isBlank()) stringResource(R.string.image_not_imported) else stringResource(R.string.logo_imported),
-                        onClick = { activity.clearAppearanceImage(APPEARANCE_SLOT_STYLE2_UPDATE_BACKGROUND) },
+                    AppearancePickerPreference(
+                        activity = activity,
+                        slot = APPEARANCE_SLOT_STYLE2_UPDATE_BACKGROUND,
+                        title = stringResource(R.string.group_background_image),
+                        summary = appearance.style2BackgroundMime.ifBlank { stringResource(R.string.image_not_imported) },
                     )
                     BlurSlider(
                         label = stringResource(R.string.background_image_blur),
@@ -302,15 +277,12 @@ fun DeviceCardPage(
             item { SectionTitle(stringResource(R.string.group_logo_version)) }
             item {
                 UiCard(activity, Modifier.fillMaxWidth()) {
-                    ArrowRow(
-                        title = stringResource(R.string.logo_import),
+                    AppearancePickerPreference(
+                        activity = activity,
+                        slot = APPEARANCE_SLOT_STYLE2_CUSTOM_DEVICE_LOGO,
+                        title = stringResource(R.string.group_logo),
                         summary = appearance.style2LogoMime.ifBlank { stringResource(R.string.logo_not_imported) },
-                        onClick = { activity.chooseAppearanceImage(APPEARANCE_SLOT_STYLE2_CUSTOM_DEVICE_LOGO, logo = true) },
-                    )
-                    ArrowRow(
-                        title = stringResource(R.string.logo_clear),
-                        summary = if (appearance.style2LogoMime.isBlank()) stringResource(R.string.logo_none) else stringResource(R.string.logo_imported),
-                        onClick = { activity.clearAppearanceImage(APPEARANCE_SLOT_STYLE2_CUSTOM_DEVICE_LOGO) },
+                        logo = true,
                     )
                     OverlayDropdownPreference(
                         title = stringResource(R.string.logo_version_alignment),
@@ -495,19 +467,6 @@ private fun BlurSlider(
         range = 0f..25f,
         suffix = "dp",
         onValueChangeFinished = onValueChangeFinished,
-    )
-}
-
-/** 导入/清除行：与主页 ScopeEntry 一致的 BasicComponent + 右箭头。 */
-@Composable
-private fun ArrowRow(title: String, summary: String, onClick: () -> Unit) {
-    BasicComponent(
-        title = title,
-        summary = summary,
-        endActions = {
-            Icon(imageVector = MiuixIcons.Basic.ArrowRight, contentDescription = null)
-        },
-        onClick = onClick,
     )
 }
 

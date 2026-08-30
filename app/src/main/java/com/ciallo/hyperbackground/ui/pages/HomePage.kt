@@ -76,26 +76,7 @@ fun HomePage(
                     title = stringResource(R.string.background_home),
                     summary = stringResource(R.string.background_home_summary),
                 ) { onOpenBackground(BackgroundContract.HOME) }
-                ScopeEntry(
-                    icon = MiuixIcons.Phone,
-                    title = stringResource(R.string.background_device),
-                    summary = stringResource(R.string.background_device_summary),
-                ) { onOpenBackground(BackgroundContract.DEVICE) }
-                ScopeEntry(
-                    icon = MiuixIcons.Background,
-                    title = stringResource(R.string.background_global),
-                    summary = stringResource(R.string.background_global_summary),
-                ) { onOpenBackground(BackgroundContract.GLOBAL) }
-                ScopeEntry(
-                    icon = MiuixIcons.Phone,
-                    title = stringResource(R.string.background_contacts),
-                    summary = stringResource(R.string.background_contacts_summary),
-                ) { onOpenBackground(BackgroundContract.CONTACTS) }
-            }
-        }
-        item { SectionTitle(stringResource(R.string.appearance)) }
-        item {
-            UiCard(activity, Modifier.fillMaxWidth()) {
+                // 「自定义我的设备」取代原「我的设备」通道，直接进入设备卡片页（其内含动态背景卡）。
                 ScopeEntry(
                     icon = MiuixIcons.Phone,
                     title = stringResource(R.string.device_card_title),
@@ -106,6 +87,16 @@ fun HomePage(
                     title = stringResource(R.string.device_info_title),
                     summary = stringResource(R.string.device_info_summary),
                 ) { onOpenBackground(MainActivity.ROUTE_DEVICE_INFO) }
+                ScopeEntry(
+                    icon = MiuixIcons.Background,
+                    title = stringResource(R.string.background_global),
+                    summary = stringResource(R.string.background_global_summary),
+                ) { onOpenBackground(BackgroundContract.GLOBAL) }
+                ScopeEntry(
+                    icon = MiuixIcons.Phone,
+                    title = stringResource(R.string.background_contacts),
+                    summary = stringResource(R.string.background_contacts_summary),
+                ) { onOpenBackground(BackgroundContract.CONTACTS) }
             }
         }
     }

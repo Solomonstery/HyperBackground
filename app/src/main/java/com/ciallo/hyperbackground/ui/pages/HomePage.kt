@@ -93,6 +93,21 @@ fun HomePage(
                 ) { onOpenBackground(BackgroundContract.CONTACTS) }
             }
         }
+        item { SectionTitle(stringResource(R.string.appearance)) }
+        item {
+            UiCard(activity, Modifier.fillMaxWidth()) {
+                ScopeEntry(
+                    icon = MiuixIcons.Phone,
+                    title = stringResource(R.string.device_card_title),
+                    summary = stringResource(R.string.device_card_summary),
+                ) { onOpenBackground(MainActivity.ROUTE_DEVICE_CARD) }
+                ScopeEntry(
+                    icon = MiuixIcons.Settings,
+                    title = stringResource(R.string.device_info_title),
+                    summary = stringResource(R.string.device_info_summary),
+                ) { onOpenBackground(MainActivity.ROUTE_DEVICE_INFO) }
+            }
+        }
     }
 }
 

@@ -51,8 +51,13 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.ciallo.hyperbackground.BackgroundContract
 import com.ciallo.hyperbackground.ConfigManager
 import com.ciallo.hyperbackground.R
+import com.ciallo.hyperbackground.appearance.AppearanceUiController
+import com.ciallo.hyperbackground.appearance.DeviceProfileSettings
+import com.ciallo.hyperbackground.appearance.SettingsAppearanceSettings
 import com.ciallo.hyperbackground.ui.pages.BackgroundDetailPage
 import com.ciallo.hyperbackground.ui.pages.ChangelogPage
+import com.ciallo.hyperbackground.ui.pages.DeviceCardPage
+import com.ciallo.hyperbackground.ui.pages.DeviceInfoPage
 import com.ciallo.hyperbackground.ui.pages.HomePage
 import com.ciallo.hyperbackground.ui.pages.SettingsPage
 import com.ciallo.hyperbackground.ui.pages.RestartScopesDialog
@@ -84,7 +89,16 @@ import top.yukonga.miuix.kmp.theme.ThemeController
 class MainActivity : ComponentActivity() {
     lateinit var config: ConfigManager
         private set
+    lateinit var appearanceController: AppearanceUiController
+        private set
     var revision by mutableIntStateOf(0)
+        private set
+    // 外观配置版本号：外观/设备信息表单每次写库后自增，供 Compose 侧刷新（与 revision 语义相同但独立）。
+    var appearanceRevision by mutableIntStateOf(0)
+        private set
+    var appearance by mutableStateOf(SettingsAppearanceSettings())
+        private set
+    var deviceProfile by mutableStateOf(DeviceProfileSettings())
         private set
     var cardOpacity by mutableFloatStateOf(1f)
         private set
@@ -105,6 +119,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         config = ConfigManager.get(this)
+        appearanceController = AppearanceUiController(this)
+        appearance = appearanceController.appearance
+        deviceProfile = appearanceController.deviceProfile
         cardOpacity = config.getInt(BackgroundContract.UI_CARD_OPACITY, 100).coerceIn(0, 100) / 100f
         bottomBarBlurEnabled = config.getBoolean(BackgroundContract.UI_BOTTOM_BAR_BLUR_ENABLED, false)
         floatingBottomBar = config.getBoolean(BackgroundContract.UI_FLOATING_BOTTOM_BAR, false)
@@ -163,6 +180,48 @@ class MainActivity : ComponentActivity() {
 
     fun clearUiBackground() {
         if (config.clearUiBackground()) revision++
+    }
+
+    /**
+     * 外观图片选择：logo 类槽位允许 SVG / XML（保留高级材质），其余槽位仅图片。
+     * 选中后落盘并写库，成功即自增 [appearanceRevision] 刷新表单。
+     */
+    fun chooseAppearanceImage(slot: String, logo: Boolean, onDone: (Boolean) -> Unit = {}) {
+        pendingMediaResult = { uri, _ ->
+            val ok = appearanceController.importAppearance(slot, uri)
+            if (ok) {
+                appearance = appearanceController.appearance
+                appearanceRevision++
+                toast(R.string.saved)
+            } else {
+                toast(getString(R.string.save_failed, "import"))
+            }
+            onDone(ok)
+        }
+        val types = if (logo) {
+            arrayOf("image/*", "image/svg+xml", "text/xml", "application/xml", "*/*")
+        } else {
+            arrayOf("image/*")
+        }
+        picker.launch(types)
+    }
+
+    fun clearAppearanceImage(slot: String) {
+        appearanceController.clearAppearance(slot)
+        appearance = appearanceController.appearance
+        appearanceRevision++
+    }
+
+    fun updateAppearance(transform: (SettingsAppearanceSettings) -> SettingsAppearanceSettings) {
+        appearanceController.updateAppearance(transform)
+        appearance = appearanceController.appearance
+        appearanceRevision++
+    }
+
+    fun updateDeviceProfile(transform: (DeviceProfileSettings) -> DeviceProfileSettings) {
+        appearanceController.updateDeviceProfile(transform)
+        deviceProfile = appearanceController.deviceProfile
+        appearanceRevision++
     }
 
     fun updateCardOpacity(value: Float) {
@@ -312,6 +371,14 @@ class MainActivity : ComponentActivity() {
                 ROUTE_CHANGELOG -> Box(Modifier.fillMaxSize()) {
                     ModuleBackground(revision)
                     ChangelogScreen(onBack = { detailSlot = null })
+                }
+                ROUTE_DEVICE_CARD -> Box(Modifier.fillMaxSize()) {
+                    ModuleBackground(revision)
+                    DeviceCardScreen(onBack = { detailSlot = null })
+                }
+                ROUTE_DEVICE_INFO -> Box(Modifier.fillMaxSize()) {
+                    ModuleBackground(revision)
+                    DeviceInfoScreen(onBack = { detailSlot = null })
                 }
                 else -> Box(Modifier.fillMaxSize()) {
                     ModuleBackground(revision)
@@ -576,6 +643,74 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
+    private fun DeviceCardScreen(onBack: () -> Unit) {
+        val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+        val hasUiBackground = remember(revision) { config.uiBackgroundFile.isFile }
+        val topBarColor = if (hasUiBackground) {
+            Color.Transparent
+        } else {
+            MiuixTheme.colorScheme.surface.copy(alpha = cardOpacity)
+        }
+        val title = getString(R.string.device_card_title)
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    color = topBarColor,
+                    title = title,
+                    largeTitle = title,
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(MiuixIcons.Back, contentDescription = getString(R.string.back))
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            DeviceCardPage(
+                activity = this@MainActivity,
+                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                padding = padding,
+            )
+        }
+    }
+
+    @Composable
+    private fun DeviceInfoScreen(onBack: () -> Unit) {
+        val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+        val hasUiBackground = remember(revision) { config.uiBackgroundFile.isFile }
+        val topBarColor = if (hasUiBackground) {
+            Color.Transparent
+        } else {
+            MiuixTheme.colorScheme.surface.copy(alpha = cardOpacity)
+        }
+        val title = getString(R.string.device_info_title)
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    color = topBarColor,
+                    title = title,
+                    largeTitle = title,
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(MiuixIcons.Back, contentDescription = getString(R.string.back))
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            DeviceInfoPage(
+                activity = this@MainActivity,
+                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                padding = padding,
+            )
+        }
+    }
+
+    @Composable
     private fun ModuleBackground(revision: Int) {
         val file = remember(revision) { config.uiBackgroundFile }
         if (!file.isFile) return
@@ -603,9 +738,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private companion object {
-        // 二级页导航哨兵：复用 detailSlot 的 AnimatedContent/返回动画承载更新日志页，
+    companion object {
+        // 二级页导航哨兵：复用 detailSlot 的 AnimatedContent/返回动画承载更新日志与外观页，
         // 取一个不会与背景 slot（home/device/global）冲突的值。
         const val ROUTE_CHANGELOG = "__changelog__"
+        const val ROUTE_DEVICE_CARD = "__appearance_device_card__"
+        const val ROUTE_DEVICE_INFO = "__appearance_device_info__"
     }
 }

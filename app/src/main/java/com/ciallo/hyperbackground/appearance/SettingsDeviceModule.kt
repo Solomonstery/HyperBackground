@@ -32,7 +32,9 @@ class SettingsDeviceModule : XposedModule() {
             installCardColorResourceHooks()
             installCardFinalBackgroundHooks()
             installCardMaterialHooks()
-            installPersistentTextColorHooks()
+            // 停用：设置页字体强制色与本项目原有 TextColorOverride 完全重复且同 hook TextView.setTextColor，
+            // 两者并行会互相覆盖。字体色统一交给 TextColorOverride 管理，函数体保留以便回退。
+            // installPersistentTextColorHooks()
             log(Log.INFO, TAG, "Installed Settings device-profile hooks")
         }.onFailure { error ->
             log(Log.ERROR, TAG, "Could not install Settings device-profile hooks", error)

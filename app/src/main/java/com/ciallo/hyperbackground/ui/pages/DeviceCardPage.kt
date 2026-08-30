@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ciallo.hyperbackground.BackgroundContract
 import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.appearance.APPEARANCE_SLOT_CUSTOM_DEVICE_LOGO
 import com.ciallo.hyperbackground.appearance.APPEARANCE_SLOT_DEVICE_IMAGE
@@ -37,6 +38,7 @@ import com.ciallo.hyperbackground.appearance.withStyle2TextHorizontalOffset
 import com.ciallo.hyperbackground.appearance.withStyle2TextVerticalOffset
 import com.ciallo.hyperbackground.ui.MainActivity
 import com.ciallo.hyperbackground.ui.components.AppearancePickerPreference
+import com.ciallo.hyperbackground.ui.components.BackgroundPickerPreference
 import com.ciallo.hyperbackground.ui.components.SectionTitle
 import com.ciallo.hyperbackground.ui.components.SliderWithInputPreference
 import com.ciallo.hyperbackground.ui.components.UiCard
@@ -92,6 +94,18 @@ fun DeviceCardPage(
                     ),
                     selectedIndex = style,
                     onSelectedIndexChange = selectStyle,
+                )
+            }
+        }
+
+        // 原「我的设备背景」通道并入本页：复用带预览+透明度的 BackgroundPickerPreference（DEVICE 槽位）。
+        item {
+            UiCard(activity, Modifier.fillMaxWidth()) {
+                BackgroundPickerPreference(
+                    activity = activity,
+                    slot = BackgroundContract.DEVICE,
+                    title = stringResource(R.string.dynamic_background_title),
+                    summary = stringResource(R.string.dynamic_background_summary),
                 )
             }
         }

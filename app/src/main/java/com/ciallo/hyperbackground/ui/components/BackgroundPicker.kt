@@ -58,6 +58,9 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 fun BackgroundPickerPreference(
     activity: MainActivity,
     slot: String? = null,
+    // 入口/对话框标题可覆盖（默认「设置背景」）：设备卡片页复用本组件时传入「动态背景（可调透明度）」。
+    title: String? = null,
+    summary: String? = null,
 ) {
     val config = activity.config
     val currentFile = if (slot == null) config.uiBackgroundFile else config.backgroundFile(slot)
@@ -82,9 +85,12 @@ fun BackgroundPickerPreference(
         mutableFloatStateOf(config.getInt(radiusKey, 20).coerceIn(0, 80).toFloat())
     }
 
+    val entryTitle = title ?: stringResource(R.string.set_background)
+    val entrySummary = summary ?: stringResource(R.string.set_background_summary)
+
     BasicComponent(
-        title = stringResource(R.string.set_background),
-        summary = stringResource(R.string.set_background_summary),
+        title = entryTitle,
+        summary = entrySummary,
         endActions = {
             Icon(imageVector = MiuixIcons.Basic.ArrowRight, contentDescription = null)
         },
@@ -92,7 +98,7 @@ fun BackgroundPickerPreference(
     )
 
     WindowDialog(
-        title = stringResource(R.string.set_background),
+        title = entryTitle,
         summary = stringResource(R.string.background_dialog_summary),
         show = showDialog,
         onDismissRequest = {

@@ -46,6 +46,8 @@
     <string name="settings_appearance">Global colors</string>
     <string name="device_card_title">Customize My device screen</string>
     <string name="device_card_summary">Device card style, logo, images and layout</string>
+    <string name="dynamic_background_title">Dynamic background</string>
+    <string name="dynamic_background_summary">Static backgrounds support adjustable opacity</string>
     <string name="device_info_title">Device info override</string>
     <string name="device_info_summary">Override the values shown on the Settings pages</string>
     <string name="device_card_style">My device screen style</string>

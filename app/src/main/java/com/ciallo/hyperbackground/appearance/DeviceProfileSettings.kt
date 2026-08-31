@@ -7,7 +7,6 @@ import io.github.libxposed.service.XposedService
 const val DEVICE_PROFILE_PREFERENCES = "device_profile"
 private const val KEY_DEVICE_PROFILE_INITIALIZED = "initialized"
 private const val KEY_ENABLED = "enabled"
-private const val KEY_SNAPDRAGON_ICON = "snapdragon_icon"
 private const val KEY_MODEL = "model"
 private const val KEY_PROCESSOR = "processor"
 private const val KEY_RAM = "ram"
@@ -27,7 +26,6 @@ private const val KEY_HARDWARE = "hardware"
 /** Values are presentation overrides for Settings, never changes to system properties. */
 data class DeviceProfileSettings(
     val enabled: Boolean = false,
-    val snapdragonIcon: Boolean = false,
     val model: String = "",
     val processor: String = "",
     val ram: String = "",
@@ -70,7 +68,6 @@ class DeviceProfileStore(context: Context) {
 
 internal fun SharedPreferences.toDeviceProfileSettings() = DeviceProfileSettings(
     enabled = getBoolean(KEY_ENABLED, false),
-    snapdragonIcon = getBoolean(KEY_SNAPDRAGON_ICON, false),
     model = getString(KEY_MODEL, "").orEmpty(),
     processor = getString(KEY_PROCESSOR, "").orEmpty(),
     ram = getString(KEY_RAM, "").orEmpty(),
@@ -92,7 +89,6 @@ private fun SharedPreferences.writeDeviceProfileSettings(value: DeviceProfileSet
     edit()
         .putBoolean(KEY_DEVICE_PROFILE_INITIALIZED, true)
         .putBoolean(KEY_ENABLED, value.enabled)
-        .putBoolean(KEY_SNAPDRAGON_ICON, value.snapdragonIcon)
         .putString(KEY_MODEL, value.model)
         .putString(KEY_PROCESSOR, value.processor)
         .putString(KEY_RAM, value.ram)

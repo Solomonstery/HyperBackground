@@ -25,7 +25,6 @@ class SettingsDeviceModule : XposedModule() {
         runCatching {
             installCardBindingHook(param.defaultClassLoader, preferences)
             installDirectDetailHooks(param.defaultClassLoader, preferences)
-            installCpuIconHook(param.defaultClassLoader, preferences)
             installAppearanceHooks(param.defaultClassLoader)
             installPersistentLogoHooks()
             installLogoResourceHooks()
@@ -536,19 +535,6 @@ class SettingsDeviceModule : XposedModule() {
             }
     }
 
-    private fun installCpuIconHook(classLoader: ClassLoader, preferences: SharedPreferences) {
-        val presenter = classLoader.loadClass(DEVICE_BASIC_INFO_PRESENTER)
-        presenter.declaredMethods.filter { it.name.startsWith("show") && it.parameterCount > 0 }.forEachIndexed { index, method ->
-            hook(method)
-                .setExceptionMode(ExceptionMode.PROTECTIVE)
-                .setId("settings-device-profile:cpu-icon-$index")
-                .intercept { chain ->
-                    updateCpuIcon(presenter, preferences.toDeviceProfileSettings())
-                    chain.proceed()
-                }
-        }
-    }
-
     private fun installDirectDetailHooks(classLoader: ClassLoader, preferences: SharedPreferences) {
         val detail = classLoader.loadClass(MY_DEVICE_DETAIL_SETTINGS)
         val memory = detail.declaredMethods.firstOrNull {
@@ -575,11 +561,6 @@ class SettingsDeviceModule : XposedModule() {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun updateCpuIcon(presenter: Class<*>, profile: DeviceProfileSettings) {
-        val icons = presenter.getField("ICON_MAP").get(null) as? MutableMap<Any?, Any?> ?: return
-        icons[0] = if (profile.enabled && profile.snapdragonIcon) SNAPDRAGON_CPU_ICON else DEFAULT_CPU_ICON
-    }
-
     private fun applyCardOverride(adapter: Any?, position: Int, profile: DeviceProfileSettings) {
         if (adapter == null || position < 0) return
         val cards = runCatching {
@@ -596,10 +577,6 @@ class SettingsDeviceModule : XposedModule() {
             type.getMethod("setValue", String::class.java).invoke(card, value)
         }
         applyCameraParts(card, index, profile)
-        if (value == null && index != CAMERA_INDEX) return
-        if ((index == CPU_INDEX || key == "cpu_item") && profile.snapdragonIcon) {
-            type.getMethod("setIconResId", Int::class.javaPrimitiveType).invoke(card, SNAPDRAGON_CPU_ICON)
-        }
     }
 
     private fun applyDataListOverride(adapter: Any?, data: Any?, profile: DeviceProfileSettings) {
@@ -617,10 +594,6 @@ class SettingsDeviceModule : XposedModule() {
                 runCatching { cardType.getMethod("setValue", String::class.java).invoke(card, value) }
             }
             applyCameraParts(card, index, profile)
-            if (value == null && index != CAMERA_INDEX) return@repeat
-            if ((index == CPU_INDEX || key == "cpu_item") && profile.snapdragonIcon) {
-                runCatching { cardType.getMethod("setIconResId", Int::class.javaPrimitiveType).invoke(card, SNAPDRAGON_CPU_ICON) }
-            }
         }
     }
 
@@ -672,7 +645,6 @@ class SettingsDeviceModule : XposedModule() {
         const val TAG = "HyperChangerSettings"
         const val SETTINGS_PACKAGE = "com.android.settings"
         const val DEVICE_INFO_ADAPTER = "com.android.settings.device.DeviceInfoAdapter"
-        const val DEVICE_BASIC_INFO_PRESENTER = "com.android.settings.device.DeviceBasicInfoPresenter"
         const val MY_DEVICE_DETAIL_SETTINGS = "com.android.settings.device.MiuiMyDeviceDetailSettings"
         const val MIUI_SETTINGS = "com.android.settings.MiuiSettings"
         const val SUB_SETTINGS = "com.android.settings.SubSettings"
@@ -685,8 +657,5 @@ class SettingsDeviceModule : XposedModule() {
         const val RESOLUTION_INDEX = 4
         const val RAM_INDEX = 5
         const val MODEL_INDEX = 6
-        // R.drawable.device_description_cpu / device_description_snapdragon_cpu in 设置_17.apk.
-        const val DEFAULT_CPU_ICON = 0x7f08079b
-        const val SNAPDRAGON_CPU_ICON = 0x7f0807a2
     }
 }

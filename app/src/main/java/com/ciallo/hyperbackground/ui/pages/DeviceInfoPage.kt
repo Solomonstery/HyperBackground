@@ -98,11 +98,6 @@ fun DeviceInfoPage(
                     checked = profile.enabled,
                     onCheckedChange = { enabled -> updateProfile { it.copy(enabled = enabled) } },
                 )
-                SwitchPreference(
-                    title = stringResource(R.string.device_info_snapdragon),
-                    checked = profile.snapdragonIcon,
-                    onCheckedChange = { enabled -> updateProfile { it.copy(snapdragonIcon = enabled) } },
-                )
                 // 仅系统默认设备界面样式下暴露自定义 LOGO（与 HyperChanger 一致）。
                 if (appearance.deviceInterfaceStyle == DEVICE_INTERFACE_STYLE_SYSTEM) {
                     OverlayDropdownPreference(

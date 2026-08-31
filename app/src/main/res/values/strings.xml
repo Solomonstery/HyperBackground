@@ -112,7 +112,6 @@
     <string name="logo_mode_keep_material">Keep advanced material (import SVG/XML)</string>
     <string name="device_info_group_settings">Settings app</string>
     <string name="device_info_enable">Enable device info override</string>
-    <string name="device_info_snapdragon">Use Snapdragon processor icon</string>
     <string name="device_info_group_basic">Basic parameters</string>
     <string name="device_info_group_all">All specs &amp; info</string>
     <string name="device_info_group_camera">My device (imaging)</string>

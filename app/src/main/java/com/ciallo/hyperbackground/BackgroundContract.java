@@ -60,6 +60,11 @@ public final class BackgroundContract {
     public static final int CONTACTS_DIALPAD_ZOOM_MIN = 1;
     public static final int CONTACTS_DIALPAD_ZOOM_MAX = 200;
     public static final int CONTACTS_DIALPAD_ZOOM_DEFAULT = 100;
+    // 设置主页背景缩放/定位：与拨号盘同构的一套参数，但走整页 CENTER_CROP 基准（本视口参照），
+    // zoom=100 且焦点居中时精确等比铺满（回归 1.4.1 观感）。仅作用于 home 通道。
+    public static final String HOME_ZOOM = "home_zoom";
+    public static final String HOME_FOCUS_X = "home_focus_x";
+    public static final String HOME_FOCUS_Y = "home_focus_y";
     // 通讯录与拨号进程专属深浅色（与全局强制深浅色独立并存，仅作用于 com.android.contacts 进程）。
     // 三态取值复用 SETTINGS_THEME_FOLLOW/LIGHT/DARK。
     public static final String CONTACTS_THEME_MODE = "contacts_theme_mode";
@@ -77,6 +82,9 @@ public final class BackgroundContract {
     public static final String UI_FLOATING_BOTTOM_BAR = "ui_floating_bottom_bar";
     public static final String UI_TOP_BLUR_ENABLED = "ui_top_blur_enabled";
     public static final String UI_TOP_BLUR_STRENGTH = "ui_top_blur_strength";
+    // 清除设置主页顶栏遮罩（mOverBgView 的黑/白底色框）。与 OS3 顶栏模糊互斥：开启时清除优先，
+    // 不施加模糊；关闭时顶栏模糊按原有逻辑生效。默认关闭。
+    public static final String UI_TOP_CLEAR_ENABLED = "ui_top_clear_enabled";
     public static final String UI_SAYING_ENABLED = "ui_saying_enabled";
     public static final String UI_SAYING_API = "ui_saying_api";
     public static final String UI_SAYING_KEY = "ui_saying_key";
@@ -117,14 +125,17 @@ public final class BackgroundContract {
         SharedPreferences prefs = HookRuntime.preferences();
         long size = prefs.getLong(SIZE_PREFIX + slot, -1L);
         long modified = prefs.getLong(MODIFIED_PREFIX + slot, -1L);
-        // 横纵向定位焦点、缩放大小仅对「拨号盘自定义背景」通道生效；其它通道（home/device/global/contacts
-        // 整页背景等）必须用中性默认值（焦点居中 + zoom=100=等比贴满不额外缩放），否则调拨号盘的
-        // 「缩放/位置」会把这些全局键读进整页背景的 Source，导致整页背景也被一起缩放位移。
+        // 横纵向定位焦点、缩放大小按通道分别读取各自的键，互不污染：
+        // - 拨号盘（contacts_dialpad）：屏幕坐标系定位，横向恒居中（focusX=50），读 dialpad 专用键。
+        // - 设置主页（home）：整页 CENTER_CROP 基准，横纵向均可定位，读 home 专用键。
+        // - 其它通道（device/global/contacts 整页等）：中性默认值（焦点居中 + zoom=100=等比铺满），行为与旧版一致。
         boolean isDialpad = CONTACTS_DIALPAD.equals(slot);
-        // 屏幕坐标系定位：横向恒居中铺满，focusX 不再由 UI 控制、恒为 50；纵向偏移由 focusY 决定。
-        int focusX = 50;
-        int focusY = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_FOCUS_Y, 50) : 50;
+        boolean isHome = HOME.equals(slot);
+        int focusX = isHome ? prefs.getInt(HOME_FOCUS_X, 50) : 50;
+        int focusY = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_FOCUS_Y, 50)
+                : isHome ? prefs.getInt(HOME_FOCUS_Y, 50) : 50;
         int zoom = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_ZOOM, CONTACTS_DIALPAD_ZOOM_DEFAULT)
+                : isHome ? prefs.getInt(HOME_ZOOM, CONTACTS_DIALPAD_ZOOM_DEFAULT)
                 : CONTACTS_DIALPAD_ZOOM_DEFAULT;
         return new Source(
                 slot,

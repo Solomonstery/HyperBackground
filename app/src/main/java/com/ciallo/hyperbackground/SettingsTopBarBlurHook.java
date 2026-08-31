@@ -39,6 +39,9 @@ final class SettingsTopBarBlurHook {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             if (!(param.thisObject instanceof View)) return;
+                            // 清除顶栏与顶栏模糊互斥：清除开启时让位，交由 SettingsTopBarClearHook 处理，
+                            // 本模糊逻辑（OS3 专用）整体短路，不做任何遮罩操作。
+                            if (SettingsTopBarClearHook.isClearEnabled()) return;
                             View layout = (View) param.thisObject;
                             logOnce(param.thisObject, LOG_SCROLL,
                                     "NestedHeaderLayout scrolling callback reached");

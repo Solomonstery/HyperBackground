@@ -163,8 +163,14 @@
     <string name="floating_bottom_bar_summary">Use a rounded navigation bar with outer spacing</string>
     <string name="module_blur">Module background blur</string>
     <string name="blur">Blur</string>
-    <string name="top_blur">Top blur</string>
+    <string name="top_blur">Top blur (HyperOS 3)</string>
     <string name="top_blur_summary">Use a progressive blur on the Settings home top bar</string>
+    <string name="top_clear">Clear top bar</string>
+    <string name="top_clear_summary">Make the Settings home top bar mask transparent (mutually exclusive with top blur)</string>
+    <string name="home_scale_title">Background scaling</string>
+    <string name="home_zoom">Zoom</string>
+    <string name="home_focus_x">Horizontal position</string>
+    <string name="home_focus_y">Vertical position</string>
     <string name="language">Language</string>
     <string name="language_system">System default</string>
     <string name="language_chinese">Simplified Chinese</string>

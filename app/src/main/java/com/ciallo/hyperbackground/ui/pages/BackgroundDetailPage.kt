@@ -69,8 +69,11 @@ fun BackgroundDetailPage(
             }
         }
         if (slot == BackgroundContract.HOME) {
+            item { SectionTitle(stringResource(R.string.home_scale_title)) }
+            item { HomeScaleCard(activity) }
             item { SectionTitle(stringResource(R.string.blur)) }
             item { TopBlurCard(activity) }
+            item { TopClearCard(activity) }
         }
         if (slot == BackgroundContract.CONTACTS) {
             item { SectionTitle(stringResource(R.string.contacts_surface_title)) }
@@ -163,6 +166,100 @@ private fun TopBlurCard(activity: MainActivity) {
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * 清除设置主页顶栏遮罩（黑/白底色框）开关。
+ * 与「顶部模糊（HyperOS 3）」互斥：开启后 Xposed 侧清除优先，顶栏模糊 hook 主动让位。
+ */
+@Composable
+private fun TopClearCard(activity: MainActivity) {
+    val config = activity.config
+    var enabled by remember {
+        mutableStateOf(config.getBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, false))
+    }
+    UiCard(activity, Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            SwitchPreference(
+                title = stringResource(R.string.top_clear),
+                summary = stringResource(R.string.top_clear_summary),
+                checked = enabled,
+                onCheckedChange = {
+                    enabled = it
+                    config.edit().putBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, it).apply()
+                },
+            )
+        }
+    }
+}
+
+/**
+ * 设置主页背景缩放 / 定位卡：缩放大小 + 横向位置 + 纵向位置。
+ * 走整页 CENTER_CROP 基准——缩放 100% 且位置居中时精确等比铺满（与 1.4.1 观感一致），
+ * 参数仅作用于 home 通道，不影响拨号盘 / 其它整页背景。
+ */
+@Composable
+private fun HomeScaleCard(activity: MainActivity) {
+    val config = activity.config
+    var zoom by remember {
+        mutableFloatStateOf(
+            config.getInt(
+                BackgroundContract.HOME_ZOOM,
+                BackgroundContract.CONTACTS_DIALPAD_ZOOM_DEFAULT,
+            ).coerceIn(
+                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN,
+                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX,
+            ).toFloat(),
+        )
+    }
+    var focusX by remember {
+        mutableFloatStateOf(
+            config.getInt(BackgroundContract.HOME_FOCUS_X, 50).coerceIn(0, 100).toFloat(),
+        )
+    }
+    var focusY by remember {
+        mutableFloatStateOf(
+            config.getInt(BackgroundContract.HOME_FOCUS_Y, 50).coerceIn(0, 100).toFloat(),
+        )
+    }
+    UiCard(activity, Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            // 缩放大小：等比缩放，100% 为等比铺满基准，可放大到 200% 或缩小到 1%。
+            SliderPreference(
+                label = stringResource(R.string.home_zoom),
+                value = zoom,
+                range = BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN.toFloat()..
+                    BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX.toFloat(),
+                suffix = "%",
+                onValueChange = { zoom = it },
+                onValueChangeFinished = {
+                    config.edit().putInt(BackgroundContract.HOME_ZOOM, zoom.toInt()).apply()
+                },
+            )
+            // 横向位置：0 左对齐、50 居中、100 右对齐。
+            SliderWithInputPreference(
+                label = stringResource(R.string.home_focus_x),
+                value = focusX,
+                range = 0f..100f,
+                suffix = "%",
+                onValueChange = { focusX = it },
+                onValueChangeFinished = {
+                    config.edit().putInt(BackgroundContract.HOME_FOCUS_X, focusX.toInt()).apply()
+                },
+            )
+            // 纵向位置：0 顶部对齐、50 居中、100 底部对齐。
+            SliderWithInputPreference(
+                label = stringResource(R.string.home_focus_y),
+                value = focusY,
+                range = 0f..100f,
+                suffix = "%",
+                onValueChange = { focusY = it },
+                onValueChangeFinished = {
+                    config.edit().putInt(BackgroundContract.HOME_FOCUS_Y, focusY.toInt()).apply()
+                },
+            )
         }
     }
 }

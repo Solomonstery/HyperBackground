@@ -173,39 +173,58 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         imageView.post(this::updateImageCropMatrix);
     }
 
-    // 定位：横向以「屏幕宽度」等比铺满并相对整屏居中（恒居中，不受视口位置影响）；纵向以「拨号盘视口
-    // 自身」为取景范围——focusY=0 图顶对齐视口顶（看到图最上段）、100 图底对齐视口底（看到图最下段）、
-    // 50 居中，可拖过整张图。此前纵向用整屏高作范围、可移动量被视口外区域吃掉，导致 100% 也扫不到图底。
-    // zoom：以屏幕宽为基准放大/缩小。
+    // 定位分两套基准，由 slot 区分：
+    // 1) 拨号盘（contacts_dialpad）：图钉在整块屏幕上、横向以「屏幕宽」铺满并相对整屏居中，纵向以「拨号盘
+    //    视口自身」为取景范围。拨号盘只是屏幕上的一个窗口，故需以屏幕为参照系。
+    // 2) 整页背景（home/global/contacts 等）：以本视口自身为参照，等价于系统 CENTER_CROP——
+    //    scale = max(vw/dw, vh/dh) × zoom，zoom=100 且 focus=50 时精确铺满并居中（与旧版 CENTER_CROP 一致），
+    //    横纵向焦点分别在视口内插值，可在铺满基础上缩放/移动。
     private void updateImageCropMatrix() {
         if (imageView == null || imageDrawable == null) return;
         if (imageView.getScaleType() != ImageView.ScaleType.MATRIX) return;
         int dw = imageDrawable.getIntrinsicWidth();
         int dh = imageDrawable.getIntrinsicHeight();
         if (dw <= 0 || dh <= 0) return;
+        int vw = imageView.getWidth();
         int vh = imageView.getHeight();
         if (vh <= 0) return;   // 视口高度未就绪，等布局监听 / post 回调再算
-        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
-        int screenW = dm.widthPixels;
-        if (screenW <= 0) return;
-
-        // 以屏幕宽度铺满为基准（图宽 = 屏幕宽），再乘缩放大小 zoom。100%=正好等于屏幕宽。
         float zoom = Math.max(1, Math.min(200, source.zoom)) / 100f;
-        float scale = (float) screenW / dw * zoom;
-        float scaledW = dw * scale;   // 缩放后图宽（zoom=100 时 = screenW）
-        float scaledH = dh * scale;   // 缩放后图高（竖图通常 > 视口高）
 
-        // 横向：图相对整屏居中（恒居中铺满）。视口在屏幕上的 x 偏移需扣除，使图对齐屏幕中线而非视口中线。
-        int[] loc = new int[2];
-        imageView.getLocationOnScreen(loc);
-        int mediaX = loc[0];
-        float dx = (screenW - scaledW) / 2f - mediaX;
+        if (BackgroundContract.CONTACTS_DIALPAD.equals(source.slot)) {
+            // —— 拨号盘：屏幕坐标系定位 ——
+            android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+            int screenW = dm.widthPixels;
+            if (screenW <= 0) return;
+            // 以屏幕宽度铺满为基准（图宽 = 屏幕宽），再乘缩放大小 zoom。100%=正好等于屏幕宽。
+            float scale = (float) screenW / dw * zoom;
+            float scaledW = dw * scale;
+            float scaledH = dh * scale;
+            // 横向：图相对整屏居中。视口在屏幕上的 x 偏移需扣除，使图对齐屏幕中线而非视口中线。
+            int[] loc = new int[2];
+            imageView.getLocationOnScreen(loc);
+            float dx = (screenW - scaledW) / 2f - loc[0];
+            // 纵向：以拨号盘视口自身为取景范围，focusY 在 [0, vh - scaledH] 内插值。
+            float fy = Math.max(0, Math.min(100, source.focusY)) / 100f;
+            float dy = (vh - scaledH) * fy;
+            Matrix matrix = new Matrix();
+            matrix.setScale(scale, scale);
+            matrix.postTranslate(Math.round(dx), Math.round(dy));
+            imageView.setImageMatrix(matrix);
+            return;
+        }
 
-        // 纵向：以拨号盘视口自身为取景范围，focusY 在 [0, vh - scaledH] 内插值（scaledH>vh 时为负、向上滚动），
-        // 0=图顶对齐视口顶、100=图底对齐视口底，可覆盖整张图。
+        // —— 整页背景：CENTER_CROP 基准（本视口参照）——
+        if (vw <= 0) return;
+        // CENTER_CROP 基准：取宽/高中更大的缩放比铺满视口，再乘 zoom。zoom=100 时正好等比铺满。
+        float baseScale = Math.max((float) vw / dw, (float) vh / dh);
+        float scale = baseScale * zoom;
+        float scaledW = dw * scale;
+        float scaledH = dh * scale;
+        // 横纵向焦点在视口内插值：(view - scaled) × focus，0/100 贴边、50 居中（= CENTER_CROP 效果）。
+        float fx = Math.max(0, Math.min(100, source.focusX)) / 100f;
         float fy = Math.max(0, Math.min(100, source.focusY)) / 100f;
+        float dx = (vw - scaledW) * fx;
         float dy = (vh - scaledH) * fy;
-
         Matrix matrix = new Matrix();
         matrix.setScale(scale, scale);
         matrix.postTranslate(Math.round(dx), Math.round(dy));

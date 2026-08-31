@@ -27,6 +27,7 @@ import com.ciallo.hyperbackground.appearance.APPEARANCE_SLOT_STYLE2_UPDATE_BACKG
 import com.ciallo.hyperbackground.appearance.DEVICE_INTERFACE_STYLE_ONE
 import com.ciallo.hyperbackground.appearance.DEVICE_INTERFACE_STYLE_SYSTEM
 import com.ciallo.hyperbackground.appearance.DEVICE_INTERFACE_STYLE_TWO
+import com.ciallo.hyperbackground.appearance.LOGO_MODE_SYSTEM
 import com.ciallo.hyperbackground.appearance.SettingsAppearanceSettings
 import com.ciallo.hyperbackground.appearance.style2LogoHorizontalOffsetForAlignment
 import com.ciallo.hyperbackground.appearance.style2LogoVerticalOffsetForAlignment
@@ -113,13 +114,33 @@ fun DeviceCardPage(
         if (style == DEVICE_INTERFACE_STYLE_SYSTEM) {
             item {
                 UiCard(activity, Modifier.fillMaxWidth()) {
-                    AppearancePickerPreference(
-                        activity = activity,
-                        slot = APPEARANCE_SLOT_LOGO,
-                        title = stringResource(R.string.group_logo),
-                        summary = appearance.logoMime.ifBlank { stringResource(R.string.logo_not_imported) },
-                        logo = true,
+                    // 「自定义 LOGO」整卡自设备信息覆盖页迁入：下拉选材质模式，非系统默认时暴露带预览的导入行与缩放。
+                    OverlayDropdownPreference(
+                        title = stringResource(R.string.logo_mode_title),
+                        items = listOf(
+                            stringResource(R.string.logo_mode_system),
+                            stringResource(R.string.logo_mode_no_material),
+                            stringResource(R.string.logo_mode_keep_material),
+                        ),
+                        selectedIndex = appearance.logoMode.coerceIn(0, 2),
+                        onSelectedIndexChange = { index -> update { it.copy(logoMode = index) } },
                     )
+                    if (appearance.logoMode != LOGO_MODE_SYSTEM) {
+                        AppearancePickerPreference(
+                            activity = activity,
+                            slot = APPEARANCE_SLOT_LOGO,
+                            title = stringResource(R.string.group_logo),
+                            summary = appearance.logoMime.ifBlank { stringResource(R.string.logo_not_imported) },
+                            logo = true,
+                        )
+                        AppearanceSlider(
+                            label = stringResource(R.string.logo_scale),
+                            value = appearance.logoScale.toFloat(),
+                            range = 50f..200f,
+                            suffix = "%",
+                            onValueChangeFinished = { value -> update { it.copy(logoScale = value.toInt()) } },
+                        )
+                    }
                 }
             }
         }

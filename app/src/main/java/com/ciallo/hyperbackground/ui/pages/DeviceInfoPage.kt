@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -16,25 +15,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ciallo.hyperbackground.R
-import com.ciallo.hyperbackground.appearance.APPEARANCE_SLOT_LOGO
-import com.ciallo.hyperbackground.appearance.DEVICE_INTERFACE_STYLE_SYSTEM
 import com.ciallo.hyperbackground.appearance.DeviceProfileSettings
-import com.ciallo.hyperbackground.appearance.LOGO_MODE_SYSTEM
 import com.ciallo.hyperbackground.ui.MainActivity
 import com.ciallo.hyperbackground.ui.components.SectionTitle
-import com.ciallo.hyperbackground.ui.components.SliderWithInputPreference
 import com.ciallo.hyperbackground.ui.components.UiCard
-import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.basic.ArrowRight
-import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 
 /**
  * 「设备信息覆盖」二级页（仅 C-1 显示覆盖）。照搬 HyperChanger 的 SystemSettings + DeviceProfileEditor：
- * - 设置应用：启用开关、骁龙图标开关；样式为系统默认时可选自定义 LOGO 并导入/缩放。
+ * - 设置应用：启用开关（自定义 LOGO 已迁至「自定义我的设备」页）。
  * - 设备信息各字段的文本覆盖（基础参数 / 全部参数与信息 / 我的设备影像参数）。
  *
  * 覆盖值仅改变设置页面的显示，不修改任何系统属性。
@@ -46,7 +36,6 @@ fun DeviceInfoPage(
     padding: PaddingValues = PaddingValues(0.dp),
 ) {
     val profile = activity.deviceProfile
-    val appearance = activity.appearance
     val updateProfile: ((DeviceProfileSettings) -> DeviceProfileSettings) -> Unit = { transform ->
         activity.updateDeviceProfile(transform)
     }
@@ -98,38 +87,6 @@ fun DeviceInfoPage(
                     checked = profile.enabled,
                     onCheckedChange = { enabled -> updateProfile { it.copy(enabled = enabled) } },
                 )
-                // 仅系统默认设备界面样式下暴露自定义 LOGO（与 HyperChanger 一致）。
-                if (appearance.deviceInterfaceStyle == DEVICE_INTERFACE_STYLE_SYSTEM) {
-                    OverlayDropdownPreference(
-                        title = stringResource(R.string.logo_mode_title),
-                        items = listOf(
-                            stringResource(R.string.logo_mode_system),
-                            stringResource(R.string.logo_mode_no_material),
-                            stringResource(R.string.logo_mode_keep_material),
-                        ),
-                        selectedIndex = appearance.logoMode.coerceIn(0, 2),
-                        onSelectedIndexChange = { index -> activity.updateAppearance { it.copy(logoMode = index) } },
-                    )
-                    if (appearance.logoMode != LOGO_MODE_SYSTEM) {
-                        ArrowRow(
-                            title = stringResource(R.string.logo_import),
-                            summary = appearance.logoMime.ifBlank { stringResource(R.string.logo_not_imported) },
-                            onClick = { activity.chooseAppearanceImage(APPEARANCE_SLOT_LOGO, logo = true) },
-                        )
-                        ArrowRow(
-                            title = stringResource(R.string.logo_clear),
-                            summary = if (appearance.logoMime.isBlank()) stringResource(R.string.logo_none) else stringResource(R.string.logo_imported),
-                            onClick = { activity.clearAppearanceImage(APPEARANCE_SLOT_LOGO) },
-                        )
-                        AppearanceSlider(
-                            label = stringResource(R.string.logo_scale),
-                            value = appearance.logoScale.toFloat(),
-                            range = 50f..200f,
-                            suffix = "%",
-                            onValueChangeFinished = { value -> activity.updateAppearance { it.copy(logoScale = value.toInt()) } },
-                        )
-                    }
-                }
             }
         }
 
@@ -169,39 +126,6 @@ fun DeviceInfoPage(
             }
         }
     }
-}
-
-/** 带本地状态的滑块：拖动时更新本地状态使滑块实时跟手，松手时才落库。 */
-@Composable
-private fun AppearanceSlider(
-    label: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    suffix: String = "%",
-    onValueChangeFinished: (Float) -> Unit,
-) {
-    var local by remember(value) { mutableFloatStateOf(value) }
-    SliderWithInputPreference(
-        label = label,
-        value = local,
-        range = range,
-        suffix = suffix,
-        onValueChange = { local = it },
-        onValueChangeFinished = onValueChangeFinished,
-    )
-}
-
-/** 导入/清除行：与主页 ScopeEntry 一致的 BasicComponent + 右箭头。 */
-@Composable
-private fun ArrowRow(title: String, summary: String, onClick: () -> Unit) {
-    BasicComponent(
-        title = title,
-        summary = summary,
-        endActions = {
-            Icon(imageVector = MiuixIcons.Basic.ArrowRight, contentDescription = null)
-        },
-        onClick = onClick,
-    )
 }
 
 /** 单个设备参数覆盖输入框：照搬源码 DeviceProfileField。 */

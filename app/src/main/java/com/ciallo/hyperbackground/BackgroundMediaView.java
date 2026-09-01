@@ -176,11 +176,22 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         imageView.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
     }
 
-    // 默认走系统 MATRIX 屏幕坐标系定位（图钉在整块屏幕上、横向铺满居中，拨号盘只是窗口）。此定位以屏幕
-    // 为参照系，与 CENTER_CROP（以拨号盘区域为参照）不同，故即便 zoom=100/focusY=50 也需自绘矩阵。
+    // 默认（整页背景 zoom=100 且横纵向居中）直接用系统 CENTER_CROP：GPU 一次性等比铺满居中，
+    // 不注册布局监听、无主线程逐帧回调，性能与 1.4.1 一致。仅当用户动了缩放 / 位置滑块（或拨号盘这类
+    // 需要屏幕坐标系定位的通道）时，才切到 MATRIX 自绘矩阵。这样滑动设置页时默认背景不再触发重复计算。
     private void applyImageScale() {
         if (imageView == null) return;
-        if (imageLayoutListener != null) imageView.removeOnLayoutChangeListener(imageLayoutListener);
+        if (imageLayoutListener != null) {
+            imageView.removeOnLayoutChangeListener(imageLayoutListener);
+            imageLayoutListener = null;
+        }
+        boolean isDialpad = BackgroundContract.CONTACTS_DIALPAD.equals(source.slot);
+        boolean isDefault = source.zoom == 100 && source.focusX == 50 && source.focusY == 50;
+        // 整页背景在默认参数下用 CENTER_CROP；拨号盘始终需 MATRIX（屏幕坐标系）；整页背景一旦调过滑块也用 MATRIX。
+        if (!isDialpad && isDefault) {
+            imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            return;
+        }
         // MATRIX 定位依赖 media 的屏幕坐标（getLocationOnScreen），需在布局后（进入视图树、位置确定）计算，
         // 故注册 layout 监听并兜底 post 到下一帧，确保定位一定落地。
         imageView.setScaleType(ImageView.ScaleType.MATRIX);

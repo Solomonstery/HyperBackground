@@ -20,6 +20,9 @@ final class SettingsTopBarBlurHook {
     private static Method setBlurTypeMethod;
     private static Method setGradientParamsMethod;
     private static Method clearBlendColorMethod;
+    // #region debug-point light-lag-blur —— 逐帧回调计数，定位后移除
+    private static int dbgBlurCalls;
+    // #endregion
 
     private SettingsTopBarBlurHook() {}
 
@@ -39,6 +42,13 @@ final class SettingsTopBarBlurHook {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             if (!(param.thisObject instanceof View)) return;
+                            // #region debug-point light-lag-blur —— 顶栏滚动逐帧回调频率，定位后移除
+                            dbgBlurCalls++;
+                            if (dbgBlurCalls % 60 == 0) {
+                                XposedBridge.log("[HyperBackground][HBDBG] blurHook.scroll calls=" + dbgBlurCalls
+                                        + " clearEnabled=" + SettingsTopBarClearHook.isClearEnabled());
+                            }
+                            // #endregion
                             // 清除顶栏与顶栏模糊互斥：清除开启时让位，交由 SettingsTopBarClearHook 处理，
                             // 本模糊逻辑（OS3 专用）整体短路，不做任何遮罩操作。
                             if (SettingsTopBarClearHook.isClearEnabled()) return;

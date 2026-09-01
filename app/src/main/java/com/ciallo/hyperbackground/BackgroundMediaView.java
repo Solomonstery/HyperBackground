@@ -43,6 +43,9 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
 
     BackgroundMediaView(Context context, BackgroundContract.Source source) throws IOException {
         super(context);
+        // #region debug-point light-lag-rebuild —— 视图重建/重解码计数，定位后移除
+        de.robv.android.xposed.XposedBridge.log("[HyperBackground][HBDBG] MediaView.new slot=" + source.slot + " cacheKey=" + source.cacheKey());
+        // #endregion
         this.source = source;
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         setClickable(false);

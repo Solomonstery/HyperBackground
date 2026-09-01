@@ -893,6 +893,10 @@ final class BackgroundApplier {
         // every layout pass for a short budget after the page appears so late-inflated panels
         // are caught without a manual re-entry, then detach the observer to avoid overhead.
         private static final long RESCAN_WINDOW_MS = 2500L;
+        // 布局回调节流：顶栏出现 / 列表滚动会高频触发 global layout，每次都全量递归遍历视图树 +
+        // 采样判定不透明中性面板（浅色模式下白面板多，采样开销尤其大，导致顶栏出现时明显掉帧）。
+        // 限制为最多每 200ms 扫一次，异步出现的面板最终仍会在窗口内被清，观感无损但主线程负载骤降。
+        private static final long RESCAN_THROTTLE_MS = 200L;
 
         final BackgroundMediaView media;
         final List<View> clearedViews = new ArrayList<>();
@@ -907,6 +911,7 @@ final class BackgroundApplier {
         Activity observedActivity;
         android.view.ViewTreeObserver.OnGlobalLayoutListener layoutListener;
         long rescanDeadline;
+        long lastRescanAt;
 
         LayerSession(BackgroundMediaView media) { this.media = media; }
 
@@ -936,6 +941,7 @@ final class BackgroundApplier {
             // page re-entered after its cards were recycled is cleaned up again automatically.
             observedActivity = activity;
             rescanDeadline = android.os.SystemClock.uptimeMillis() + RESCAN_WINDOW_MS;
+            lastRescanAt = 0L;   // 重开扫描窗口时清零节流计时，确保重进页面后监听能立即补扫一次
             if (layoutListener == null) installLayoutRescan(activity, observedRoot);
         }
 
@@ -952,9 +958,14 @@ final class BackgroundApplier {
                 layoutListener = () -> {
                     if (observedRoot == null || observedActivity == null) { removeLayoutRescan(); return; }
                     if (observedActivity.isFinishing() || observedActivity.isDestroyed()) { removeLayoutRescan(); return; }
+                    long nowMs = android.os.SystemClock.uptimeMillis();
+                    if (nowMs > rescanDeadline) { removeLayoutRescan(); return; }
+                    // 节流：窗口内高频布局回调最多每 RESCAN_THROTTLE_MS 全量扫一次，其余直接跳过，
+                    // 避免顶栏滚动时逐帧递归遍历 + 采样造成主线程掉帧（浅色模式白面板多时尤甚）。
+                    if (nowMs - lastRescanAt < RESCAN_THROTTLE_MS) return;
+                    lastRescanAt = nowMs;
                     clearPageSurfaces(observedActivity, observedRoot, observedRoot, 0);
                     if (transparentTopBar) clearActionBarSurfaces(observedActivity, observedRoot, 0);
-                    if (android.os.SystemClock.uptimeMillis() > rescanDeadline) removeLayoutRescan();
                 };
                 observer.addOnGlobalLayoutListener(layoutListener);
             } catch (Throwable ignored) {}

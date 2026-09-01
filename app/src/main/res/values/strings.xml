@@ -34,6 +34,7 @@
     <string name="enabled_size">Enabled · %1$s</string>
     <string name="system_default">System default</string>
     <string name="opacity">Opacity</string>
+    <string name="brightness">Brightness</string>
     <string name="background_blur">Background blur</string>
     <string name="background_blur_summary">Only blur background media</string>
     <string name="blur_strength">Blur strength</string>
@@ -171,6 +172,12 @@
     <string name="home_zoom">Zoom</string>
     <string name="home_focus_x">Horizontal position</string>
     <string name="home_focus_y">Vertical position</string>
+    <string name="home_dual_title">Day / night backgrounds</string>
+    <string name="home_dual_summary">Auto-switch two backgrounds with the system dark mode</string>
+    <string name="home_bg_light">Day background</string>
+    <string name="home_bg_light_summary">Used in light mode</string>
+    <string name="home_bg_dark">Night background</string>
+    <string name="home_bg_dark_summary">Used in dark mode</string>
     <string name="language">Language</string>
     <string name="language_system">System default</string>
     <string name="language_chinese">Simplified Chinese</string>

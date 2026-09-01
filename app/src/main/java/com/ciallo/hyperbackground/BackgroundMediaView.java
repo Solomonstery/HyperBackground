@@ -146,6 +146,7 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
                         AssetFileDescriptor.UNKNOWN_LENGTH));
         imageDrawable = ImageDecoder.decodeDrawable(decoderSource);
         imageView.setImageDrawable(imageDrawable);
+        applyImageBrightness();
         addView(imageView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
@@ -157,6 +158,22 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
             animated.setRepeatCount(AnimatedImageDrawable.REPEAT_INFINITE);
             animated.start();
         }
+    }
+
+    // 亮度：用 ColorMatrix 缩放 RGB 分量（alpha 不变）。scale = brightness/100，
+    // 100=原图不加 filter、<100 变暗、>100 变亮（高光溢出，为自然提亮效果）。仅对图片路径生效，
+    // 视频路径（TextureView）无 colorFilter，另用遮罩 View 处理。
+    private void applyImageBrightness() {
+        if (imageView == null) return;
+        int b = source.brightness;
+        if (b == BackgroundContract.BRIGHTNESS_DEFAULT) {
+            imageView.setColorFilter(null);
+            return;
+        }
+        float s = b / 100f;
+        android.graphics.ColorMatrix cm = new android.graphics.ColorMatrix();
+        cm.setScale(s, s, s, 1f);
+        imageView.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
     }
 
     // 默认走系统 MATRIX 屏幕坐标系定位（图钉在整块屏幕上、横向铺满居中，拨号盘只是窗口）。此定位以屏幕
@@ -236,6 +253,31 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         textureView.setOpaque(false);
         textureView.setSurfaceTextureListener(this);
         addView(textureView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        applyVideoBrightness();
+    }
+
+    // 视频亮度近似：TextureView 无法用 colorFilter，故在其上叠一层遮罩。<100 叠半透明黑变暗、
+    // >100 叠半透明白提亮；100（默认）不叠。提亮遮罩上限 0.5，避免过曝彻底洗白。
+    private void applyVideoBrightness() {
+        int b = source.brightness;
+        if (b == BackgroundContract.BRIGHTNESS_DEFAULT) return;
+        float overlayAlpha;
+        int overlayColor;
+        if (b < BackgroundContract.BRIGHTNESS_DEFAULT) {
+            overlayColor = 0xFF000000;
+            overlayAlpha = 1f - b / 100f;              // 0..1（越暗越黑）
+        } else {
+            overlayColor = 0xFFFFFFFF;
+            overlayAlpha = Math.min(0.5f, b / 100f - 1f); // 0..0.5（越亮越白，封顶）
+        }
+        View mask = new View(getContext());
+        mask.setBackgroundColor(overlayColor);
+        mask.setAlpha(overlayAlpha);
+        mask.setClickable(false);
+        mask.setFocusable(false);
+        addView(mask, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
     }

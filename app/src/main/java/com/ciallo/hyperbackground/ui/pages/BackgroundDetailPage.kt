@@ -59,12 +59,16 @@ fun BackgroundDetailPage(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { SectionTitle(stringResource(R.string.scope)) }
-        item {
-            UiCard(activity, Modifier.fillMaxWidth()) {
-                BackgroundPickerPreference(activity = activity, slot = slot)
-                // 通讯录：把「颜色模式」并入「背景」卡，作为「设置背景」下方的同卡条目（无独立分组标题）。
-                if (slot == BackgroundContract.CONTACTS) {
-                    ContactsThemePreference(activity)
+        if (slot == BackgroundContract.HOME) {
+            item { HomeBackgroundCard(activity) }
+        } else {
+            item {
+                UiCard(activity, Modifier.fillMaxWidth()) {
+                    BackgroundPickerPreference(activity = activity, slot = slot)
+                    // 通讯录：把「颜色模式」并入「背景」卡，作为「设置背景」下方的同卡条目（无独立分组标题）。
+                    if (slot == BackgroundContract.CONTACTS) {
+                        ContactsThemePreference(activity)
+                    }
                 }
             }
         }
@@ -191,6 +195,61 @@ private fun TopClearCard(activity: MainActivity) {
                     config.edit().putBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, it).apply()
                 },
             )
+        }
+    }
+}
+
+/**
+ * 设置主页背景卡：支持「日/夜双背景」开关。
+ * - 关闭（默认）：单份主页背景（slot=home），与旧行为一致，老用户数据不受影响。
+ * - 开启：日间背景（slot=home_light）+ 夜间背景（slot=home_dark）两份，注入进程按系统深色模式自动切换。
+ * 每份背景各自独立的透明度 / 亮度 / 模糊；缩放定位由下方缩放卡统一控制（日夜共用）。
+ */
+@Composable
+private fun HomeBackgroundCard(activity: MainActivity) {
+    val config = activity.config
+    var dual by remember(activity.revision) {
+        mutableStateOf(config.getBoolean(BackgroundContract.HOME_DUAL_ENABLED, false))
+    }
+    UiCard(activity, Modifier.fillMaxWidth()) {
+        Column {
+            SwitchPreference(
+                title = stringResource(R.string.home_dual_title),
+                summary = stringResource(R.string.home_dual_summary),
+                checked = dual,
+                onCheckedChange = {
+                    dual = it
+                    config.edit().putBoolean(BackgroundContract.HOME_DUAL_ENABLED, it).apply()
+                    activity.refreshUi()
+                },
+            )
+            AnimatedVisibility(
+                visible = !dual,
+                enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(220)),
+                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(180)),
+            ) {
+                BackgroundPickerPreference(activity = activity, slot = BackgroundContract.HOME)
+            }
+            AnimatedVisibility(
+                visible = dual,
+                enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(220)),
+                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(180)),
+            ) {
+                Column {
+                    BackgroundPickerPreference(
+                        activity = activity,
+                        slot = BackgroundContract.HOME_LIGHT,
+                        title = stringResource(R.string.home_bg_light),
+                        summary = stringResource(R.string.home_bg_light_summary),
+                    )
+                    BackgroundPickerPreference(
+                        activity = activity,
+                        slot = BackgroundContract.HOME_DARK,
+                        title = stringResource(R.string.home_bg_dark),
+                        summary = stringResource(R.string.home_bg_dark_summary),
+                    )
+                }
+            }
         }
     }
 }

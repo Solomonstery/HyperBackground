@@ -73,10 +73,19 @@ fun BackgroundPickerPreference(
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var selectedMime by remember { mutableStateOf<String?>(null) }
     val opacityKey = if (slot == null) BackgroundContract.UI_BG_OPACITY else BackgroundContract.OPACITY_PREFIX + slot
+    // 亮度仅对 BackgroundContract 通道（slot != null）生效；外观全局背景（slot == null）是另一套渲染，不读 brightness。
+    val brightnessKey = if (slot == null) null else BackgroundContract.BRIGHTNESS_PREFIX + slot
     val blurKey = if (slot == null) BackgroundContract.UI_BG_BLUR_ENABLED else BackgroundContract.BLUR_ENABLED_PREFIX + slot
     val radiusKey = if (slot == null) BackgroundContract.UI_BG_BLUR_RADIUS else BackgroundContract.BLUR_RADIUS_PREFIX + slot
     var opacity by remember(showDialog, activity.revision) {
         mutableFloatStateOf(config.getInt(opacityKey, 100).coerceIn(0, 100).toFloat())
+    }
+    var brightness by remember(showDialog, activity.revision) {
+        mutableFloatStateOf(
+            config.getInt(brightnessKey ?: opacityKey, BackgroundContract.BRIGHTNESS_DEFAULT)
+                .coerceIn(BackgroundContract.BRIGHTNESS_MIN, BackgroundContract.BRIGHTNESS_MAX)
+                .toFloat(),
+        )
     }
     var blur by remember(showDialog, activity.revision) {
         mutableStateOf(config.getBoolean(blurKey, false))
@@ -147,6 +156,16 @@ fun BackgroundPickerPreference(
                 onValueChange = { opacity = it },
                 onValueChangeFinished = {},
             )
+            if (brightnessKey != null) {
+                SliderPreference(
+                    label = stringResource(R.string.brightness),
+                    value = brightness,
+                    range = BackgroundContract.BRIGHTNESS_MIN.toFloat()..BackgroundContract.BRIGHTNESS_MAX.toFloat(),
+                    suffix = "%",
+                    onValueChange = { brightness = it },
+                    onValueChangeFinished = {},
+                )
+            }
             SwitchPreference(
                 title = stringResource(R.string.background_blur),
                 summary = stringResource(R.string.background_blur_summary),
@@ -175,6 +194,11 @@ fun BackgroundPickerPreference(
                         if (slot == null) activity.clearUiBackground() else activity.clearBackground(slot)
                         config.edit()
                             .putInt(opacityKey, 100)
+                            .apply()
+                        if (brightnessKey != null) {
+                            config.edit().putInt(brightnessKey, BackgroundContract.BRIGHTNESS_DEFAULT).apply()
+                        }
+                        config.edit()
                             .putBoolean(blurKey, false)
                             .putInt(radiusKey, 20)
                             .apply()
@@ -198,6 +222,9 @@ fun BackgroundPickerPreference(
                             .putBoolean(blurKey, blur)
                             .putInt(radiusKey, radius.toInt())
                             .apply()
+                        if (brightnessKey != null) {
+                            config.edit().putInt(brightnessKey, brightness.toInt()).apply()
+                        }
                         activity.refreshUi()
                         dismiss?.invoke()
                     },

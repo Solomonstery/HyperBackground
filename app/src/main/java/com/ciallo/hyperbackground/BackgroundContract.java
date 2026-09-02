@@ -24,12 +24,6 @@ public final class BackgroundContract {
     };
 
     public static final String HOME = "home";
-    // 设置主页日/夜双背景：home 通道对外仍是一个逻辑通道，底层拆成两份物理文件，按系统深色模式自动选用。
-    // 开关关闭时只用 home_light（等同旧的单份主页背景）；开关开启时夜间用 home_dark、日间用 home_light。
-    public static final String HOME_LIGHT = "home_light";
-    public static final String HOME_DARK = "home_dark";
-    // 主页双背景开关（true=启用日/夜两套自动切换）。
-    public static final String HOME_DUAL_ENABLED = "home_dual_enabled";
     public static final String DEVICE = "device";
     public static final String GLOBAL = "global";
     // 通讯录与拨号（com.android.contacts）主界面背景通道，与 home/device/global 同构。
@@ -42,13 +36,13 @@ public final class BackgroundContract {
     public static final String SIZE_PREFIX = "size_";
     public static final String MODIFIED_PREFIX = "modified_";
     public static final String OPACITY_PREFIX = "opacity_";
-    // 背景亮度（每通道独立，键 brightness_<slot>）：0-200，100=原图不变，<100 变暗、>100 变亮。
+    public static final String BLUR_ENABLED_PREFIX = "blur_enabled_";
+    public static final String BLUR_RADIUS_PREFIX = "blur_radius_";
+    // 背景亮度（每通道独立，键为 brightness_<slot>）：100=原图，<100 变暗，>100 提亮，范围 0-200。
     public static final String BRIGHTNESS_PREFIX = "brightness_";
     public static final int BRIGHTNESS_MIN = 0;
     public static final int BRIGHTNESS_MAX = 200;
     public static final int BRIGHTNESS_DEFAULT = 100;
-    public static final String BLUR_ENABLED_PREFIX = "blur_enabled_";
-    public static final String BLUR_RADIUS_PREFIX = "blur_radius_";
     public static final String FONT_MODE = "font_mode";
     static final String DEVICE_LOGO_MODE = "device_logo_mode";
     static final String DEVICE_LOGO_TEXT = "device_logo_text";
@@ -71,11 +65,6 @@ public final class BackgroundContract {
     public static final int CONTACTS_DIALPAD_ZOOM_MIN = 1;
     public static final int CONTACTS_DIALPAD_ZOOM_MAX = 200;
     public static final int CONTACTS_DIALPAD_ZOOM_DEFAULT = 100;
-    // 设置主页背景缩放/定位：与拨号盘同构的一套参数，但走整页 CENTER_CROP 基准（本视口参照），
-    // zoom=100 且焦点居中时精确等比铺满（回归 1.4.1 观感）。仅作用于 home 通道。
-    public static final String HOME_ZOOM = "home_zoom";
-    public static final String HOME_FOCUS_X = "home_focus_x";
-    public static final String HOME_FOCUS_Y = "home_focus_y";
     // 通讯录与拨号进程专属深浅色（与全局强制深浅色独立并存，仅作用于 com.android.contacts 进程）。
     // 三态取值复用 SETTINGS_THEME_FOLLOW/LIGHT/DARK。
     public static final String CONTACTS_THEME_MODE = "contacts_theme_mode";
@@ -93,9 +82,6 @@ public final class BackgroundContract {
     public static final String UI_FLOATING_BOTTOM_BAR = "ui_floating_bottom_bar";
     public static final String UI_TOP_BLUR_ENABLED = "ui_top_blur_enabled";
     public static final String UI_TOP_BLUR_STRENGTH = "ui_top_blur_strength";
-    // 清除设置主页顶栏遮罩（mOverBgView 的黑/白底色框）。与 OS3 顶栏模糊互斥：开启时清除优先，
-    // 不施加模糊；关闭时顶栏模糊按原有逻辑生效。默认关闭。
-    public static final String UI_TOP_CLEAR_ENABLED = "ui_top_clear_enabled";
     public static final String UI_SAYING_ENABLED = "ui_saying_enabled";
     public static final String UI_SAYING_API = "ui_saying_api";
     public static final String UI_SAYING_KEY = "ui_saying_key";
@@ -125,63 +111,36 @@ public final class BackgroundContract {
     }
 
     public static String remoteMediaName(String slot) {
-        if (!HOME.equals(slot) && !HOME_LIGHT.equals(slot) && !HOME_DARK.equals(slot)
-                && !DEVICE.equals(slot) && !GLOBAL.equals(slot)
+        if (!HOME.equals(slot) && !DEVICE.equals(slot) && !GLOBAL.equals(slot)
                 && !CONTACTS.equals(slot) && !CONTACTS_DIALPAD.equals(slot)) {
             throw new IllegalArgumentException("Unknown background slot: " + slot);
         }
         return "background_" + slot + ".bin";
     }
 
-    // 主页当前应生效的物理 slot：双背景开关关闭时用旧的单份 home（兼容老数据）；开启时按系统深色模式
-    // 选 home_dark（夜间）/ home_light（日间）。context 用于读取当前 Configuration 的深色状态。
-    static String resolveHomeSlot(android.content.Context context) {
-        if (!HookRuntime.preferences().getBoolean(HOME_DUAL_ENABLED, false)) return HOME;
-        boolean night = isNightMode(context);
-        return night ? HOME_DARK : HOME_LIGHT;
-    }
-
-    private static boolean isNightMode(android.content.Context context) {
-        if (context == null) return false;
-        try {
-            int mode = context.getResources().getConfiguration().uiMode
-                    & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
-            return mode == android.content.res.Configuration.UI_MODE_NIGHT_YES;
-        } catch (Throwable t) {
-            return false;
-        }
-    }
-
-    static Source query(android.content.Context context, String slot) {
+    static Source query(android.content.Context ignored, String slot) {
         SharedPreferences prefs = HookRuntime.preferences();
-        boolean isHome = HOME.equals(slot);
-        // 主页通道解析实际物理 slot（双背景开关 + 系统深色状态）；其它通道物理 slot 即传入 slot。
-        // 媒体文件与其随附参数（透明度/亮度/模糊）按物理 slot 读取，使日/夜两套背景各自独立；
-        // 缩放/定位则共用逻辑 HOME_* 键，避免为两套图重复调整。
-        String mediaSlot = isHome ? resolveHomeSlot(context) : slot;
-        long size = prefs.getLong(SIZE_PREFIX + mediaSlot, -1L);
-        long modified = prefs.getLong(MODIFIED_PREFIX + mediaSlot, -1L);
-        // 横纵向定位焦点、缩放大小按通道分别读取各自的键，互不污染：
-        // - 拨号盘（contacts_dialpad）：屏幕坐标系定位，横向恒居中（focusX=50），读 dialpad 专用键。
-        // - 设置主页（home）：整页 CENTER_CROP 基准，横纵向均可定位，读 home 专用键（日/夜共用）。
-        // - 其它通道（device/global/contacts 整页等）：中性默认值（焦点居中 + zoom=100=等比铺满），行为与旧版一致。
+        long size = prefs.getLong(SIZE_PREFIX + slot, -1L);
+        long modified = prefs.getLong(MODIFIED_PREFIX + slot, -1L);
+        // 横纵向定位焦点、缩放大小仅对「拨号盘自定义背景」通道生效；其它通道（home/device/global/contacts
+        // 整页背景等）必须用中性默认值（焦点居中 + zoom=100=等比贴满不额外缩放），否则调拨号盘的
+        // 「缩放/位置」会把这些全局键读进整页背景的 Source，导致整页背景也被一起缩放位移。
         boolean isDialpad = CONTACTS_DIALPAD.equals(slot);
-        int focusX = isHome ? prefs.getInt(HOME_FOCUS_X, 50) : 50;
-        int focusY = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_FOCUS_Y, 50)
-                : isHome ? prefs.getInt(HOME_FOCUS_Y, 50) : 50;
+        // 屏幕坐标系定位：横向恒居中铺满，focusX 不再由 UI 控制、恒为 50；纵向偏移由 focusY 决定。
+        int focusX = 50;
+        int focusY = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_FOCUS_Y, 50) : 50;
         int zoom = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_ZOOM, CONTACTS_DIALPAD_ZOOM_DEFAULT)
-                : isHome ? prefs.getInt(HOME_ZOOM, CONTACTS_DIALPAD_ZOOM_DEFAULT)
                 : CONTACTS_DIALPAD_ZOOM_DEFAULT;
+        int brightness = prefs.getInt(BRIGHTNESS_PREFIX + slot, BRIGHTNESS_DEFAULT);
         return new Source(
-                mediaSlot,
-                prefs.getString(MIME_PREFIX + mediaSlot, "application/octet-stream"),
+                slot,
+                prefs.getString(MIME_PREFIX + slot, "application/octet-stream"),
                 size,
                 modified,
                 size >= 0L,
-                prefs.getInt(OPACITY_PREFIX + mediaSlot, 100),
-                prefs.getInt(BRIGHTNESS_PREFIX + mediaSlot, BRIGHTNESS_DEFAULT),
-                prefs.getBoolean(BLUR_ENABLED_PREFIX + mediaSlot, false),
-                prefs.getInt(BLUR_RADIUS_PREFIX + mediaSlot, 20),
+                prefs.getInt(OPACITY_PREFIX + slot, 100),
+                prefs.getBoolean(BLUR_ENABLED_PREFIX + slot, false),
+                prefs.getInt(BLUR_RADIUS_PREFIX + slot, 20),
                 prefs.getInt(FONT_MODE, FONT_FOLLOW),
                 prefs.getInt(DEVICE_LOGO_MODE, DEVICE_LOGO_SYSTEM),
                 prefs.getString(DEVICE_LOGO_TEXT, "HyperOS"),
@@ -189,7 +148,8 @@ public final class BackgroundContract {
                 prefs.getInt(SETTINGS_THEME_MODE, SETTINGS_THEME_FOLLOW),
                 focusX,
                 focusY,
-                zoom
+                zoom,
+                brightness
         );
     }
 
@@ -204,7 +164,6 @@ public final class BackgroundContract {
         final long modified;
         final boolean exists;
         final int opacity;
-        final int brightness;
         final boolean blurEnabled;
         final int blurRadius;
         final int fontMode;
@@ -216,18 +175,19 @@ public final class BackgroundContract {
         final int focusX;
         final int focusY;
         final int zoom;
+        // 背景亮度（每通道独立）：100=原图，<100 变暗，>100 提亮。
+        final int brightness;
 
         Source(String slot, String mime, long size, long modified, boolean exists,
-               int opacity, int brightness, boolean blurEnabled, int blurRadius, int fontMode,
+               int opacity, boolean blurEnabled, int blurRadius, int fontMode,
                int deviceLogoMode, String deviceLogoText, int deviceLogoColor, int settingsThemeMode,
-               int focusX, int focusY, int zoom) {
+               int focusX, int focusY, int zoom, int brightness) {
             this.slot = slot;
             this.mime = mime == null ? "application/octet-stream" : mime;
             this.size = size;
             this.modified = modified;
             this.exists = exists;
             this.opacity = Math.max(0, Math.min(100, opacity));
-            this.brightness = Math.max(BRIGHTNESS_MIN, Math.min(BRIGHTNESS_MAX, brightness));
             this.blurEnabled = blurEnabled;
             this.blurRadius = Math.max(0, Math.min(80, blurRadius));
             this.fontMode = fontMode;
@@ -238,6 +198,7 @@ public final class BackgroundContract {
             this.focusX = Math.max(0, Math.min(100, focusX));
             this.focusY = Math.max(0, Math.min(100, focusY));
             this.zoom = Math.max(CONTACTS_DIALPAD_ZOOM_MIN, Math.min(CONTACTS_DIALPAD_ZOOM_MAX, zoom));
+            this.brightness = Math.max(BRIGHTNESS_MIN, Math.min(BRIGHTNESS_MAX, brightness));
         }
 
         boolean isVideo() { return mime.startsWith("video/"); }
@@ -248,9 +209,9 @@ public final class BackgroundContract {
 
         String cacheKey() {
             return slot + ':' + mime + ':' + size + ':' + modified + ':' + opacity + ':'
-                    + brightness + ':' + blurEnabled + ':' + blurRadius + ':' + fontMode + ':'
-                    + deviceLogoMode + ':' + deviceLogoText + ':' + deviceLogoColor + ':'
-                    + settingsThemeMode + ':' + focusX + ':' + focusY + ':' + zoom;
+                    + blurEnabled + ':' + blurRadius + ':' + fontMode + ':' + deviceLogoMode + ':'
+                    + deviceLogoText + ':' + deviceLogoColor + ':' + settingsThemeMode + ':'
+                    + focusX + ':' + focusY + ':' + zoom + ':' + brightness;
         }
     }
 }

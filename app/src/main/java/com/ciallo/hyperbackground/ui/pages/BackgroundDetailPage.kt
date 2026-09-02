@@ -25,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ciallo.hyperbackground.BackgroundContract
-import com.ciallo.hyperbackground.HyperOsVersion
 import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.ui.MainActivity
 import com.ciallo.hyperbackground.ui.components.SectionTitle
@@ -60,28 +59,18 @@ fun BackgroundDetailPage(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { SectionTitle(stringResource(R.string.scope)) }
-        if (slot == BackgroundContract.HOME) {
-            item { HomeBackgroundCard(activity) }
-        } else {
-            item {
-                UiCard(activity, Modifier.fillMaxWidth()) {
-                    BackgroundPickerPreference(activity = activity, slot = slot)
-                    // 通讯录：把「颜色模式」并入「背景」卡，作为「设置背景」下方的同卡条目（无独立分组标题）。
-                    if (slot == BackgroundContract.CONTACTS) {
-                        ContactsThemePreference(activity)
-                    }
+        item {
+            UiCard(activity, Modifier.fillMaxWidth()) {
+                BackgroundPickerPreference(activity = activity, slot = slot)
+                // 通讯录：把「颜色模式」并入「背景」卡，作为「设置背景」下方的同卡条目（无独立分组标题）。
+                if (slot == BackgroundContract.CONTACTS) {
+                    ContactsThemePreference(activity)
                 }
             }
         }
         if (slot == BackgroundContract.HOME) {
-            item { SectionTitle(stringResource(R.string.home_scale_title)) }
-            item { HomeScaleCard(activity) }
-            // 顶栏渐进模糊仅 OS3 专属，OS4 隐藏该开关（对应 hook 也不注册）。
-            // 「清除顶栏」卡片当前不生效，已废弃移除。
-            if (HyperOsVersion.isOs3OrEarlier()) {
-                item { SectionTitle(stringResource(R.string.blur)) }
-                item { TopBlurCard(activity) }
-            }
+            item { SectionTitle(stringResource(R.string.blur)) }
+            item { TopBlurCard(activity) }
         }
         if (slot == BackgroundContract.CONTACTS) {
             item { SectionTitle(stringResource(R.string.contacts_surface_title)) }
@@ -174,130 +163,6 @@ private fun TopBlurCard(activity: MainActivity) {
                     )
                 }
             }
-        }
-    }
-}
-
-/**
- * 设置主页背景卡：支持「日/夜双背景」开关。
- * - 关闭（默认）：单份主页背景（slot=home），与旧行为一致，老用户数据不受影响。
- * - 开启：日间背景（slot=home_light）+ 夜间背景（slot=home_dark）两份，注入进程按系统深色模式自动切换。
- * 每份背景各自独立的透明度 / 亮度 / 模糊；缩放定位由下方缩放卡统一控制（日夜共用）。
- */
-@Composable
-private fun HomeBackgroundCard(activity: MainActivity) {
-    val config = activity.config
-    var dual by remember(activity.revision) {
-        mutableStateOf(config.getBoolean(BackgroundContract.HOME_DUAL_ENABLED, false))
-    }
-    UiCard(activity, Modifier.fillMaxWidth()) {
-        Column {
-            SwitchPreference(
-                title = stringResource(R.string.home_dual_title),
-                summary = stringResource(R.string.home_dual_summary),
-                checked = dual,
-                onCheckedChange = {
-                    dual = it
-                    config.edit().putBoolean(BackgroundContract.HOME_DUAL_ENABLED, it).apply()
-                    activity.refreshUi()
-                },
-            )
-            AnimatedVisibility(
-                visible = !dual,
-                enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(220)),
-                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(180)),
-            ) {
-                BackgroundPickerPreference(activity = activity, slot = BackgroundContract.HOME)
-            }
-            AnimatedVisibility(
-                visible = dual,
-                enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(220)),
-                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(180)),
-            ) {
-                Column {
-                    BackgroundPickerPreference(
-                        activity = activity,
-                        slot = BackgroundContract.HOME_LIGHT,
-                        title = stringResource(R.string.home_bg_light),
-                        summary = stringResource(R.string.home_bg_light_summary),
-                    )
-                    BackgroundPickerPreference(
-                        activity = activity,
-                        slot = BackgroundContract.HOME_DARK,
-                        title = stringResource(R.string.home_bg_dark),
-                        summary = stringResource(R.string.home_bg_dark_summary),
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * 设置主页背景缩放 / 定位卡：缩放大小 + 横向位置 + 纵向位置。
- * 走整页 CENTER_CROP 基准——缩放 100% 且位置居中时精确等比铺满（与 1.4.1 观感一致），
- * 参数仅作用于 home 通道，不影响拨号盘 / 其它整页背景。
- */
-@Composable
-private fun HomeScaleCard(activity: MainActivity) {
-    val config = activity.config
-    var zoom by remember {
-        mutableFloatStateOf(
-            config.getInt(
-                BackgroundContract.HOME_ZOOM,
-                BackgroundContract.CONTACTS_DIALPAD_ZOOM_DEFAULT,
-            ).coerceIn(
-                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN,
-                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX,
-            ).toFloat(),
-        )
-    }
-    var focusX by remember {
-        mutableFloatStateOf(
-            config.getInt(BackgroundContract.HOME_FOCUS_X, 50).coerceIn(0, 100).toFloat(),
-        )
-    }
-    var focusY by remember {
-        mutableFloatStateOf(
-            config.getInt(BackgroundContract.HOME_FOCUS_Y, 50).coerceIn(0, 100).toFloat(),
-        )
-    }
-    UiCard(activity, Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(vertical = 8.dp)) {
-            // 缩放大小：等比缩放，100% 为等比铺满基准，可放大到 200% 或缩小到 1%。
-            SliderPreference(
-                label = stringResource(R.string.home_zoom),
-                value = zoom,
-                range = BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN.toFloat()..
-                    BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX.toFloat(),
-                suffix = "%",
-                onValueChange = { zoom = it },
-                onValueChangeFinished = {
-                    config.edit().putInt(BackgroundContract.HOME_ZOOM, zoom.toInt()).apply()
-                },
-            )
-            // 横向位置：0 左对齐、50 居中、100 右对齐。
-            SliderWithInputPreference(
-                label = stringResource(R.string.home_focus_x),
-                value = focusX,
-                range = 0f..100f,
-                suffix = "%",
-                onValueChange = { focusX = it },
-                onValueChangeFinished = {
-                    config.edit().putInt(BackgroundContract.HOME_FOCUS_X, focusX.toInt()).apply()
-                },
-            )
-            // 纵向位置：0 顶部对齐、50 居中、100 底部对齐。
-            SliderWithInputPreference(
-                label = stringResource(R.string.home_focus_y),
-                value = focusY,
-                range = 0f..100f,
-                suffix = "%",
-                onValueChange = { focusY = it },
-                onValueChangeFinished = {
-                    config.edit().putInt(BackgroundContract.HOME_FOCUS_Y, focusY.toInt()).apply()
-                },
-            )
         }
     }
 }

@@ -43,9 +43,6 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
 
     BackgroundMediaView(Context context, BackgroundContract.Source source) throws IOException {
         super(context);
-        // #region debug-point light-lag-rebuild —— 视图重建/重解码计数，定位后移除
-        de.robv.android.xposed.XposedBridge.log("[HyperBackground][HBDBG] MediaView.new slot=" + source.slot + " cacheKey=" + source.cacheKey());
-        // #endregion
         this.source = source;
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         setClickable(false);
@@ -163,9 +160,8 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         }
     }
 
-    // 亮度：用 ColorMatrix 缩放 RGB 分量（alpha 不变）。scale = brightness/100，
-    // 100=原图不加 filter、<100 变暗、>100 变亮（高光溢出，为自然提亮效果）。仅对图片路径生效，
-    // 视频路径（TextureView）无 colorFilter，另用遮罩 View 处理。
+    // 背景亮度：对图片用 ColorMatrix 缩放 RGB 通道实现（100=原图，<100 变暗，>100 提亮），
+    // 不改动原始 Drawable，GPU 处理、仅创建时设一次，无逐帧开销。
     private void applyImageBrightness() {
         if (imageView == null) return;
         int b = source.brightness;
@@ -179,22 +175,11 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         imageView.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
     }
 
-    // 默认（整页背景 zoom=100 且横纵向居中）直接用系统 CENTER_CROP：GPU 一次性等比铺满居中，
-    // 不注册布局监听、无主线程逐帧回调，性能与 1.4.1 一致。仅当用户动了缩放 / 位置滑块（或拨号盘这类
-    // 需要屏幕坐标系定位的通道）时，才切到 MATRIX 自绘矩阵。这样滑动设置页时默认背景不再触发重复计算。
+    // 默认走系统 MATRIX 屏幕坐标系定位（图钉在整块屏幕上、横向铺满居中，拨号盘只是窗口）。此定位以屏幕
+    // 为参照系，与 CENTER_CROP（以拨号盘区域为参照）不同，故即便 zoom=100/focusY=50 也需自绘矩阵。
     private void applyImageScale() {
         if (imageView == null) return;
-        if (imageLayoutListener != null) {
-            imageView.removeOnLayoutChangeListener(imageLayoutListener);
-            imageLayoutListener = null;
-        }
-        boolean isDialpad = BackgroundContract.CONTACTS_DIALPAD.equals(source.slot);
-        boolean isDefault = source.zoom == 100 && source.focusX == 50 && source.focusY == 50;
-        // 整页背景在默认参数下用 CENTER_CROP；拨号盘始终需 MATRIX（屏幕坐标系）；整页背景一旦调过滑块也用 MATRIX。
-        if (!isDialpad && isDefault) {
-            imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            return;
-        }
+        if (imageLayoutListener != null) imageView.removeOnLayoutChangeListener(imageLayoutListener);
         // MATRIX 定位依赖 media 的屏幕坐标（getLocationOnScreen），需在布局后（进入视图树、位置确定）计算，
         // 故注册 layout 监听并兜底 post 到下一帧，确保定位一定落地。
         imageView.setScaleType(ImageView.ScaleType.MATRIX);
@@ -204,58 +189,39 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         imageView.post(this::updateImageCropMatrix);
     }
 
-    // 定位分两套基准，由 slot 区分：
-    // 1) 拨号盘（contacts_dialpad）：图钉在整块屏幕上、横向以「屏幕宽」铺满并相对整屏居中，纵向以「拨号盘
-    //    视口自身」为取景范围。拨号盘只是屏幕上的一个窗口，故需以屏幕为参照系。
-    // 2) 整页背景（home/global/contacts 等）：以本视口自身为参照，等价于系统 CENTER_CROP——
-    //    scale = max(vw/dw, vh/dh) × zoom，zoom=100 且 focus=50 时精确铺满并居中（与旧版 CENTER_CROP 一致），
-    //    横纵向焦点分别在视口内插值，可在铺满基础上缩放/移动。
+    // 定位：横向以「屏幕宽度」等比铺满并相对整屏居中（恒居中，不受视口位置影响）；纵向以「拨号盘视口
+    // 自身」为取景范围——focusY=0 图顶对齐视口顶（看到图最上段）、100 图底对齐视口底（看到图最下段）、
+    // 50 居中，可拖过整张图。此前纵向用整屏高作范围、可移动量被视口外区域吃掉，导致 100% 也扫不到图底。
+    // zoom：以屏幕宽为基准放大/缩小。
     private void updateImageCropMatrix() {
         if (imageView == null || imageDrawable == null) return;
         if (imageView.getScaleType() != ImageView.ScaleType.MATRIX) return;
         int dw = imageDrawable.getIntrinsicWidth();
         int dh = imageDrawable.getIntrinsicHeight();
         if (dw <= 0 || dh <= 0) return;
-        int vw = imageView.getWidth();
         int vh = imageView.getHeight();
         if (vh <= 0) return;   // 视口高度未就绪，等布局监听 / post 回调再算
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        int screenW = dm.widthPixels;
+        if (screenW <= 0) return;
+
+        // 以屏幕宽度铺满为基准（图宽 = 屏幕宽），再乘缩放大小 zoom。100%=正好等于屏幕宽。
         float zoom = Math.max(1, Math.min(200, source.zoom)) / 100f;
+        float scale = (float) screenW / dw * zoom;
+        float scaledW = dw * scale;   // 缩放后图宽（zoom=100 时 = screenW）
+        float scaledH = dh * scale;   // 缩放后图高（竖图通常 > 视口高）
 
-        if (BackgroundContract.CONTACTS_DIALPAD.equals(source.slot)) {
-            // —— 拨号盘：屏幕坐标系定位 ——
-            android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
-            int screenW = dm.widthPixels;
-            if (screenW <= 0) return;
-            // 以屏幕宽度铺满为基准（图宽 = 屏幕宽），再乘缩放大小 zoom。100%=正好等于屏幕宽。
-            float scale = (float) screenW / dw * zoom;
-            float scaledW = dw * scale;
-            float scaledH = dh * scale;
-            // 横向：图相对整屏居中。视口在屏幕上的 x 偏移需扣除，使图对齐屏幕中线而非视口中线。
-            int[] loc = new int[2];
-            imageView.getLocationOnScreen(loc);
-            float dx = (screenW - scaledW) / 2f - loc[0];
-            // 纵向：以拨号盘视口自身为取景范围，focusY 在 [0, vh - scaledH] 内插值。
-            float fy = Math.max(0, Math.min(100, source.focusY)) / 100f;
-            float dy = (vh - scaledH) * fy;
-            Matrix matrix = new Matrix();
-            matrix.setScale(scale, scale);
-            matrix.postTranslate(Math.round(dx), Math.round(dy));
-            imageView.setImageMatrix(matrix);
-            return;
-        }
+        // 横向：图相对整屏居中（恒居中铺满）。视口在屏幕上的 x 偏移需扣除，使图对齐屏幕中线而非视口中线。
+        int[] loc = new int[2];
+        imageView.getLocationOnScreen(loc);
+        int mediaX = loc[0];
+        float dx = (screenW - scaledW) / 2f - mediaX;
 
-        // —— 整页背景：CENTER_CROP 基准（本视口参照）——
-        if (vw <= 0) return;
-        // CENTER_CROP 基准：取宽/高中更大的缩放比铺满视口，再乘 zoom。zoom=100 时正好等比铺满。
-        float baseScale = Math.max((float) vw / dw, (float) vh / dh);
-        float scale = baseScale * zoom;
-        float scaledW = dw * scale;
-        float scaledH = dh * scale;
-        // 横纵向焦点在视口内插值：(view - scaled) × focus，0/100 贴边、50 居中（= CENTER_CROP 效果）。
-        float fx = Math.max(0, Math.min(100, source.focusX)) / 100f;
+        // 纵向：以拨号盘视口自身为取景范围，focusY 在 [0, vh - scaledH] 内插值（scaledH>vh 时为负、向上滚动），
+        // 0=图顶对齐视口顶、100=图底对齐视口底，可覆盖整张图。
         float fy = Math.max(0, Math.min(100, source.focusY)) / 100f;
-        float dx = (vw - scaledW) * fx;
         float dy = (vh - scaledH) * fy;
+
         Matrix matrix = new Matrix();
         matrix.setScale(scale, scale);
         matrix.postTranslate(Math.round(dx), Math.round(dy));
@@ -272,16 +238,16 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         applyVideoBrightness();
     }
 
-    // 视频亮度近似：TextureView 无法用 colorFilter，故在其上叠一层遮罩。<100 叠半透明黑变暗、
-    // >100 叠半透明白提亮；100（默认）不叠。提亮遮罩上限 0.5，避免过曝彻底洗白。
+    // 视频亮度：TextureView 无法用 colorFilter，故用叠加半透明遮罩近似——变暗叠黑、提亮叠白（封顶
+    // 0.5 防过曝）。遮罩仅创建时加一次，随内容通道透明度自然生效。
     private void applyVideoBrightness() {
         int b = source.brightness;
         if (b == BackgroundContract.BRIGHTNESS_DEFAULT) return;
-        float overlayAlpha;
         int overlayColor;
+        float overlayAlpha;
         if (b < BackgroundContract.BRIGHTNESS_DEFAULT) {
             overlayColor = 0xFF000000;
-            overlayAlpha = 1f - b / 100f;              // 0..1（越暗越黑）
+            overlayAlpha = 1f - b / 100f;                 // 0..1（越暗越黑）
         } else {
             overlayColor = 0xFFFFFFFF;
             overlayAlpha = Math.min(0.5f, b / 100f - 1f); // 0..0.5（越亮越白，封顶）

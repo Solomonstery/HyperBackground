@@ -29,12 +29,7 @@ public final class SettingsBackgroundHook {
 
         if (settings) {
             SettingsSearchMaskOverride.install(classLoader);
-            // 顶栏渐进模糊为 OS3 专属：其滚动回调每帧执行模糊管线，在 OS4 上纯属负担并导致
-            // 设置主页滚动严重掉帧（浅色尤甚），故仅 OS3 及更早系统注册。
-            if (HyperOsVersion.isOs3OrEarlier()) {
-                SettingsTopBarBlurHook.install(classLoader);
-            }
-            // SettingsTopBarClearHook 目前不生效，已连同其设置卡片一并废弃，不再注册。
+            SettingsTopBarBlurHook.install(classLoader);
             hookHomeActivity(classLoader);
             hookHomeFragment(classLoader);
             hookDeviceFragment(classLoader);

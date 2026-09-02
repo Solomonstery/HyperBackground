@@ -893,10 +893,6 @@ final class BackgroundApplier {
         // every layout pass for a short budget after the page appears so late-inflated panels
         // are caught without a manual re-entry, then detach the observer to avoid overhead.
         private static final long RESCAN_WINDOW_MS = 2500L;
-        // 布局回调节流：顶栏出现 / 列表滚动会高频触发 global layout，每次都全量递归遍历视图树 +
-        // 采样判定不透明中性面板（浅色模式下白面板多，采样开销尤其大，导致顶栏出现时明显掉帧）。
-        // 限制为最多每 200ms 扫一次，异步出现的面板最终仍会在窗口内被清，观感无损但主线程负载骤降。
-        private static final long RESCAN_THROTTLE_MS = 200L;
 
         final BackgroundMediaView media;
         final List<View> clearedViews = new ArrayList<>();
@@ -911,14 +907,6 @@ final class BackgroundApplier {
         Activity observedActivity;
         android.view.ViewTreeObserver.OnGlobalLayoutListener layoutListener;
         long rescanDeadline;
-        long lastRescanAt;
-        // #region debug-point light-lag-counters —— 仅调试用计数器，定位后移除
-        int dbgVisited;      // 单次 clearPageSurfaces 遍历的节点数
-        int dbgCleared;      // 单次清除的表面数
-        int dbgSampled;      // 单次触发 bitmap 采样的次数
-        int dbgResName;      // 单次调用 resourceEntryName 的次数
-        int dbgRescanCount;  // 监听体累计触发扫描次数
-        // #endregion
 
         LayerSession(BackgroundMediaView media) { this.media = media; }
 
@@ -929,7 +917,6 @@ final class BackgroundApplier {
                 originalBackgrounds.add(view.getBackground());
             }
             if (view.getBackground() != null) view.setBackground(null);
-            dbgCleared++;   // #region debug-point light-lag-count #endregion
         }
 
         void attach(final Activity activity, ViewGroup root, boolean home, boolean transparentTopBar) {
@@ -943,26 +930,12 @@ final class BackgroundApplier {
 
         void refresh(Activity activity, boolean home) {
             if (home || activity == null || observedRoot == null) return;
-            // #region debug-point light-lag-refresh —— 首次全量清耗时与规模，定位后移除
-            long dbgT0 = android.os.SystemClock.uptimeMillis();
-            dbgVisited = dbgCleared = dbgSampled = dbgResName = 0;
-            // #endregion
             clearPageSurfaces(activity, observedRoot, observedRoot, 0);
             if (transparentTopBar) clearActionBarSurfaces(activity, observedRoot, 0);
-            // #region debug-point light-lag-refresh
-            XposedBridge.log("[HyperBackground][HBDBG] refresh pkg=" + activity.getPackageName()
-                    + " night=" + ((activity.getResources().getConfiguration().uiMode
-                        & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
-                        == android.content.res.Configuration.UI_MODE_NIGHT_YES)
-                    + " cost=" + (android.os.SystemClock.uptimeMillis() - dbgT0) + "ms"
-                    + " visited=" + dbgVisited + " cleared=" + dbgCleared
-                    + " sampled=" + dbgSampled + " resName=" + dbgResName);
-            // #endregion
             // Reopen the rescan window on every refresh (e.g. returning from a sub-page) so a
             // page re-entered after its cards were recycled is cleaned up again automatically.
             observedActivity = activity;
             rescanDeadline = android.os.SystemClock.uptimeMillis() + RESCAN_WINDOW_MS;
-            lastRescanAt = 0L;   // 重开扫描窗口时清零节流计时，确保重进页面后监听能立即补扫一次
             if (layoutListener == null) installLayoutRescan(activity, observedRoot);
         }
 
@@ -979,25 +952,9 @@ final class BackgroundApplier {
                 layoutListener = () -> {
                     if (observedRoot == null || observedActivity == null) { removeLayoutRescan(); return; }
                     if (observedActivity.isFinishing() || observedActivity.isDestroyed()) { removeLayoutRescan(); return; }
-                    long nowMs = android.os.SystemClock.uptimeMillis();
-                    if (nowMs > rescanDeadline) { removeLayoutRescan(); return; }
-                    // 节流：窗口内高频布局回调最多每 RESCAN_THROTTLE_MS 全量扫一次，其余直接跳过，
-                    // 避免顶栏滚动时逐帧递归遍历 + 采样造成主线程掉帧（浅色模式白面板多时尤甚）。
-                    if (nowMs - lastRescanAt < RESCAN_THROTTLE_MS) return;
-                    lastRescanAt = nowMs;
-                    // #region debug-point light-lag-rescan —— 监听体每次实际扫描的耗时与规模，定位后移除
-                    long dbgR0 = android.os.SystemClock.uptimeMillis();
-                    dbgVisited = dbgCleared = dbgSampled = dbgResName = 0;
-                    dbgRescanCount++;
-                    // #endregion
                     clearPageSurfaces(observedActivity, observedRoot, observedRoot, 0);
                     if (transparentTopBar) clearActionBarSurfaces(observedActivity, observedRoot, 0);
-                    // #region debug-point light-lag-rescan
-                    XposedBridge.log("[HyperBackground][HBDBG] rescan #" + dbgRescanCount
-                            + " cost=" + (android.os.SystemClock.uptimeMillis() - dbgR0) + "ms"
-                            + " visited=" + dbgVisited + " cleared=" + dbgCleared
-                            + " sampled=" + dbgSampled + " resName=" + dbgResName);
-                    // #endregion
+                    if (android.os.SystemClock.uptimeMillis() > rescanDeadline) removeLayoutRescan();
                 };
                 observer.addOnGlobalLayoutListener(layoutListener);
             } catch (Throwable ignored) {}
@@ -1098,7 +1055,6 @@ final class BackgroundApplier {
         private void clearPageSurfaces(Activity activity, View view, View root, int depth) {
             if (view == null || view == media) return;
             if (view.getVisibility() != View.VISIBLE) return;
-            dbgVisited++;   // #region debug-point light-lag-count #endregion
             if (isPageSurface(activity, view, root, depth)) clear(view);
             if (view instanceof ViewGroup) {
                 ViewGroup group = (ViewGroup) view;
@@ -1118,7 +1074,6 @@ final class BackgroundApplier {
             boolean large = width >= (int) (rootWidth * 0.72f) && height >= (int) (rootHeight * 0.32f);
 
             String idName = resourceEntryName(activity, view.getId());
-            dbgResName++;   // #region debug-point light-lag-count #endregion
             String pkg = activity.getPackageName();
 
             // Device interconnection uses a full-width opaque host surface around the
@@ -1215,7 +1170,6 @@ final class BackgroundApplier {
         // Renders a COPY of the drawable to a 1x1 bitmap and reads the pixel. Never touches
         // the original drawable (no setBounds/draw on the live instance).
         private Integer sampleDrawableColor(Drawable bg) {
-            dbgSampled++;   // #region debug-point light-lag-count #endregion
             try {
                 Drawable.ConstantState state = bg.getConstantState();
                 if (state == null) return null;

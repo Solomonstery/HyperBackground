@@ -69,12 +69,7 @@ class ConfigManager private constructor(private val context: Context) : SharedPr
     fun syncToRemote(service: XposedService? = HyperBackgroundApp.xposedService) {
         service ?: return
         val metadata = preferences.edit()
-        val mediaSlots = listOf(
-            BackgroundContract.HOME, BackgroundContract.HOME_LIGHT, BackgroundContract.HOME_DARK,
-            BackgroundContract.DEVICE, BackgroundContract.GLOBAL,
-            BackgroundContract.CONTACTS, BackgroundContract.CONTACTS_DIALPAD,
-        )
-        mediaSlots.forEach { slot ->
+        listOf(BackgroundContract.HOME, BackgroundContract.DEVICE, BackgroundContract.GLOBAL, BackgroundContract.CONTACTS, BackgroundContract.CONTACTS_DIALPAD).forEach { slot ->
             val file = backgroundFile(slot)
             if (file.isFile) {
                 metadata.putLong(BackgroundContract.SIZE_PREFIX + slot, file.length())
@@ -86,7 +81,7 @@ class ConfigManager private constructor(private val context: Context) : SharedPr
         }
         metadata.commit()
         copyPreferences(preferences, service.getRemotePreferences(BackgroundContract.PREFS))
-        mediaSlots.forEach { slot ->
+        listOf(BackgroundContract.HOME, BackgroundContract.DEVICE, BackgroundContract.GLOBAL, BackgroundContract.CONTACTS, BackgroundContract.CONTACTS_DIALPAD).forEach { slot ->
             syncMedia(BackgroundContract.remoteMediaName(slot), backgroundFile(slot).takeIf(File::isFile), service)
         }
     }

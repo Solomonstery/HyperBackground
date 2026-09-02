@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ciallo.hyperbackground.BackgroundContract
+import com.ciallo.hyperbackground.HyperOsVersion
 import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.ui.MainActivity
 import com.ciallo.hyperbackground.ui.components.SectionTitle
@@ -75,9 +76,12 @@ fun BackgroundDetailPage(
         if (slot == BackgroundContract.HOME) {
             item { SectionTitle(stringResource(R.string.home_scale_title)) }
             item { HomeScaleCard(activity) }
-            item { SectionTitle(stringResource(R.string.blur)) }
-            item { TopBlurCard(activity) }
-            item { TopClearCard(activity) }
+            // 顶栏渐进模糊仅 OS3 专属，OS4 隐藏该开关（对应 hook 也不注册）。
+            // 「清除顶栏」卡片当前不生效，已废弃移除。
+            if (HyperOsVersion.isOs3OrEarlier()) {
+                item { SectionTitle(stringResource(R.string.blur)) }
+                item { TopBlurCard(activity) }
+            }
         }
         if (slot == BackgroundContract.CONTACTS) {
             item { SectionTitle(stringResource(R.string.contacts_surface_title)) }
@@ -170,31 +174,6 @@ private fun TopBlurCard(activity: MainActivity) {
                     )
                 }
             }
-        }
-    }
-}
-
-/**
- * 清除设置主页顶栏遮罩（黑/白底色框）开关。
- * 与「顶部模糊（HyperOS 3）」互斥：开启后 Xposed 侧清除优先，顶栏模糊 hook 主动让位。
- */
-@Composable
-private fun TopClearCard(activity: MainActivity) {
-    val config = activity.config
-    var enabled by remember {
-        mutableStateOf(config.getBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, false))
-    }
-    UiCard(activity, Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(vertical = 8.dp)) {
-            SwitchPreference(
-                title = stringResource(R.string.top_clear),
-                summary = stringResource(R.string.top_clear_summary),
-                checked = enabled,
-                onCheckedChange = {
-                    enabled = it
-                    config.edit().putBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, it).apply()
-                },
-            )
         }
     }
 }

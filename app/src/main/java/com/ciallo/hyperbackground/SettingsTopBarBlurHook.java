@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.view.View;
+import android.view.ViewGroup;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -15,9 +16,13 @@ import de.robv.android.xposed.XposedHelpers;
 final class SettingsTopBarBlurHook {
     private static final String HOME_ACTIVITY = "com.android.settings.MiuiSettings";
     private static final String HOME_LAYOUT = "hyperbackground_settings_home_layout";
+    private static final String MANAGED_ACTIVITY = "hyperbackground_settings_blur_activity";
+    private static final String NESTED_ACTIVITY = "hyperbackground_settings_nested_activity";
+    private static final String ACTION_BAR_BLUR_VIEW = "hyperbackground_action_bar_blur_view";
     private static final String LOG_SCROLL = "hyperbackground_blur_logged_scroll";
     private static final String LOG_READY = "hyperbackground_blur_logged_ready";
     private static final String LOG_BAR_MASK = "hyperbackground_blur_logged_bar_mask";
+    private static final String LOG_BAR_BLUR = "hyperbackground_blur_logged_bar_view";
     private static final String BAR_BLUR_SUPPRESSED = "hyperbackground_bar_blur_suppressed";
     private static Method setBlurTypeMethod;
     private static Method setBlurModeMethod;
@@ -39,6 +44,99 @@ final class SettingsTopBarBlurHook {
             XposedHelpers.findAndHookMethod(
                     "miuix.nestedheader.widget.NestedHeaderLayout",
                     classLoader,
+                    "onFinishInflate",
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.thisObject instanceof View) {
+                                View layout = (View) param.thisObject;
+                                markManagedActivity(layout.getContext(), true);
+                                if (isTopBlurEnabled()) {
+                                    try {
+                                        XposedHelpers.callMethod(
+                                                param.thisObject, "setOverlayMode", true);
+                                    } catch (Throwable ignored) {
+                                        // Older versions expose only the backing field.
+                                    }
+                                }
+                            }
+                        }
+                    });
+            // Wi-Fi and many regular SettingsActivity pages do not use a
+            // NestedHeaderLayout. Add a dedicated blur-only child behind the
+            // ActionBar content so opacity never affects titles or buttons.
+            try {
+                XposedHelpers.findAndHookMethod(
+                        "miuix.appcompat.internal.app.widget.ActionBarContainer",
+                        classLoader,
+                        "onFinishInflate",
+                        new XC_MethodHook() {
+                            @Override
+                            protected void afterHookedMethod(MethodHookParam param) {
+                                if (!(param.thisObject instanceof ViewGroup)) return;
+                                ViewGroup bar = (ViewGroup) param.thisObject;
+                                if (!isSettingsPage(bar.getContext())) return;
+                                markManagedActivity(bar.getContext(), false);
+                                ensureActionBarBlurView(bar);
+                            }
+                        });
+            } catch (Throwable error) {
+                XposedBridge.log("[HyperBackground] Action bar blur view unavailable: "
+                        + error);
+            }
+            try {
+                XposedHelpers.findAndHookMethod(
+                        "miuix.appcompat.internal.app.widget.ActionBarContainer",
+                        classLoader,
+                        "onLayout",
+                        boolean.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        new XC_MethodHook() {
+                            @Override
+                            protected void afterHookedMethod(MethodHookParam param) {
+                                if (!(param.thisObject instanceof ViewGroup)) return;
+                                ViewGroup bar = (ViewGroup) param.thisObject;
+                                Object value = XposedHelpers.getAdditionalInstanceField(
+                                        bar, ACTION_BAR_BLUR_VIEW);
+                                if (value instanceof View) {
+                                    ((View) value).layout(0, 0, bar.getWidth(), bar.getHeight());
+                                }
+                            }
+                        });
+            } catch (Throwable error) {
+                XposedBridge.log("[HyperBackground] Action bar blur layout unavailable: "
+                        + error);
+            }
+            try {
+                XposedHelpers.findAndHookMethod(
+                        "miuix.appcompat.internal.app.widget.ActionBarContainer",
+                        classLoader,
+                        "applyBlur",
+                        boolean.class,
+                        new XC_MethodHook() {
+                            @Override
+                            protected void afterHookedMethod(MethodHookParam param) {
+                                if (!(param.thisObject instanceof View)) return;
+                                View bar = (View) param.thisObject;
+                                if (!isManagedSettingsPage(bar.getContext())) return;
+                                if (isTopBlurEnabled()
+                                        && Boolean.TRUE.equals(param.args[0])) {
+                                    updateInjectedActionBarBlur(param.thisObject);
+                                } else {
+                                    clearInjectedActionBarBlur(param.thisObject);
+                                }
+                            }
+                        });
+            } catch (Throwable error) {
+                XposedBridge.log("[HyperBackground] Action bar blur state unavailable: "
+                        + error);
+            }
+            XposedHelpers.findAndHookMethod(
+                    "miuix.nestedheader.widget.NestedHeaderLayout",
+                    classLoader,
                     "onScrollingProgressUpdated",
                     int.class,
                     new XC_MethodHook() {
@@ -49,10 +147,16 @@ final class SettingsTopBarBlurHook {
                             logOnce(param.thisObject, LOG_SCROLL,
                                     "NestedHeaderLayout scrolling callback reached");
 
-                            if (!isHomeLayout(param.thisObject, layout.getContext())
-                                    || !isOverlayMode(param.thisObject)) {
-                                return;
+                            if (!isManagedLayout(param.thisObject, layout.getContext())) return;
+                            if (isTopBlurEnabled() && !isOverlayMode(param.thisObject)) {
+                                try {
+                                    XposedHelpers.callMethod(
+                                            param.thisObject, "setOverlayMode", true);
+                                } catch (Throwable ignored) {
+                                    // The existing overlay state is checked below.
+                                }
                             }
+                            if (!isOverlayMode(param.thisObject)) return;
 
                             int progress = (Integer) param.args[0];
                             int headerHeight = getIntField(param.thisObject, "mHeaderTotalHeight");
@@ -63,6 +167,7 @@ final class SettingsTopBarBlurHook {
                             }
 
                             View overlay = (View) overBg;
+                            markManagedActivity(layout.getContext(), true);
                             if (!HookRuntime.preferences().getBoolean(
                                     BackgroundContract.UI_TOP_BLUR_ENABLED, true)) {
                                 clearGradientBlur(overlay);
@@ -138,7 +243,7 @@ final class SettingsTopBarBlurHook {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             if (!(param.thisObject instanceof View)
-                                    || !isHomeLayout(param.thisObject,
+                                    || !isManagedLayout(param.thisObject,
                                     ((View) param.thisObject).getContext())
                                     || !isTopBlurEnabled()) {
                                 return;
@@ -152,7 +257,7 @@ final class SettingsTopBarBlurHook {
                             }
                         }
                     });
-            // HyperOS 4's visible black gradient on the settings home page is
+            // HyperOS 4's visible black gradient on Settings pages is
             // painted by the floating ActionBar, not by NestedHeaderLayout.
             // SettingsFragment.setupActionBarOverlayMask() installs an
             // OverlayMaskConfig (floating mask color, alpha factors 0.98 -> 0)
@@ -168,15 +273,18 @@ final class SettingsTopBarBlurHook {
                             @Override
                             protected void beforeHookedMethod(MethodHookParam param) {
                                 if (!(param.thisObject instanceof View)) return;
-                                if (!isSettingsHome(((View) param.thisObject).getContext())) {
+                                if (!isManagedSettingsPage(
+                                        ((View) param.thisObject).getContext())) {
                                     return;
                                 }
                                 if (!isTopBlurEnabled()) {
+                                    clearInjectedActionBarBlur(param.thisObject);
                                     restoreNativeActionBarBlur(param.thisObject);
                                     return;
                                 }
+                                updateInjectedActionBarBlur(param.thisObject);
                                 logOnce(param.thisObject, LOG_BAR_MASK,
-                                        "Action bar overlay mask skipped on settings home");
+                                        "Action bar overlay mask skipped on Settings page");
                                 param.setResult(null);
                             }
                         });
@@ -197,7 +305,8 @@ final class SettingsTopBarBlurHook {
                             protected void beforeHookedMethod(MethodHookParam param) {
                                 if (!(param.thisObject instanceof View)) return;
                                 View bar = (View) param.thisObject;
-                                if (!isSettingsHome(bar.getContext()) || !isTopBlurEnabled()) return;
+                                if (!isManagedSettingsPage(bar.getContext())
+                                        || !isTopBlurEnabled()) return;
                                 clearGradientBlur(bar);
                                 clearMaterialMask(bar);
                                 XposedHelpers.setAdditionalInstanceField(
@@ -210,7 +319,7 @@ final class SettingsTopBarBlurHook {
             }
             // Both OS4 helpers derive their dark tint from the Pured_Regular
             // material. Prevent every refresh path from applying that tint to
-            // views hosted by the Settings home activity.
+            // views hosted by a managed Settings activity.
             try {
                 XposedHelpers.findAndHookMethod(
                         "miuix.view.MiuiBlurUiHelper",
@@ -221,7 +330,7 @@ final class SettingsTopBarBlurHook {
                             protected void beforeHookedMethod(MethodHookParam param) {
                                 Object target = getField(param.thisObject, "mTargetView");
                                 if (target instanceof View
-                                        && isSettingsHome(((View) target).getContext())
+                                        && isManagedSettingsPage(((View) target).getContext())
                                         && isManagedTopBlurView((View) target)
                                         && isTopBlurEnabled()) {
                                     clearMaterialMask((View) target);
@@ -246,7 +355,7 @@ final class SettingsTopBarBlurHook {
                             protected void beforeHookedMethod(MethodHookParam param) {
                                 Object stickyView = getField(param.thisObject, "mStickyView");
                                 if (stickyView instanceof View
-                                        && isSettingsHome(((View) stickyView).getContext())
+                                        && isManagedSettingsPage(((View) stickyView).getContext())
                                         && isTopBlurEnabled()) {
                                     param.setResult(null);
                                 }
@@ -269,6 +378,10 @@ final class SettingsTopBarBlurHook {
                     || !HOME_ACTIVITY.equals(activity.getClass().getName())) {
                 return;
             }
+            XposedHelpers.setAdditionalInstanceField(
+                    activity, MANAGED_ACTIVITY, Boolean.TRUE);
+            XposedHelpers.setAdditionalInstanceField(
+                    activity, NESTED_ACTIVITY, Boolean.TRUE);
             Object layout = XposedHelpers.getObjectField(fragment, "mNestedHeaderLayout");
             if (layout != null) {
                 XposedHelpers.setAdditionalInstanceField(layout, HOME_LAYOUT, Boolean.TRUE);
@@ -298,22 +411,48 @@ final class SettingsTopBarBlurHook {
         }
     }
 
-    private static boolean isHomeLayout(Object layout, Context context) {
+    private static boolean isManagedLayout(Object layout, Context context) {
         return Boolean.TRUE.equals(XposedHelpers.getAdditionalInstanceField(layout, HOME_LAYOUT))
-                || isSettingsHome(context);
+                || isSettingsPage(context);
     }
 
-    private static boolean isSettingsHome(Context context) {
+    private static boolean isSettingsPage(Context context) {
+        Activity activity = findActivity(context);
+        return activity != null
+                && BackgroundContract.PACKAGE_SETTINGS.equals(activity.getPackageName());
+    }
+
+    private static boolean isManagedSettingsPage(Context context) {
+        Activity activity = findActivity(context);
+        return activity != null
+                && BackgroundContract.PACKAGE_SETTINGS.equals(activity.getPackageName())
+                && Boolean.TRUE.equals(
+                XposedHelpers.getAdditionalInstanceField(activity, MANAGED_ACTIVITY));
+    }
+
+    private static void markManagedActivity(Context context, boolean hasNestedLayout) {
+        Activity activity = findActivity(context);
+        if (activity != null
+                && BackgroundContract.PACKAGE_SETTINGS.equals(activity.getPackageName())) {
+            XposedHelpers.setAdditionalInstanceField(activity, MANAGED_ACTIVITY, Boolean.TRUE);
+            if (hasNestedLayout) {
+                XposedHelpers.setAdditionalInstanceField(
+                        activity, NESTED_ACTIVITY, Boolean.TRUE);
+            }
+        }
+    }
+
+    private static Activity findActivity(Context context) {
         Context current = context;
         while (current instanceof ContextWrapper) {
             if (current instanceof Activity) {
-                return HOME_ACTIVITY.equals(current.getClass().getName());
+                return (Activity) current;
             }
             Context base = ((ContextWrapper) current).getBaseContext();
             if (base == current) break;
             current = base;
         }
-        return false;
+        return null;
     }
 
     private static boolean isTopBlurEnabled() {
@@ -325,6 +464,93 @@ final class SettingsTopBarBlurHook {
         String name = view.getClass().getName();
         return "miuix.appcompat.internal.app.widget.ActionBarContainer".equals(name)
                 || "miuix.nestedheader.widget.NestedHeaderOverlayMaskView".equals(name);
+    }
+
+    private static void ensureActionBarBlurView(ViewGroup bar) {
+        if (XposedHelpers.getAdditionalInstanceField(bar, ACTION_BAR_BLUR_VIEW) instanceof View) {
+            return;
+        }
+        View blurView = new View(bar.getContext());
+        blurView.setClickable(false);
+        blurView.setFocusable(false);
+        blurView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        blurView.setVisibility(View.INVISIBLE);
+        bar.addView(blurView, 0, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        XposedHelpers.setAdditionalInstanceField(bar, ACTION_BAR_BLUR_VIEW, blurView);
+    }
+
+    private static void updateInjectedActionBarBlur(Object barObject) {
+        if (!(barObject instanceof ViewGroup)) return;
+        ViewGroup bar = (ViewGroup) barObject;
+        Activity activity = findActivity(bar.getContext());
+        if (activity == null) return;
+
+        View blurView = (View) XposedHelpers.getAdditionalInstanceField(
+                bar, ACTION_BAR_BLUR_VIEW);
+        if (blurView == null) {
+            ensureActionBarBlurView(bar);
+            blurView = (View) XposedHelpers.getAdditionalInstanceField(
+                    bar, ACTION_BAR_BLUR_VIEW);
+        }
+        if (blurView == null) return;
+
+        if (Boolean.TRUE.equals(XposedHelpers.getAdditionalInstanceField(
+                activity, NESTED_ACTIVITY))) {
+            clearGradientBlur(blurView);
+            blurView.setVisibility(View.INVISIBLE);
+            return;
+        }
+
+        int height = bar.getHeight();
+        if (height <= 0) return;
+        float maskAlpha = Math.max(0f, Math.min(1f,
+                getFloatField(bar, "mMaskAlpha")));
+        if (maskAlpha <= 0f && getBooleanField(bar, "mInternalApplyBgBlur")) {
+            maskAlpha = 1f;
+        }
+        if (maskAlpha <= 0f) {
+            clearGradientBlur(blurView);
+            blurView.setAlpha(0f);
+            blurView.setVisibility(View.INVISIBLE);
+            return;
+        }
+
+        int strength = HookRuntime.preferences().getInt(
+                BackgroundContract.UI_TOP_BLUR_STRENGTH, 10);
+        int opacity = HookRuntime.preferences().getInt(
+                BackgroundContract.UI_TOP_BLUR_OPACITY, 100);
+        float density = bar.getResources().getDisplayMetrics().density;
+        float radius = Math.min(
+                Math.max(0, Math.min(100, strength)) * density,
+                height * 0.5f);
+        float alpha = maskAlpha * Math.max(0, Math.min(100, opacity)) / 100f;
+        float[] gradient = new float[]{0f, 0f, radius, 0f, height, 0f};
+        try {
+            setBlurModeMethod.invoke(blurView, 1);
+            setViewBlurModeMethod.invoke(blurView, 1);
+            setBlurTypeMethod.invoke(blurView, 2);
+            setGradientParamsMethod.invoke(blurView, gradient, 1);
+            blurView.setAlpha(alpha);
+            blurView.setVisibility(View.VISIBLE);
+            logOnce(bar, LOG_BAR_BLUR,
+                    "Injected action bar gradient blur active, radiusPx=" + radius
+                            + " height=" + height + " alpha=" + alpha);
+        } catch (ReflectiveOperationException error) {
+            XposedBridge.log("[HyperBackground] Could not apply action bar blur: " + error);
+        }
+    }
+
+    private static void clearInjectedActionBarBlur(Object barObject) {
+        if (!(barObject instanceof ViewGroup)) return;
+        Object value = XposedHelpers.getAdditionalInstanceField(
+                barObject, ACTION_BAR_BLUR_VIEW);
+        if (!(value instanceof View)) return;
+        View blurView = (View) value;
+        clearGradientBlur(blurView);
+        blurView.setAlpha(0f);
+        blurView.setVisibility(View.INVISIBLE);
     }
 
     private static void restoreNativeActionBarBlur(Object bar) {
@@ -440,6 +666,11 @@ final class SettingsTopBarBlurHook {
     private static int getIntField(Object instance, String name) {
         Object value = getField(instance, name);
         return value instanceof Integer ? (Integer) value : 0;
+    }
+
+    private static float getFloatField(Object instance, String name) {
+        Object value = getField(instance, name);
+        return value instanceof Float ? (Float) value : 0f;
     }
 
     private static void logOnce(Object instance, String key, String message) {

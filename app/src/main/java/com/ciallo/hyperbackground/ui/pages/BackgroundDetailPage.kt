@@ -132,6 +132,13 @@ private fun TopBlurCard(activity: MainActivity) {
                 .toFloat(),
         )
     }
+    var opacity by remember {
+        mutableFloatStateOf(
+            config.getInt(BackgroundContract.UI_TOP_BLUR_OPACITY, 100)
+                .coerceIn(0, 100)
+                .toFloat(),
+        )
+    }
     UiCard(activity, Modifier.fillMaxWidth()) {
         Column(Modifier.padding(vertical = 8.dp)) {
             SwitchPreference(
@@ -158,6 +165,18 @@ private fun TopBlurCard(activity: MainActivity) {
                         onValueChangeFinished = {
                             config.edit()
                                 .putInt(BackgroundContract.UI_TOP_BLUR_STRENGTH, it.toInt())
+                                .apply()
+                        },
+                    )
+                    SliderPreference(
+                        label = stringResource(R.string.top_blur_opacity),
+                        value = opacity,
+                        range = 0f..100f,
+                        suffix = "%",
+                        onValueChange = { opacity = it },
+                        onValueChangeFinished = {
+                            config.edit()
+                                .putInt(BackgroundContract.UI_TOP_BLUR_OPACITY, it.toInt())
                                 .apply()
                         },
                     )

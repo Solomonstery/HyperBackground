@@ -82,6 +82,7 @@ public final class BackgroundContract {
     public static final String UI_FLOATING_BOTTOM_BAR = "ui_floating_bottom_bar";
     public static final String UI_TOP_BLUR_ENABLED = "ui_top_blur_enabled";
     public static final String UI_TOP_BLUR_STRENGTH = "ui_top_blur_strength";
+    public static final String UI_TOP_BLUR_OPACITY = "ui_top_blur_opacity";
     public static final String UI_SAYING_ENABLED = "ui_saying_enabled";
     public static final String UI_SAYING_API = "ui_saying_api";
     public static final String UI_SAYING_KEY = "ui_saying_key";

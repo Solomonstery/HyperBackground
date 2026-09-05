@@ -69,8 +69,11 @@ fun BackgroundDetailPage(
             }
         }
         if (slot == BackgroundContract.HOME) {
+            item { SectionTitle(stringResource(R.string.home_scale_title)) }
+            item { HomeScaleCard(activity) }
             item { SectionTitle(stringResource(R.string.blur)) }
             item { TopBlurCard(activity) }
+            item { TopClearCard(activity) }
         }
         if (slot == BackgroundContract.CONTACTS) {
             item { SectionTitle(stringResource(R.string.contacts_surface_title)) }
@@ -182,6 +185,100 @@ private fun TopBlurCard(activity: MainActivity) {
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * 清除设置主页顶栏遮罩。该选项只接管首页，二级页仍按顶部模糊开关工作。
+ */
+@Composable
+private fun TopClearCard(activity: MainActivity) {
+    val config = activity.config
+    var enabled by remember {
+        mutableStateOf(config.getBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, false))
+    }
+    UiCard(activity, Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            SwitchPreference(
+                title = stringResource(R.string.top_clear),
+                summary = stringResource(R.string.top_clear_summary),
+                checked = enabled,
+                onCheckedChange = {
+                    enabled = it
+                    config.edit()
+                        .putBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, it)
+                        .apply()
+                },
+            )
+        }
+    }
+}
+
+/**
+ * 设置主页背景缩放与定位。100/50/50 对应 CENTER_CROP 默认观感，参数只写入 home 通道。
+ */
+@Composable
+private fun HomeScaleCard(activity: MainActivity) {
+    val config = activity.config
+    var zoom by remember {
+        mutableFloatStateOf(
+            config.getInt(
+                BackgroundContract.HOME_ZOOM,
+                BackgroundContract.CONTACTS_DIALPAD_ZOOM_DEFAULT,
+            ).coerceIn(
+                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN,
+                BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX,
+            ).toFloat(),
+        )
+    }
+    var focusX by remember {
+        mutableFloatStateOf(
+            config.getInt(BackgroundContract.HOME_FOCUS_X, 50)
+                .coerceIn(0, 100)
+                .toFloat(),
+        )
+    }
+    var focusY by remember {
+        mutableFloatStateOf(
+            config.getInt(BackgroundContract.HOME_FOCUS_Y, 50)
+                .coerceIn(0, 100)
+                .toFloat(),
+        )
+    }
+    UiCard(activity, Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            SliderPreference(
+                label = stringResource(R.string.home_zoom),
+                value = zoom,
+                range = BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN.toFloat()..
+                    BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX.toFloat(),
+                suffix = "%",
+                onValueChange = { zoom = it },
+                onValueChangeFinished = {
+                    config.edit().putInt(BackgroundContract.HOME_ZOOM, zoom.toInt()).apply()
+                },
+            )
+            SliderWithInputPreference(
+                label = stringResource(R.string.home_focus_x),
+                value = focusX,
+                range = 0f..100f,
+                suffix = "%",
+                onValueChange = { focusX = it },
+                onValueChangeFinished = {
+                    config.edit().putInt(BackgroundContract.HOME_FOCUS_X, focusX.toInt()).apply()
+                },
+            )
+            SliderWithInputPreference(
+                label = stringResource(R.string.home_focus_y),
+                value = focusY,
+                range = 0f..100f,
+                suffix = "%",
+                onValueChange = { focusY = it },
+                onValueChangeFinished = {
+                    config.edit().putInt(BackgroundContract.HOME_FOCUS_Y, focusY.toInt()).apply()
+                },
+            )
         }
     }
 }

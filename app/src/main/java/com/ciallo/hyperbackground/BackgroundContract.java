@@ -65,6 +65,10 @@ public final class BackgroundContract {
     public static final int CONTACTS_DIALPAD_ZOOM_MIN = 1;
     public static final int CONTACTS_DIALPAD_ZOOM_MAX = 200;
     public static final int CONTACTS_DIALPAD_ZOOM_DEFAULT = 100;
+    // 设置主页背景缩放/定位：以整页 CENTER_CROP 为基准，且与拨号盘参数完全隔离。
+    public static final String HOME_ZOOM = "home_zoom";
+    public static final String HOME_FOCUS_X = "home_focus_x";
+    public static final String HOME_FOCUS_Y = "home_focus_y";
     // 通讯录与拨号进程专属深浅色（与全局强制深浅色独立并存，仅作用于 com.android.contacts 进程）。
     // 三态取值复用 SETTINGS_THEME_FOLLOW/LIGHT/DARK。
     public static final String CONTACTS_THEME_MODE = "contacts_theme_mode";
@@ -83,6 +87,9 @@ public final class BackgroundContract {
     public static final String UI_TOP_BLUR_ENABLED = "ui_top_blur_enabled";
     public static final String UI_TOP_BLUR_STRENGTH = "ui_top_blur_strength";
     public static final String UI_TOP_BLUR_OPACITY = "ui_top_blur_opacity";
+    // 清除设置主页顶栏遮罩。只作用于 MiuiSettings 首页；开启时首页清除优先，
+    // 其它设置二级页仍可继续使用全局顶栏模糊。
+    public static final String UI_TOP_CLEAR_ENABLED = "ui_top_clear_enabled";
     public static final String UI_SAYING_ENABLED = "ui_saying_enabled";
     public static final String UI_SAYING_API = "ui_saying_api";
     public static final String UI_SAYING_KEY = "ui_saying_key";
@@ -123,14 +130,15 @@ public final class BackgroundContract {
         SharedPreferences prefs = HookRuntime.preferences();
         long size = prefs.getLong(SIZE_PREFIX + slot, -1L);
         long modified = prefs.getLong(MODIFIED_PREFIX + slot, -1L);
-        // 横纵向定位焦点、缩放大小仅对「拨号盘自定义背景」通道生效；其它通道（home/device/global/contacts
-        // 整页背景等）必须用中性默认值（焦点居中 + zoom=100=等比贴满不额外缩放），否则调拨号盘的
-        // 「缩放/位置」会把这些全局键读进整页背景的 Source，导致整页背景也被一起缩放位移。
+        // 横纵向定位焦点、缩放大小按通道分别读取，避免拨号盘与设置主页互相污染。
+        // 其它通道保持当前使用的中性 50/50/100 参数。
         boolean isDialpad = CONTACTS_DIALPAD.equals(slot);
-        // 屏幕坐标系定位：横向恒居中铺满，focusX 不再由 UI 控制、恒为 50；纵向偏移由 focusY 决定。
-        int focusX = 50;
-        int focusY = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_FOCUS_Y, 50) : 50;
+        boolean isHome = HOME.equals(slot);
+        int focusX = isHome ? prefs.getInt(HOME_FOCUS_X, 50) : 50;
+        int focusY = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_FOCUS_Y, 50)
+                : isHome ? prefs.getInt(HOME_FOCUS_Y, 50) : 50;
         int zoom = isDialpad ? prefs.getInt(CONTACTS_DIALPAD_ZOOM, CONTACTS_DIALPAD_ZOOM_DEFAULT)
+                : isHome ? prefs.getInt(HOME_ZOOM, CONTACTS_DIALPAD_ZOOM_DEFAULT)
                 : CONTACTS_DIALPAD_ZOOM_DEFAULT;
         int brightness = prefs.getInt(BRIGHTNESS_PREFIX + slot, BRIGHTNESS_DEFAULT);
         return new Source(

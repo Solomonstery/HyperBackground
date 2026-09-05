@@ -51,7 +51,11 @@ final class SettingsTopBarBlurHook {
                             if (param.thisObject instanceof View) {
                                 View layout = (View) param.thisObject;
                                 markManagedActivity(layout.getContext(), true);
-                                if (isTopBlurEnabled()) {
+                                if (SettingsTopBarClearHook.clearLayoutIfEnabled(
+                                        param.thisObject)) {
+                                    return;
+                                }
+                                if (shouldApplyTopBlur(layout.getContext())) {
                                     try {
                                         XposedHelpers.callMethod(
                                                 param.thisObject, "setOverlayMode", true);
@@ -122,7 +126,11 @@ final class SettingsTopBarBlurHook {
                                 if (!(param.thisObject instanceof View)) return;
                                 View bar = (View) param.thisObject;
                                 if (!isManagedSettingsPage(bar.getContext())) return;
-                                if (isTopBlurEnabled()
+                                if (SettingsTopBarClearHook.shouldClear(bar.getContext())) {
+                                    clearInjectedActionBarBlur(param.thisObject);
+                                    clearGradientBlur(bar);
+                                    clearMaterialMask(bar);
+                                } else if (shouldApplyTopBlur(bar.getContext())
                                         && Boolean.TRUE.equals(param.args[0])) {
                                     updateInjectedActionBarBlur(param.thisObject);
                                 } else {
@@ -148,7 +156,12 @@ final class SettingsTopBarBlurHook {
                                     "NestedHeaderLayout scrolling callback reached");
 
                             if (!isManagedLayout(param.thisObject, layout.getContext())) return;
-                            if (isTopBlurEnabled() && !isOverlayMode(param.thisObject)) {
+                            if (SettingsTopBarClearHook.clearLayoutIfEnabled(
+                                    param.thisObject)) {
+                                return;
+                            }
+                            if (shouldApplyTopBlur(layout.getContext())
+                                    && !isOverlayMode(param.thisObject)) {
                                 try {
                                     XposedHelpers.callMethod(
                                             param.thisObject, "setOverlayMode", true);
@@ -168,8 +181,7 @@ final class SettingsTopBarBlurHook {
 
                             View overlay = (View) overBg;
                             markManagedActivity(layout.getContext(), true);
-                            if (!HookRuntime.preferences().getBoolean(
-                                    BackgroundContract.UI_TOP_BLUR_ENABLED, true)) {
+                            if (!shouldApplyTopBlur(layout.getContext())) {
                                 clearGradientBlur(overlay);
                                 setBlurEnabled(param.thisObject, blurHelper, false);
                                 overlay.setAlpha(0f);
@@ -242,12 +254,14 @@ final class SettingsTopBarBlurHook {
                     new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
-                            if (!(param.thisObject instanceof View)
-                                    || !isManagedLayout(param.thisObject,
-                                    ((View) param.thisObject).getContext())
-                                    || !isTopBlurEnabled()) {
+                            if (!(param.thisObject instanceof View)) {
                                 return;
                             }
+                            View layout = (View) param.thisObject;
+                            if (!isManagedLayout(param.thisObject, layout.getContext())) return;
+                            if (SettingsTopBarClearHook.clearLayoutIfEnabled(
+                                    param.thisObject)) return;
+                            if (!shouldApplyTopBlur(layout.getContext())) return;
                             Object overBg = getField(param.thisObject, "mOverBgView");
                             if (overBg instanceof View) {
                                 View overlay = (View) overBg;
@@ -277,7 +291,19 @@ final class SettingsTopBarBlurHook {
                                         ((View) param.thisObject).getContext())) {
                                     return;
                                 }
-                                if (!isTopBlurEnabled()) {
+                                View bar = (View) param.thisObject;
+                                if (SettingsTopBarClearHook.shouldClear(bar.getContext())) {
+                                    clearInjectedActionBarBlur(param.thisObject);
+                                    clearGradientBlur(bar);
+                                    clearMaterialMask(bar);
+                                    XposedHelpers.setAdditionalInstanceField(
+                                            param.thisObject,
+                                            BAR_BLUR_SUPPRESSED,
+                                            Boolean.TRUE);
+                                    param.setResult(null);
+                                    return;
+                                }
+                                if (!shouldApplyTopBlur(bar.getContext())) {
                                     clearInjectedActionBarBlur(param.thisObject);
                                     restoreNativeActionBarBlur(param.thisObject);
                                     return;
@@ -305,8 +331,9 @@ final class SettingsTopBarBlurHook {
                             protected void beforeHookedMethod(MethodHookParam param) {
                                 if (!(param.thisObject instanceof View)) return;
                                 View bar = (View) param.thisObject;
-                                if (!isManagedSettingsPage(bar.getContext())
-                                        || !isTopBlurEnabled()) return;
+                                if (!isManagedSettingsPage(bar.getContext())) return;
+                                if (!SettingsTopBarClearHook.shouldClear(bar.getContext())
+                                        && !shouldApplyTopBlur(bar.getContext())) return;
                                 clearGradientBlur(bar);
                                 clearMaterialMask(bar);
                                 XposedHelpers.setAdditionalInstanceField(
@@ -332,7 +359,9 @@ final class SettingsTopBarBlurHook {
                                 if (target instanceof View
                                         && isManagedSettingsPage(((View) target).getContext())
                                         && isManagedTopBlurView((View) target)
-                                        && isTopBlurEnabled()) {
+                                        && (SettingsTopBarClearHook.shouldClear(
+                                        ((View) target).getContext())
+                                        || shouldApplyTopBlur(((View) target).getContext()))) {
                                     clearMaterialMask((View) target);
                                     param.setResult(null);
                                 }
@@ -356,7 +385,9 @@ final class SettingsTopBarBlurHook {
                                 Object stickyView = getField(param.thisObject, "mStickyView");
                                 if (stickyView instanceof View
                                         && isManagedSettingsPage(((View) stickyView).getContext())
-                                        && isTopBlurEnabled()) {
+                                        && (SettingsTopBarClearHook.shouldClear(
+                                        ((View) stickyView).getContext())
+                                        || shouldApplyTopBlur(((View) stickyView).getContext()))) {
                                     param.setResult(null);
                                 }
                             }
@@ -455,9 +486,13 @@ final class SettingsTopBarBlurHook {
         return null;
     }
 
-    private static boolean isTopBlurEnabled() {
+    private static boolean isTopBlurPreferenceEnabled() {
         return HookRuntime.preferences().getBoolean(
                 BackgroundContract.UI_TOP_BLUR_ENABLED, true);
+    }
+
+    private static boolean shouldApplyTopBlur(Context context) {
+        return isTopBlurPreferenceEnabled() && !SettingsTopBarClearHook.shouldClear(context);
     }
 
     private static boolean isManagedTopBlurView(View view) {

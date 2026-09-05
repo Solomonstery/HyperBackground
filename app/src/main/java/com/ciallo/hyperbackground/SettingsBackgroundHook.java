@@ -30,6 +30,7 @@ public final class SettingsBackgroundHook {
         if (settings) {
             SettingsSearchMaskOverride.install(classLoader);
             SettingsTopBarBlurHook.install(classLoader);
+            SettingsTopBarClearHook.install(classLoader);
             hookHomeActivity(classLoader);
             hookHomeFragment(classLoader);
             hookDeviceFragment(classLoader);

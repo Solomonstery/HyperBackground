@@ -30,7 +30,7 @@ public final class SettingsBackgroundHook {
         if (settings) {
             SettingsSearchMaskOverride.install(classLoader);
             SettingsTopBarBlurHook.install(classLoader);
-            SettingsTopBarClearHook.install(classLoader);
+            // 清除顶栏不再独立 hook，由 SettingsTopBarBlurHook 复用模糊管线（透明度归零）实现。
             hookHomeActivity(classLoader);
             hookHomeFragment(classLoader);
             hookDeviceFragment(classLoader);

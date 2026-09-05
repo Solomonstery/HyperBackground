@@ -190,7 +190,7 @@ private fun TopBlurCard(activity: MainActivity) {
 }
 
 /**
- * 清除设置主页顶栏遮罩。该选项只接管首页，二级页仍按顶部模糊开关工作。
+ * 清除设置各级页面顶栏遮罩。开启后覆盖顶部模糊，将首页与二级页顶栏统一变透明。
  */
 @Composable
 private fun TopClearCard(activity: MainActivity) {

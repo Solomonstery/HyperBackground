@@ -167,8 +167,8 @@
     <string name="top_blur">Top blur</string>
     <string name="top_blur_summary">Use a progressive blur on Settings page top bars</string>
     <string name="top_blur_opacity">Top blur opacity</string>
-    <string name="top_clear">Clear home top bar</string>
-    <string name="top_clear_summary">Make the Settings home top bar transparent; other page blur is unchanged</string>
+    <string name="top_clear">Clear top bar</string>
+    <string name="top_clear_summary">Make all Settings top bars transparent, overriding top blur</string>
     <string name="home_scale_title">Home background scaling</string>
     <string name="home_zoom">Zoom</string>
     <string name="home_focus_x">Horizontal position</string>

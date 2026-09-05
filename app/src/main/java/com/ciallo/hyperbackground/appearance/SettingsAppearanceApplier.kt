@@ -940,6 +940,7 @@ object SettingsAppearanceApplier {
     private class LayerSession(val parent: ViewGroup, val view: SettingsBackgroundView) {
         private val backgrounds = ArrayList<Pair<View, Drawable?>>()
         private var observer: ViewTreeObserver.OnGlobalLayoutListener? = null
+        private var lastRefreshAt = 0L
         fun clear(target: View) {
             if (target === view || backgrounds.any { it.first === target }) return
             backgrounds += target to target.background
@@ -958,12 +959,17 @@ object SettingsAppearanceApplier {
 
         fun attach(activity: Activity) {
             refresh(activity)
-            val listener = ViewTreeObserver.OnGlobalLayoutListener { refresh(activity) }
+            val listener = ViewTreeObserver.OnGlobalLayoutListener {
+                val now = android.os.SystemClock.uptimeMillis()
+                if (now - lastRefreshAt < 200L) return@OnGlobalLayoutListener
+                refresh(activity)
+            }
             observer = listener
             runCatching { parent.viewTreeObserver.addOnGlobalLayoutListener(listener) }
         }
 
         fun refresh(activity: Activity) {
+            lastRefreshAt = android.os.SystemClock.uptimeMillis()
             clearNamedSurfaces(activity, this)
             val root = parent.getChildAt(0) ?: return
             clearPageSurfaces(activity, root, root)
@@ -1008,7 +1014,12 @@ object SettingsAppearanceApplier {
         private data class Entry(val view: View, val drawable: Drawable, val alpha: Int)
         private val entries = ArrayList<Entry>()
         private val root: View = activity.window?.decorView ?: returnRoot(activity)
-        private val listener = ViewTreeObserver.OnGlobalLayoutListener { refresh(currentOpacity) }
+        private var lastRefreshAt = 0L
+        private val listener = ViewTreeObserver.OnGlobalLayoutListener {
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now - lastRefreshAt < 200L) return@OnGlobalLayoutListener
+            refresh(currentOpacity)
+        }
         private var currentOpacity = 100
 
         init { runCatching { root.viewTreeObserver.addOnGlobalLayoutListener(listener) } }
@@ -1023,6 +1034,7 @@ object SettingsAppearanceApplier {
         }
 
         private fun refresh(opacity: Int) {
+            lastRefreshAt = android.os.SystemClock.uptimeMillis()
             if (!isLightMode() || opacity >= 100) { restore(); return }
             visit(root, opacity)
         }

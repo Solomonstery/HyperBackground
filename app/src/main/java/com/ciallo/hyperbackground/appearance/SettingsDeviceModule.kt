@@ -457,7 +457,6 @@ class SettingsDeviceModule : XposedModule() {
         }
         decor.post(apply)
         decor.postDelayed(apply, 300L)
-        decor.postDelayed(apply, 900L)
     }
 
     private fun allMethods(type: Class<*>): List<java.lang.reflect.Method> {

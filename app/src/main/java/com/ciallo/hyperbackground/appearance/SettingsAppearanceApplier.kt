@@ -26,6 +26,7 @@ object SettingsAppearanceApplier {
     private val deviceLayers = Collections.synchronizedMap(WeakHashMap<Any, DeviceLayerSession>())
     private val originalTextColors = Collections.synchronizedMap(WeakHashMap<TextView, Int>())
     private val textModes = Collections.synchronizedMap(WeakHashMap<TextView, Int>())
+    private val appliedFontModes = Collections.synchronizedMap(WeakHashMap<Activity, Int>())
     private val logoSessions = Collections.synchronizedMap(WeakHashMap<Any, LogoSession>())
     private val cardSessions = Collections.synchronizedMap(WeakHashMap<Activity, CardAlphaSession>())
     private val tutorialCards = Collections.synchronizedMap(WeakHashMap<Any, TutorialCardSession>())
@@ -134,6 +135,7 @@ object SettingsAppearanceApplier {
         if (activity == null) return
         layers.remove(activity)?.remove()
         cardSessions.remove(activity)?.remove()
+        appliedFontModes.remove(activity)
         restoreTextColors(activity.window?.decorView)
     }
 
@@ -543,34 +545,41 @@ object SettingsAppearanceApplier {
     private fun applyActivity(activity: Activity, slot: String) {
         runCatching {
             val source = SettingsAppearanceSources.query(activity, slot)
-            applyCardOpacity(activity, source.lightCardOpacity)
             val old = layers[activity]
             if (!source.exists) {
                 old?.remove()
                 layers.remove(activity)
-                applyFontMode(activity, source.fontMode)
+                activity.window?.decorView?.post { applyFontMode(activity, source.fontMode) }
                 return
             }
             val content = activity.findViewById<View>(android.R.id.content) as? ViewGroup ?: return
             if (old != null && old.view.sourceKey() == source.cacheKey() && old.view.parent === content) {
                 old.view.onHostResume()
-                applyFontMode(activity, source.fontMode)
+                content.post { applyFontMode(activity, source.fontMode) }
                 return
             }
             old?.remove()
             val media = SettingsBackgroundView(activity, source)
             val session = LayerSession(content, media)
+            // 首帧前只做轻量操作：清除已知不透明表面 + 挂载背景，避免白闪。
             session.clear(content)
             content.getChildAt(0)?.let { session.clear(it) }
             clearNamedSurfaces(activity, session)
             content.addView(media, 0, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            session.attach(activity)
             layers[activity] = session
-            applyFontMode(activity, source.fontMode)
+            // 全树遍历（refresh / 卡片透明度 / 字体色）延迟到下一帧，让账号绑定等异步回调先执行。
+            content.post {
+                session.attach(activity)
+                applyCardOpacity(activity, source.lightCardOpacity)
+                applyFontMode(activity, source.fontMode)
+            }
         }
     }
 
     private fun applyFontMode(activity: Activity, mode: Int) {
+        // mode 未变则跳过全树遍历。
+        if (appliedFontModes[activity] == mode) return
+        appliedFontModes[activity] = mode
         applyTextColor(activity.window?.decorView, mode)
     }
 
@@ -1025,12 +1034,15 @@ object SettingsAppearanceApplier {
         init { runCatching { root.viewTreeObserver.addOnGlobalLayoutListener(listener) } }
 
         fun apply(opacity: Int) {
-            currentOpacity = opacity
-            if (!isLightMode() || opacity >= 100) {
+            val coerced = opacity.coerceIn(0, 100)
+            // opacity 未变则跳过全树遍历，避免 scheduleAppearance 多次调用重复执行。
+            if (coerced == currentOpacity) return
+            currentOpacity = coerced
+            if (!isLightMode() || coerced >= 100) {
                 restore()
                 return
             }
-            refresh(opacity)
+            refresh(coerced)
         }
 
         private fun refresh(opacity: Int) {

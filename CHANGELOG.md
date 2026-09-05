@@ -2,6 +2,15 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.4.3-beta4
+
+性能优化：解决设置页面加载变慢的问题。
+
+### 通用
+
+- 优化：全局背景会话的 `OnGlobalLayoutListener` 补扫加 200ms 节流，合并页面加载时的高频布局回调，避免反复全树遍历。
+- 优化：不透明中性色背景判定的 drawable 采样颜色按 `ConstantState` 缓存，同一次扫描内不重复创建 bitmap，减少 GC 与主线程耗时。
+
 ## 1.4.3-beta3
 
 重构「清除顶栏」实现，移除独立的顶栏强制隐藏 Hook，改为复用顶栏模糊管线。

@@ -92,6 +92,7 @@ final class BackgroundApplier {
                 if (last != null && now - last < 200L) return;
                 XposedHelpers.setAdditionalInstanceField(activity, CONTACTS_ADAPT_AT, now);
             }
+            contactsSampledColors.clear();
 
             boolean enabled = HookRuntime.preferences().getBoolean(BackgroundContract.CONTACTS_SURFACE_ADAPT, true);
 
@@ -181,29 +182,39 @@ final class BackgroundApplier {
         }
     }
 
+    // 缓存联系人进程内 drawable 采样色，避免同一次扫描内对同一 ConstantState 反复创建 8x8 bitmap。
+    private static final java.util.IdentityHashMap<Drawable.ConstantState, Integer> contactsSampledColors =
+            new java.util.IdentityHashMap<>();
+
     // 背景采样为完全不透明（alpha=255）且中性（R≈G≈B，无明显色相）：黑 / 白 / 灰。
     // ColorDrawable 直接读色；其它（GradientDrawable/StateListDrawable/LayerDrawable/9-patch）
-    // 渲染 COPY 到 1x1 bitmap 采其合成色，绝不改动原 drawable。
+    // 渲染 COPY 到 8x8 bitmap 采其合成色，绝不改动原 drawable。
     private static boolean isOpaqueNeutralSurface(Drawable bg) {
         if (bg == null) return false;
         int color;
         if (bg instanceof android.graphics.drawable.ColorDrawable) {
             color = ((android.graphics.drawable.ColorDrawable) bg).getColor();
         } else {
-            try {
-                Drawable.ConstantState state = bg.getConstantState();
-                if (state == null) return false;
-                Drawable copy = state.newDrawable().mutate();
-                // 渲染 8x8 后取中心像素，而非 1x1。9-patch（如分组吸顶头 list_view_item_group_header_bg）
-                // 的可拉伸区/内容区划分会让 1x1 采样落到边缘透明 padding 区，深色不透明黑条被误判为透明
-                // 而漏清；用稍大的画布取中心点采到真正的填充色，判定才准确。
-                android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888);
-                android.graphics.Canvas canvas = new android.graphics.Canvas(bmp);
-                copy.setBounds(0, 0, 8, 8);
-                copy.draw(canvas);
-                color = bmp.getPixel(4, 4);
-                bmp.recycle();
-            } catch (Throwable ignored) { return false; }
+            Drawable.ConstantState state = bg.getConstantState();
+            Integer cached = state == null ? null : contactsSampledColors.get(state);
+            if (cached != null) {
+                color = cached;
+            } else {
+                try {
+                    if (state == null) return false;
+                    Drawable copy = state.newDrawable().mutate();
+                    // 渲染 8x8 后取中心像素，而非 1x1。9-patch（如分组吸顶头 list_view_item_group_header_bg）
+                    // 的可拉伸区/内容区划分会让 1x1 采样落到边缘透明 padding 区，深色不透明黑条被误判为透明
+                    // 而漏清；用稍大的画布取中心点采到真正的填充色，判定才准确。
+                    android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888);
+                    android.graphics.Canvas canvas = new android.graphics.Canvas(bmp);
+                    copy.setBounds(0, 0, 8, 8);
+                    copy.draw(canvas);
+                    color = bmp.getPixel(4, 4);
+                    bmp.recycle();
+                    contactsSampledColors.put(state, color);
+                } catch (Throwable ignored) { return false; }
+            }
         }
         if (Color.alpha(color) != 255) return false;
         int r = Color.red(color), g = Color.green(color), b = Color.blue(color);
@@ -907,6 +918,11 @@ final class BackgroundApplier {
         Activity observedActivity;
         android.view.ViewTreeObserver.OnGlobalLayoutListener layoutListener;
         long rescanDeadline;
+        long lastRescanAt;
+        // 缓存 drawable 采样色，避免同一次扫描内对同一 ConstantState 反复创建 bitmap 采样。
+        // 用 ConstantState 做 key：共享状态的 drawable 复用采样结果，ColorDrawable 已直接取色不走缓存。
+        private final java.util.IdentityHashMap<Drawable.ConstantState, Integer> sampledColors =
+                new java.util.IdentityHashMap<>();
 
         LayerSession(BackgroundMediaView media) { this.media = media; }
 
@@ -930,6 +946,7 @@ final class BackgroundApplier {
 
         void refresh(Activity activity, boolean home) {
             if (home || activity == null || observedRoot == null) return;
+            sampledColors.clear();
             clearPageSurfaces(activity, observedRoot, observedRoot, 0);
             if (transparentTopBar) clearActionBarSurfaces(activity, observedRoot, 0);
             // Reopen the rescan window on every refresh (e.g. returning from a sub-page) so a
@@ -952,9 +969,14 @@ final class BackgroundApplier {
                 layoutListener = () -> {
                     if (observedRoot == null || observedActivity == null) { removeLayoutRescan(); return; }
                     if (observedActivity.isFinishing() || observedActivity.isDestroyed()) { removeLayoutRescan(); return; }
+                    // 200ms 节流：页面加载时会触发多次 layout pass，每次都全树遍历开销很大。
+                    // 合并高频回调，只在节流窗口到期时执行一次补扫。
+                    long now = android.os.SystemClock.uptimeMillis();
+                    if (now - lastRescanAt < 200L) return;
+                    lastRescanAt = now;
                     clearPageSurfaces(observedActivity, observedRoot, observedRoot, 0);
                     if (transparentTopBar) clearActionBarSurfaces(observedActivity, observedRoot, 0);
-                    if (android.os.SystemClock.uptimeMillis() > rescanDeadline) removeLayoutRescan();
+                    if (now > rescanDeadline) removeLayoutRescan();
                 };
                 observer.addOnGlobalLayoutListener(layoutListener);
             } catch (Throwable ignored) {}
@@ -1163,8 +1185,19 @@ final class BackgroundApplier {
             if (bg instanceof android.graphics.drawable.ColorDrawable) {
                 return isOpaqueNeutral(((android.graphics.drawable.ColorDrawable) bg).getColor());
             }
-            Integer sampled = sampleDrawableColor(bg);
-            return sampled != null && isOpaqueNeutral(sampled);
+            // 非 ColorDrawable 需渲染采样：按 ConstantState 缓存，同一扫描内不重复创建 bitmap。
+            Drawable.ConstantState state = bg.getConstantState();
+            Integer cached = state == null ? null : sampledColors.get(state);
+            int color;
+            if (cached != null) {
+                color = cached;
+            } else {
+                Integer sampled = sampleDrawableColor(bg);
+                if (sampled == null) return false;
+                color = sampled;
+                if (state != null) sampledColors.put(state, color);
+            }
+            return isOpaqueNeutral(color);
         }
 
         // Renders a COPY of the drawable to a 1x1 bitmap and reads the pixel. Never touches

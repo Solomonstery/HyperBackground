@@ -30,6 +30,7 @@ class SettingsBackgroundView(
     private var videoWidth = 0
     private var videoHeight = 0
     private var hostResumed = true
+    private var disposed = false
 
     init {
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO)
@@ -58,6 +59,7 @@ class SettingsBackgroundView(
     }
 
     fun dispose() {
+        disposed = true
         (imageDrawable as? AnimatedImageDrawable)?.stop()
         releasePlayer()
         textureView?.surfaceTextureListener = null
@@ -65,20 +67,30 @@ class SettingsBackgroundView(
     }
 
     private fun createImageView() {
-        runCatching {
-            imageView = ImageView(context).also {
-                it.scaleType = ImageView.ScaleType.CENTER_CROP
-                imageDrawable = ImageDecoder.decodeDrawable(
-                    ImageDecoder.createSource(context.contentResolver, source.uri),
+        // 先创建空 ImageView 占位，图片在后台线程解码，避免阻塞主线程导致账号绑定等异步回调延迟。
+        imageView = ImageView(context).also {
+            it.scaleType = ImageView.ScaleType.CENTER_CROP
+        }
+        addView(imageView, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        val uri = source.uri
+        val resolver = context.contentResolver
+        Thread {
+            runCatching {
+                val drawable = ImageDecoder.decodeDrawable(
+                    ImageDecoder.createSource(resolver, uri),
                 )
-                it.setImageDrawable(imageDrawable)
-            }
-            addView(imageView, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-            (imageDrawable as? AnimatedImageDrawable)?.apply {
-                repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
-                start()
-            }
-        }.onFailure { Log.e(TAG, "Cannot decode Settings background", it) }
+                imageDrawable = drawable
+                post {
+                    if (!disposed) {
+                        imageView?.setImageDrawable(drawable)
+                        (drawable as? AnimatedImageDrawable)?.apply {
+                            repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
+                            if (hostResumed) start()
+                        }
+                    }
+                }
+            }.onFailure { Log.e(TAG, "Cannot decode Settings background", it) }
+        }.start()
     }
 
     private fun createVideoView() {

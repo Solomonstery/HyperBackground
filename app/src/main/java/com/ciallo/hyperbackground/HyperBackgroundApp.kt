@@ -42,5 +42,15 @@ class HyperBackgroundApp : Application(), XposedServiceHelper.OnServiceListener 
         fun removeServiceListener(listener: (XposedService?) -> Unit) {
             listeners.remove(listener)
         }
+
+        /**
+         * 模块是否已被 LSPosed 激活。
+         *
+         * 通过 XposedService 是否绑定判断——只有被 LSPosed 框架真正加载并授权的模块，
+         * XposedServiceHelper 才会回调 onServiceBind。无需 hook 模块自身，也不依赖
+         * 模块自身是否在作用域列表中。
+         */
+        @JvmStatic
+        fun isModuleActive(): Boolean = xposedService != null
     }
 }

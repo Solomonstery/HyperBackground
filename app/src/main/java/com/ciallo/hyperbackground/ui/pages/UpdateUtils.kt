@@ -9,8 +9,10 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /** 更新检查与 CHANGELOG 解析的公共逻辑，供更新日志页与全局更新弹窗复用。 */
-internal const val LATEST_RELEASE_API =
-    "https://api.github.com/repos/Solomonstery/HyperBackground/releases/latest"
+// 不走 api.github.com（未认证每小时限 60 次，频繁触发 403），改用 releases/latest 的 302 重定向。
+// GitHub 会把 /releases/latest 重定向到 /releases/tag/vX.Y.Z，从 Location 头即可提取最新版本号。
+internal const val LATEST_RELEASE_URL =
+    "https://github.com/Solomonstery/HyperBackground/releases/latest"
 internal const val RELEASES_URL = "https://github.com/Solomonstery/HyperBackground/releases"
 
 /** 一个版本章节：版本标题 + 该版本下的条目列表。 */
@@ -72,21 +74,22 @@ internal fun loadAllReleaseNotes(context: Context): List<ReleaseNotesEntry> {
     return sections
 }
 
-/** 请求 GitHub releases/latest，返回最新正式版版本号（去掉 v 前缀）。 */
+/** 请求 GitHub releases/latest（302 重定向），返回最新正式版版本号（去掉 v 前缀）。 */
 internal suspend fun fetchLatestStableVersion(): String = withContext(Dispatchers.IO) {
-    val connection = (URL(LATEST_RELEASE_API).openConnection() as HttpURLConnection).apply {
+    val connection = (URL(LATEST_RELEASE_URL).openConnection() as HttpURLConnection).apply {
         connectTimeout = 7000
         readTimeout = 7000
         requestMethod = "GET"
-        setRequestProperty("Accept", "application/vnd.github+json")
+        instanceFollowRedirects = false // 手动读取 Location 头提取 tag
         setRequestProperty("User-Agent", "HyperBG/${BuildConfig.VERSION_NAME}")
     }
     try {
         val code = connection.responseCode
-        if (code !in 200..299) error("GitHub HTTP $code")
-        val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-        val tag = JSONObject(body).optString("tag_name").trim().removePrefix("v")
-        if (tag.isBlank()) error("empty tag")
+        // 301/302 重定向到 /releases/tag/vX.Y.Z
+        val location = connection.getHeaderField("Location")
+            ?: error("no Location header (code=$code)")
+        val tag = location.substringAfterLast("/").trim().removePrefix("v")
+        if (tag.isBlank()) error("empty tag from Location: $location")
         tag
     } finally {
         connection.disconnect()

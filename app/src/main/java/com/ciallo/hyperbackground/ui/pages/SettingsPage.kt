@@ -106,8 +106,6 @@ fun SettingsPage(
         item { LanguageCard(activity) }
         item { SectionTitle(stringResource(R.string.saying_settings)) }
         item { SayingSettingsCard(activity) }
-        item { SectionTitle(stringResource(R.string.about)) }
-        item { AboutCard(activity, onOpenChangelog) }
     }
 }
 
@@ -380,41 +378,6 @@ fun RestartScopesDialog(
                 onClick = {
                     dismiss?.invoke()
                     restartScopes(activity)
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun AboutCard(activity: MainActivity, onOpenChangelog: () -> Unit) {
-    UiCard(activity, Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(stringResource(R.string.author), style = MiuixTheme.textStyles.headline1)
-            Text(stringResource(R.string.current_version, BuildConfig.VERSION_NAME), color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TextButton(
-                    modifier = Modifier.weight(1f),
-                    text = stringResource(R.string.coolapk),
-                    onClick = { activity.openUrl("https://www.coolapk.com/u/18795532") },
-                )
-                TextButton(
-                    modifier = Modifier.weight(1f),
-                    text = stringResource(R.string.github),
-                    onClick = { activity.openUrl("https://github.com/Solomonstery/HyperBackground") },
-                )
-            }
-            TextButton(
-                modifier = Modifier.fillMaxWidth(),
-                text = stringResource(R.string.changelog),
-                colors = ButtonDefaults.textButtonColorsPrimary(),
-                onClick = onOpenChangelog,
-            )
-            TextButton(
-                modifier = Modifier.fillMaxWidth(),
-                text = stringResource(R.string.open_app_info),
-                onClick = {
-                    activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${activity.packageName}")))
                 },
             )
         }

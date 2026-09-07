@@ -2,6 +2,25 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.4.3-beta6
+
+全模块 Kotlin 化与 UI 结构调整。
+
+### 通用
+
+- 重构：全部 Hook 逻辑由 Java 迁移至 Kotlin，统一使用 libxposed API 102 与自建 `XposedHooks.kt` 工具类，移除 de.robv 三件套依赖。
+- 优化：反射方法/字段查找增加缓存，避免高频回调中重复遍历类层级。
+- 优化：`HookRuntime` 方法参数懒加载，未访问时直接透传 `chain.proceed()`，减少不必要的数组拷贝。
+- 优化：顶栏模糊滚动回调加 200ms 节流，降低浅色模式下的主线程负载。
+
+### UI
+
+- 变更：底部导航栏由两页扩展为三页——主页、设置、关于；「关于」页面从设置页的二级入口提升为独立底栏页。
+- 新增：主页「一言」位置替换为模块状态卡片，显示 LSPosed 激活状态（已激活/未激活）及框架版本、API 级别；一言内容移至卡片下方。
+- 变更：关于页应用标签卡改用 README 风格的 shields 徽章（release / license / Platform / Framework / ROM / Build），移除受 GitHub API 速率限制的 downloads 徽章。
+- 优化：页面切换动画改为背景层不动、内容层滑动，消除整页连带背景左滑的突兀感。
+- 修复：更新日志版本检查改用 GitHub `releases/latest` 的 302 重定向获取版本号，不再依赖 `api.github.com`，避免未认证请求触发 403。
+
 ## 1.4.3-beta5
 
 修复全局二级页面与通讯录背景的图片缩放错位问题。

@@ -55,6 +55,7 @@ import com.ciallo.hyperbackground.appearance.AppearanceUiController
 import com.ciallo.hyperbackground.appearance.DeviceProfileSettings
 import com.ciallo.hyperbackground.appearance.SettingsAppearanceSettings
 import com.ciallo.hyperbackground.ui.pages.BackgroundDetailPage
+import com.ciallo.hyperbackground.ui.pages.AboutPage
 import com.ciallo.hyperbackground.ui.pages.ChangelogPage
 import com.ciallo.hyperbackground.ui.pages.DeviceCardPage
 import com.ciallo.hyperbackground.ui.pages.DeviceInfoPage
@@ -80,6 +81,7 @@ import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Home
+import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
@@ -332,34 +334,37 @@ class MainActivity : ComponentActivity() {
     ) {
         var detailSlot by rememberSaveable { mutableStateOf<String?>(null) }
         BackHandler(enabled = detailSlot != null) { detailSlot = null }
-        AnimatedContent(
-            targetState = detailSlot,
-            modifier = Modifier.fillMaxSize(),
-            transitionSpec = {
-                if (targetState != null) {
-                    (slideIntoContainer(
-                        AnimatedContentTransitionScope.SlideDirection.Left,
-                        animationSpec = tween(360, easing = EaseInOut),
-                    ) + fadeIn(tween(240))) togetherWith
-                        (slideOutOfContainer(
+        // 共享背景层放在 AnimatedContent 之外：页面切换时只有内容滑动，背景保持不动。
+        Box(Modifier.fillMaxSize()) {
+            ModuleBackground(revision)
+            AnimatedContent(
+                targetState = detailSlot,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = {
+                    if (targetState != null) {
+                        (slideIntoContainer(
                             AnimatedContentTransitionScope.SlideDirection.Left,
                             animationSpec = tween(360, easing = EaseInOut),
-                        ) + fadeOut(tween(180)))
-                } else {
-                    (slideIntoContainer(
-                        AnimatedContentTransitionScope.SlideDirection.Right,
-                        animationSpec = tween(360, easing = EaseInOut),
-                    ) + fadeIn(tween(240))) togetherWith
-                        (slideOutOfContainer(
+                        ) + fadeIn(tween(240))) togetherWith
+                            (slideOutOfContainer(
+                                AnimatedContentTransitionScope.SlideDirection.Left,
+                                animationSpec = tween(360, easing = EaseInOut),
+                            ) + fadeOut(tween(180)))
+                    } else {
+                        (slideIntoContainer(
                             AnimatedContentTransitionScope.SlideDirection.Right,
                             animationSpec = tween(360, easing = EaseInOut),
-                        ) + fadeOut(tween(180)))
-                }.using(SizeTransform(clip = true))
-            },
-            label = "screen-navigation",
-        ) { slot ->
-            when (slot) {
-                null -> MainTabs(
+                        ) + fadeIn(tween(240))) togetherWith
+                            (slideOutOfContainer(
+                                AnimatedContentTransitionScope.SlideDirection.Right,
+                                animationSpec = tween(360, easing = EaseInOut),
+                            ) + fadeOut(tween(180)))
+                    }.using(SizeTransform(clip = true))
+                },
+                label = "screen-navigation",
+            ) { slot ->
+                when (slot) {
+                    null -> MainTabs(
                     themeMode = themeMode,
                     themeColorEnabled = themeColorEnabled,
                     monet = monet,
@@ -371,21 +376,10 @@ class MainActivity : ComponentActivity() {
                     onOpenBackground = { detailSlot = it },
                     onOpenChangelog = { detailSlot = ROUTE_CHANGELOG },
                 )
-                ROUTE_CHANGELOG -> Box(Modifier.fillMaxSize()) {
-                    ModuleBackground(revision)
-                    ChangelogScreen(onBack = { detailSlot = null })
-                }
-                ROUTE_DEVICE_CARD -> Box(Modifier.fillMaxSize()) {
-                    ModuleBackground(revision)
-                    DeviceCardScreen(onBack = { detailSlot = null })
-                }
-                ROUTE_DEVICE_INFO -> Box(Modifier.fillMaxSize()) {
-                    ModuleBackground(revision)
-                    DeviceInfoScreen(onBack = { detailSlot = null })
-                }
-                else -> Box(Modifier.fillMaxSize()) {
-                    ModuleBackground(revision)
-                    BackgroundDetailScreen(slot = slot, onBack = { detailSlot = null })
+                    ROUTE_CHANGELOG -> ChangelogScreen(onBack = { detailSlot = null })
+                    ROUTE_DEVICE_CARD -> DeviceCardScreen(onBack = { detailSlot = null })
+                    ROUTE_DEVICE_INFO -> DeviceInfoScreen(onBack = { detailSlot = null })
+                    else -> BackgroundDetailScreen(slot = slot, onBack = { detailSlot = null })
                 }
             }
         }
@@ -404,7 +398,7 @@ class MainActivity : ComponentActivity() {
         onOpenBackground: (String) -> Unit,
         onOpenChangelog: () -> Unit,
     ) {
-        val pagerState = rememberPagerState(pageCount = { 2 })
+        val pagerState = rememberPagerState(pageCount = { 3 })
         val scope = rememberCoroutineScope()
         val backgroundColor = MiuixTheme.colorScheme.surface
         val backdrop = if (bottomBarBlurEnabled) {
@@ -449,6 +443,12 @@ class MainActivity : ComponentActivity() {
                             icon = MiuixIcons.Settings,
                             label = getString(R.string.nav_settings),
                         )
+                        FloatingNavigationBarItem(
+                            selected = pagerState.currentPage == 2,
+                            onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
+                            icon = MiuixIcons.Info,
+                            label = getString(R.string.nav_about),
+                        )
                     }
                 } else {
                     NavigationBar(
@@ -468,6 +468,12 @@ class MainActivity : ComponentActivity() {
                             icon = MiuixIcons.Settings,
                             label = getString(R.string.nav_settings),
                         )
+                        NavigationBarItem(
+                            selected = pagerState.currentPage == 2,
+                            onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
+                            icon = MiuixIcons.Info,
+                            label = getString(R.string.nav_about),
+                        )
                     }
                 }
             },
@@ -476,7 +482,6 @@ class MainActivity : ComponentActivity() {
                 Modifier.fillMaxSize()
                     .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier),
             ) {
-                ModuleBackground(revision)
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
@@ -499,7 +504,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenBackground = onOpenBackground,
                             )
                         }
-                        else -> MainPageScaffold(
+                        1 -> MainPageScaffold(
                             title = getString(R.string.nav_settings),
                             bottomPadding = bottomPadding,
                             actions = {
@@ -520,6 +525,17 @@ class MainActivity : ComponentActivity() {
                                 onThemeColorEnabled = onThemeColorEnabled,
                                 onMonet = onMonet,
                                 onAccent = onAccent,
+                                onOpenChangelog = { scope.launch { pagerState.animateScrollToPage(2) } },
+                            )
+                        }
+                        else -> MainPageScaffold(
+                            title = getString(R.string.nav_about),
+                            bottomPadding = bottomPadding,
+                        ) { padding, scrollModifier ->
+                            AboutPage(
+                                activity = this@MainActivity,
+                                modifier = scrollModifier,
+                                padding = padding,
                                 onOpenChangelog = onOpenChangelog,
                             )
                         }

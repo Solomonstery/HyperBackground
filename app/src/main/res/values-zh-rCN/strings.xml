@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">HyperBG</string>
     <string name="app_description">为 HyperOS 系统设置及相关系统页面注入统一可配置的自定义背景。</string>
-    <string name="nav_home">主页</string><string name="nav_settings">设置</string>
+    <string name="nav_home">主页</string><string name="nav_settings">设置</string><string name="nav_about">关于</string>
     <string name="saying">一言</string><string name="scope">背景</string><string name="saying_loading">正在获取一言…</string><string name="saying_failed">一言获取失败，点击重试</string>
     <string name="background_home">设置主页</string><string name="background_home_summary">独立控制 HyperOS 设置首页</string>
     <string name="background_device">我的设备</string><string name="background_device_summary">图片、GIF、WebP、MP4 和 WebM</string>

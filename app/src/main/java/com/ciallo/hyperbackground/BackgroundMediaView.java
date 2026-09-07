@@ -175,10 +175,21 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         imageView.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
     }
 
-    // 设置主页使用自身视口的 CENTER_CROP 基准；其它通道保留当前按整屏宽度定位的算法。
+    // 仅首页（HOME）与拨号盘（CONTACTS_DIALPAD）提供缩放/定位滑块，用 MATRIX 微调；
+    // 其它通道（全局二级页 GLOBAL、通讯录整页 CONTACTS 等）无缩放参数（zoom 恒 100、
+    // focus 恒 50），直接用系统 CENTER_CROP 等比铺满并居中，既不出现矩阵错位，也不挂
+    // layout 监听，省去逐帧布局回调开销。
     private void applyImageScale() {
         if (imageView == null) return;
         if (imageLayoutListener != null) imageView.removeOnLayoutChangeListener(imageLayoutListener);
+        imageLayoutListener = null;
+        boolean matrixScaled = BackgroundContract.HOME.equals(source.slot)
+                || BackgroundContract.CONTACTS_DIALPAD.equals(source.slot);
+        if (!matrixScaled) {
+            imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            imageView.setImageMatrix(null);
+            return;
+        }
         // MATRIX 定位依赖 media 的屏幕坐标（getLocationOnScreen），需在布局后（进入视图树、位置确定）计算，
         // 故注册 layout 监听并兜底 post 到下一帧，确保定位一定落地。
         imageView.setScaleType(ImageView.ScaleType.MATRIX);
@@ -188,8 +199,8 @@ final class BackgroundMediaView extends FrameLayout implements TextureView.Surfa
         imageView.post(this::updateImageCropMatrix);
     }
 
-    // 首页：以自身视口为参照，scale=max(vw/dw,vh/dh)*zoom；100/50/50 与系统
-    // CENTER_CROP 一致。非首页继续沿用当前整屏宽度基准，不改变拨号盘及其它背景行为。
+    // HOME：以自身视口为参照，scale=max(vw/dw,vh/dh)*zoom；100/50/50 与系统
+    // CENTER_CROP 一致。拨号盘（CONTACTS_DIALPAD）沿用整屏宽度基准做纵向定位。
     private void updateImageCropMatrix() {
         if (imageView == null || imageDrawable == null) return;
         if (imageView.getScaleType() != ImageView.ScaleType.MATRIX) return;

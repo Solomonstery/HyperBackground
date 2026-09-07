@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -113,7 +114,15 @@ fun HomePage(
 
 @Composable
 private fun ModuleStatusCard(activity: MainActivity, sayingEnabled: Boolean) {
-    val active = HyperBackgroundApp.isModuleActive()
+    // 监听 XposedService 绑定状态，绑定时自动刷新，解决启动时 service 未就绪显示"未激活"的问题
+    var active by remember { mutableStateOf(HyperBackgroundApp.isModuleActive()) }
+    DisposableEffect(Unit) {
+        val listener: (io.github.libxposed.service.XposedService?) -> Unit = {
+            active = it != null
+        }
+        HyperBackgroundApp.addServiceListener(listener)
+        onDispose { HyperBackgroundApp.removeServiceListener(listener) }
+    }
     val apiVersion = HyperBackgroundApp.xposedService?.apiVersion ?: 0
     val lsposedVersion = remember { getLsposedVersion(activity) }
     val accent = if (active) Color(0xFF4CAF50) else Color(0xFFF44336)

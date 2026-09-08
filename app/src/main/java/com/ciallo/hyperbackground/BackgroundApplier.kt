@@ -501,9 +501,8 @@ object BackgroundApplier {
         }
 
         if (BackgroundContract.PACKAGE_POWER_KEEPER == packageName) {
-            // PowerKeeper 有大量自定义视觉页面（优化加速、电量使用、应用启动管理等），
-            // 全局背景会破坏其原生视觉设计，全部跳过。
-            return true
+            // PowerKeeper is scoped only after the full-screen/transient-window checks above.
+            return false
         }
 
         if (BackgroundContract.PACKAGE_MI_SETTINGS == packageName) {

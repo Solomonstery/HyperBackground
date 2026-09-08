@@ -643,7 +643,7 @@ object BackgroundApplier {
             || n.contains("permission")
             || n.contains("networkassistant")
             || n.contains("garbage")
-            || n.contains("optimiz")
+        // 优化加速（optimiz）有内存圆环、应用列表等自定义视觉，不注入全局背景。
     }
 
     private fun matchesMiSettings(className: String?): Boolean {

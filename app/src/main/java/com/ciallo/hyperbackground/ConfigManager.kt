@@ -11,6 +11,29 @@ import java.io.FileOutputStream
 class ConfigManager private constructor(private val context: Context) : SharedPreferences {
     private val preferences = context.getSharedPreferences(BackgroundContract.PREFS, Context.MODE_PRIVATE)
 
+    init {
+        // 拨号盘槽位已从随机背景中移除（整屏宽度渲染基准与其它槽位不同，随机图无法正确居中）。
+        // 清理历史数据，避免 hook 侧仍按旧配置对拨号盘生效而 UI 已无法关闭。
+        migrateRemoveDialpadFromRandom()
+    }
+
+    private fun migrateRemoveDialpadFromRandom() {
+        val slots = getStringSet(BackgroundContract.UI_RANDOM_BG_SLOTS, mutableSetOf()) ?: mutableSetOf()
+        if (BackgroundContract.CONTACTS_DIALPAD in slots) {
+            edit().putStringSet(
+                BackgroundContract.UI_RANDOM_BG_SLOTS,
+                (slots - BackgroundContract.CONTACTS_DIALPAD).toMutableSet(),
+            ).apply()
+        }
+        val pinned = getStringSet(BackgroundContract.UI_RANDOM_BG_PINNED, mutableSetOf()) ?: mutableSetOf()
+        if (BackgroundContract.CONTACTS_DIALPAD in pinned) {
+            edit().putStringSet(
+                BackgroundContract.UI_RANDOM_BG_PINNED,
+                (pinned - BackgroundContract.CONTACTS_DIALPAD).toMutableSet(),
+            ).apply()
+        }
+    }
+
     val backgroundsDir: File
         get() = File(context.filesDir, "backgrounds").apply { mkdirs() }
 
@@ -28,6 +51,82 @@ class ConfigManager private constructor(private val context: Context) : SharedPr
     fun backgroundMime(slot: String): String =
         getString(BackgroundContract.MIME_PREFIX + slot, "application/octet-stream")
             ?: "application/octet-stream"
+
+    /**
+     * 当前实际生效的背景文件：随机开关开启 + 槽位被勾选 + random 文件存在时返回 random 图，
+     * 否则返回手动背景文件。导出图片时用这个。
+     */
+    fun currentBackgroundFile(slot: String): File {
+        val randomOn = getBoolean(BackgroundContract.UI_RANDOM_BG_ENABLED, false)
+        val randomSlots = getStringSet(BackgroundContract.UI_RANDOM_BG_SLOTS, mutableSetOf()) ?: emptySet()
+        val random = randomBackgroundFile(slot)
+        return if (randomOn && slot in randomSlots && random.isFile) random else backgroundFile(slot)
+    }
+
+    /** 当前实际生效的模块自身 UI 背景文件（随机优先）。 */
+    fun currentUiBackgroundFile(): File {
+        val randomOn = getBoolean(BackgroundContract.UI_RANDOM_BG_ENABLED, false)
+        val randomSlots = getStringSet(BackgroundContract.UI_RANDOM_BG_SLOTS, mutableSetOf()) ?: emptySet()
+        val random = uiRandomBackgroundFile
+        return if (randomOn && BackgroundContract.RANDOM_SLOT_UI in randomSlots && random.isFile) {
+            random
+        } else {
+            uiBackgroundFile
+        }
+    }
+
+    /** 当前实际生效的背景 mime（随机优先）。 */
+    fun currentBackgroundMime(slot: String): String {
+        val file = currentBackgroundFile(slot)
+        return if (file == randomBackgroundFile(slot)) {
+            getString(BackgroundContract.RANDOM_MIME_PREFIX + slot, "image/jpeg") ?: "image/jpeg"
+        } else {
+            backgroundMime(slot)
+        }
+    }
+
+    /** 当前实际生效的模块自身 UI 背景 mime（随机优先）。 */
+    fun currentUiBackgroundMime(): String {
+        val file = currentUiBackgroundFile()
+        return if (file == uiRandomBackgroundFile) {
+            getString(BackgroundContract.UI_RANDOM_BG_UI_MIME, "image/jpeg") ?: "image/jpeg"
+        } else {
+            getString(BackgroundContract.UI_BG_MIME, "image/*") ?: "image/*"
+        }
+    }
+
+    /** 随机背景已启用的槽位集合。 */
+    fun randomSlots(): Set<String> =
+        getStringSet(BackgroundContract.UI_RANDOM_BG_SLOTS, mutableSetOf()) ?: emptySet()
+
+    /** 随机背景中被固定的槽位集合（固定=启用但跳过刷新）。 */
+    fun pinnedRandomSlots(): Set<String> =
+        getStringSet(BackgroundContract.UI_RANDOM_BG_PINNED, mutableSetOf()) ?: emptySet()
+
+    /** 实际需要刷新（换图）的槽位：启用但未固定。 */
+    fun refreshableRandomSlots(): Set<String> = randomSlots() - pinnedRandomSlots()
+
+    /** 槽位随机状态：0=不使用，1=随刷新，2=固定。 */
+    fun randomSlotState(slot: String): Int = when {
+        slot !in randomSlots() -> 0
+        slot in pinnedRandomSlots() -> 2
+        else -> 1
+    }
+
+    /** 设置槽位随机状态（0/1/2），同时维护 SLOTS 与 PINNED 两个集合。 */
+    fun setRandomSlotState(slot: String, state: Int) {
+        val slots = randomSlots().toMutableSet()
+        val pinned = pinnedRandomSlots().toMutableSet()
+        when (state) {
+            0 -> { slots.remove(slot); pinned.remove(slot) }
+            1 -> { slots.add(slot); pinned.remove(slot) }
+            2 -> { slots.add(slot); pinned.add(slot) }
+        }
+        edit()
+            .putStringSet(BackgroundContract.UI_RANDOM_BG_SLOTS, slots)
+            .putStringSet(BackgroundContract.UI_RANDOM_BG_PINNED, pinned)
+            .apply()
+    }
 
     fun backgroundOpacity(slot: String): Int =
         getInt(BackgroundContract.OPACITY_PREFIX + slot, 100).coerceIn(0, 100)

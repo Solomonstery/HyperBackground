@@ -63,11 +63,12 @@ fun BackgroundPickerPreference(
     summary: String? = null,
 ) {
     val config = activity.config
-    val currentFile = if (slot == null) config.uiBackgroundFile else config.backgroundFile(slot)
+    // 预览与导出都以「当前实际生效的背景」为准：随机开启且生效时用 random 图，否则手动图。
+    val currentFile = if (slot == null) config.currentUiBackgroundFile() else config.currentBackgroundFile(slot)
     val currentMime = if (slot == null) {
-        config.getString(BackgroundContract.UI_BG_MIME, "image/*") ?: "image/*"
+        config.currentUiBackgroundMime()
     } else {
-        config.backgroundMime(slot)
+        config.currentBackgroundMime(slot)
     }
     var showDialog by remember { mutableStateOf(false) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -104,6 +105,20 @@ fun BackgroundPickerPreference(
             Icon(imageVector = MiuixIcons.Basic.ArrowRight, contentDescription = null)
         },
         onClick = { showDialog = true },
+    )
+    // 导出当前生效的背景图到相册（随机图优先）。无背景时点击提示无文件可导出。
+    BasicComponent(
+        title = stringResource(R.string.export_background),
+        summary = if (currentFile.isFile) {
+            stringResource(R.string.export_background_summary, humanSize(currentFile.length()))
+        } else {
+            stringResource(R.string.export_no_file)
+        },
+        enabled = currentFile.isFile,
+        endActions = {
+            Icon(imageVector = MiuixIcons.Basic.ArrowRight, contentDescription = null)
+        },
+        onClick = { activity.exportBackground(slot) },
     )
 
     WindowDialog(

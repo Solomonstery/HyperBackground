@@ -69,11 +69,21 @@ fun RandomBackgroundPage(
     var category by remember {
         mutableStateOf(config.getString(BackgroundContract.UI_RANDOM_BG_CATEGORY, "") ?: "")
     }
-    var slots by remember {
-        mutableStateOf(
-            config.getStringSet(BackgroundContract.UI_RANDOM_BG_SLOTS, mutableSetOf())?.toSet() ?: emptySet(),
-        )
+
+    // 拨号盘槽位不参与随机背景：它沿用整屏宽度渲染基准，随机图无法正确居中。
+    val slotOptions = listOf(
+        BackgroundContract.HOME to R.string.background_home,
+        BackgroundContract.DEVICE to R.string.background_device,
+        BackgroundContract.GLOBAL to R.string.background_global,
+        BackgroundContract.CONTACTS to R.string.background_contacts,
+        BackgroundContract.RANDOM_SLOT_UI to R.string.module_background,
+    )
+    // 槽位状态直接从 config 读取，slotRevision 用于修改后强制重组。
+    var slotRevision by remember { mutableIntStateOf(0) }
+    val slotStates = remember(slotRevision) {
+        slotOptions.associate { (slot, _) -> slot to config.randomSlotState(slot) }
     }
+    val enabledCount = slotStates.values.count { it != 0 }
     var showApiDialog by remember { mutableStateOf(false) }
     var slotsExpanded by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -98,15 +108,6 @@ fun RandomBackgroundPage(
     }
     val categoryLabels = categoryOptions.map { stringResource(it.second) }
     val categoryIndex = categoryOptions.indexOfFirst { it.first == category }.coerceAtLeast(0)
-
-    val slotOptions = listOf(
-        BackgroundContract.HOME to R.string.background_home,
-        BackgroundContract.DEVICE to R.string.background_device,
-        BackgroundContract.GLOBAL to R.string.background_global,
-        BackgroundContract.CONTACTS to R.string.background_contacts,
-        BackgroundContract.CONTACTS_DIALPAD to R.string.random_slot_dialpad,
-        BackgroundContract.RANDOM_SLOT_UI to R.string.module_background,
-    )
 
     LazyColumn(
         modifier.fillMaxSize(),
@@ -182,13 +183,13 @@ fun RandomBackgroundPage(
                     }
                     SectionTitle(stringResource(R.string.random_slots_title))
                     UiCard(activity, Modifier.fillMaxWidth()) {
-                        // 作用范围默认折叠为一行，点击展开各槽位开关，避免平铺占用过多纵向空间。
+                        // 作用范围默认折叠为一行，点击展开各槽位三态选择，避免平铺占用过多纵向空间。
                         BasicComponent(
                             title = stringResource(R.string.random_slots_title),
-                            summary = if (slots.isEmpty()) {
+                            summary = if (enabledCount == 0) {
                                 stringResource(R.string.random_slots_none)
                             } else {
-                                stringResource(R.string.random_slots_count, slots.size)
+                                stringResource(R.string.random_slots_count, enabledCount)
                             },
                             endActions = {
                                 Icon(
@@ -205,15 +206,19 @@ fun RandomBackgroundPage(
                             exit = shrinkVertically(animationSpec = tween(260)) + fadeOut(animationSpec = tween(160)),
                         ) {
                             Column {
+                                val stateOptions = listOf(
+                                    stringResource(R.string.random_slot_off),
+                                    stringResource(R.string.random_slot_refresh),
+                                    stringResource(R.string.random_slot_pinned),
+                                )
                                 slotOptions.forEach { (slot, labelRes) ->
-                                    SwitchPreference(
+                                    OverlayDropdownPreference(
                                         title = stringResource(labelRes),
-                                        checked = slot in slots,
-                                        onCheckedChange = { on ->
-                                            slots = if (on) slots + slot else slots - slot
-                                            config.edit()
-                                                .putStringSet(BackgroundContract.UI_RANDOM_BG_SLOTS, slots.toMutableSet())
-                                                .apply()
+                                        items = stateOptions,
+                                        selectedIndex = slotStates[slot] ?: 0,
+                                        onSelectedIndexChange = {
+                                            config.setRandomSlotState(slot, it)
+                                            slotRevision++
                                             activity.refreshUi()
                                         },
                                     )
@@ -230,7 +235,7 @@ fun RandomBackgroundPage(
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.textButtonColorsPrimary(),
                         enabled = !busy,
-                        onClick = { fetchAll(activity, slots) { busy = false } },
+                        onClick = { fetchAll(activity) { busy = false } },
                     )
                 }
             }
@@ -252,9 +257,11 @@ fun RandomBackgroundPage(
     }
 }
 
-private fun fetchAll(activity: MainActivity, slots: Set<String>, onDone: () -> Unit) {
+private fun fetchAll(activity: MainActivity, onDone: () -> Unit) {
+    // 只刷新未固定的槽位，固定槽位保留现有 random 图不动。
+    val slots = activity.config.refreshableRandomSlots()
     if (slots.isEmpty()) {
-        android.widget.Toast.makeText(activity, R.string.random_no_slots, android.widget.Toast.LENGTH_SHORT).show()
+        android.widget.Toast.makeText(activity, R.string.random_no_refreshable, android.widget.Toast.LENGTH_SHORT).show()
         return
     }
     val total = slots.size

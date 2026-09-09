@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.ImageView
 import android.widget.Toast
+import java.io.File
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -183,6 +184,42 @@ class MainActivity : ComponentActivity() {
 
     fun clearUiBackground() {
         if (config.clearUiBackground()) revision++
+    }
+
+    /**
+     * 把当前槽位实际生效的背景图导出到相册（Pictures/HyperBackground/）。
+     * 随机背景开启且生效时导出 random 图，否则导出手动图。成功后通知 MediaStore 扫描。
+     */
+    fun exportBackground(slot: String?) {
+        val file = if (slot == null) config.currentUiBackgroundFile() else config.currentBackgroundFile(slot)
+        if (!file.isFile) {
+            toast(R.string.export_no_file)
+            return
+        }
+        val mime = if (slot == null) config.currentUiBackgroundMime() else config.currentBackgroundMime(slot)
+        val ext = when {
+            mime.contains("png", ignoreCase = true) -> "png"
+            mime.contains("webp", ignoreCase = true) -> "webp"
+            mime.contains("gif", ignoreCase = true) -> "gif"
+            mime.contains("jpeg", ignoreCase = true) || mime.contains("jpg", ignoreCase = true) -> "jpg"
+            else -> "bin"
+        }
+        runCatching {
+            val dir = android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_PICTURES,
+            ).resolve("HyperBackground")
+            if (!dir.exists()) dir.mkdirs()
+            val slotName = slot ?: "module_ui"
+            val target = File(dir, "hyperbackground_${slotName}_${System.currentTimeMillis()}.$ext")
+            file.copyTo(target, overwrite = true)
+            // 通知系统相册扫描新文件。
+            android.media.MediaScannerConnection.scanFile(
+                this, arrayOf(target.absolutePath), arrayOf(mime), null,
+            )
+            toast(getString(R.string.export_done, target.name))
+        }.onFailure {
+            toast(getString(R.string.save_failed, it.message ?: "Unknown error"))
+        }
     }
 
     /**

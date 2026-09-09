@@ -19,7 +19,8 @@ class BootRandomReceiver : BroadcastReceiver() {
         if (!config.getBoolean(BackgroundContract.UI_RANDOM_BG_ENABLED, false)) return
         val mode = config.getInt(BackgroundContract.UI_RANDOM_BG_MODE, BackgroundContract.RANDOM_BG_MODE_MANUAL)
         if (mode != BackgroundContract.RANDOM_BG_MODE_BOOT && mode != BackgroundContract.RANDOM_BG_MODE_BOTH) return
-        val slots = config.getStringSet(BackgroundContract.UI_RANDOM_BG_SLOTS, mutableSetOf()) ?: return
+        // 跳过固定槽位：固定的图保留不动，只刷新可刷新的槽位。
+        val slots = config.refreshableRandomSlots()
         if (slots.isEmpty()) return
 
         val pending = goAsync()

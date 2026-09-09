@@ -100,6 +100,8 @@ object BackgroundContract {
     const val UI_RANDOM_BG_CATEGORY = "ui_random_bg_category"
     // 勾选生效的槽位集合（home/device/global/contacts/contacts_dialpad/ui），默认空。
     const val UI_RANDOM_BG_SLOTS = "ui_random_bg_slots"
+    // 固定槽位集合（必须先在 SLOTS 中）：固定的槽位仍渲染 random 图，但跳过「立刻更换」和开机换图。
+    const val UI_RANDOM_BG_PINNED = "ui_random_bg_pinned"
     // 触发模式：0=仅手动按钮，1=仅开机自动，2=手动+开机。
     const val UI_RANDOM_BG_MODE = "ui_random_bg_mode"
     const val RANDOM_BG_MODE_MANUAL = 0

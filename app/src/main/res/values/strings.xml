@@ -227,6 +227,33 @@
     <string name="clear_records">Clear records</string>
     <string name="not_read">Not read</string>
     <string name="read_at">Read · %1$s</string>
+    <string name="random_background">Random background</string>
+    <string name="random_entry_summary">Pull a random background from an API; manual images are kept</string>
+    <string name="random_enabled_summary">When on, uses a random API image for the selected scopes; turn off to restore your manual image</string>
+    <string name="random_trigger">Trigger</string>
+    <string name="random_mode">When to rotate</string>
+    <string name="random_mode_manual">Manual only</string>
+    <string name="random_mode_boot">On boot only</string>
+    <string name="random_mode_both">Manual &amp; boot</string>
+    <string name="random_api_title">Image source</string>
+    <string name="random_api_dialog_summary">The endpoint must return the image binary directly (302 redirects allowed). Defaults to the uapis random image API.</string>
+    <string name="random_category">Category</string>
+    <string name="random_cat_random">Random</string>
+    <string name="random_cat_acg">ACG anime</string>
+    <string name="random_cat_landscape">Landscape</string>
+    <string name="random_cat_anime">Mixed anime</string>
+    <string name="random_cat_mobile_wallpaper">Mobile wallpaper</string>
+    <string name="random_cat_general_anime">General anime</string>
+    <string name="random_cat_pc_wallpaper">PC wallpaper (tablet)</string>
+    <string name="random_slots_title">Apply to</string>
+    <string name="random_slot_dialpad">Dialpad</string>
+    <string name="random_slots_none">None selected</string>
+    <string name="random_slots_count">%1$d selected</string>
+    <string name="random_fetch">Change now</string>
+    <string name="random_fetching">Changing…</string>
+    <string name="random_fetch_done">Random background updated</string>
+    <string name="random_fetch_failed">%1$d of %2$d scopes failed</string>
+    <string name="random_no_slots">Select at least one scope first</string>
     <string-array name="xposed_scope">
         <item>com.android.settings</item><item>com.milink.service</item><item>com.android.phone</item>
         <item>com.xiaomi.account</item><item>com.android.thememanager</item><item>com.miui.home</item>

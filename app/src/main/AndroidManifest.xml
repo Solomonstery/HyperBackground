@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
 
     <application
@@ -24,6 +25,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 开机自动换随机背景：默认禁用，仅当用户在设置里选了「开机」模式时由
+             HyperBackgroundApp 运行时通过 PackageManager 启用，避免仅手动模式下开机被无谓拉起。 -->
+        <receiver
+            android:name=".BootRandomReceiver"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name=".appearance.SettingsAppearanceProvider"

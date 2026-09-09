@@ -53,6 +53,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.icon.extended.Background
 import top.yukonga.miuix.kmp.icon.extended.Phone
+import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -107,6 +108,12 @@ fun HomePage(
                     title = stringResource(R.string.background_contacts),
                     summary = stringResource(R.string.background_contacts_summary),
                 ) { onOpenBackground(BackgroundContract.CONTACTS) }
+                // 随机背景入口并入通道列表末尾：进入专门页面配置 API/分类/作用范围，不影响手动设置的背景。
+                ScopeEntry(
+                    icon = MiuixIcons.Refresh,
+                    title = stringResource(R.string.random_background),
+                    summary = stringResource(R.string.random_entry_summary),
+                ) { onOpenBackground(MainActivity.ROUTE_RANDOM_BG) }
             }
         }
     }

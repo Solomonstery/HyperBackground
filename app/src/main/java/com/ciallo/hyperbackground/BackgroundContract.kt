@@ -92,6 +92,27 @@ object BackgroundContract {
     const val UI_SAYING_ENABLED = "ui_saying_enabled"
     const val UI_SAYING_API = "ui_saying_api"
     const val UI_SAYING_KEY = "ui_saying_key"
+    // 随机背景（API 拉取）：与用户手动设置的背景独立存储（<slot>.random.bin），开关切换互不覆盖。
+    // 总开关关闭或某槽位未勾选时，hook 侧仍读手动背景文件，手动图永远保留。
+    const val UI_RANDOM_BG_ENABLED = "ui_random_bg_enabled"
+    const val UI_RANDOM_BG_API = "ui_random_bg_api"
+    // 主类别（acg/landscape/anime/pc_wallpaper/mobile_wallpaper/general_anime/ai_drawing/bq/furry），空=全随机。
+    const val UI_RANDOM_BG_CATEGORY = "ui_random_bg_category"
+    // 勾选生效的槽位集合（home/device/global/contacts/contacts_dialpad/ui），默认空。
+    const val UI_RANDOM_BG_SLOTS = "ui_random_bg_slots"
+    // 触发模式：0=仅手动按钮，1=仅开机自动，2=手动+开机。
+    const val UI_RANDOM_BG_MODE = "ui_random_bg_mode"
+    const val RANDOM_BG_MODE_MANUAL = 0
+    const val RANDOM_BG_MODE_BOOT = 1
+    const val RANDOM_BG_MODE_BOTH = 2
+    // 槽位集合中表示「模块自身 UI 背景」的特殊值（系统槽位用 home/device/... 原名）。
+    const val RANDOM_SLOT_UI = "ui"
+    // random 文件元数据前缀，与手动 MIME_PREFIX/SIZE_PREFIX/MODIFIED_PREFIX 完全隔离。
+    const val RANDOM_MIME_PREFIX = "random_mime_"
+    const val RANDOM_SIZE_PREFIX = "random_size_"
+    const val RANDOM_MODIFIED_PREFIX = "random_modified_"
+    // 模块自身 UI 背景的 random 文件 mime（UI 背景不经过 libxposed remote，仅模块进程内读取）。
+    const val UI_RANDOM_BG_UI_MIME = "ui_random_bg_ui_mime"
     const val UI_IGNORED_UPDATE_VERSION = "ui_ignored_update_version"
     internal const val UI_SCROLL_Y = "ui_scroll_y"
     const val UI_THEME_FOLLOW = 0
@@ -115,19 +136,30 @@ object BackgroundContract {
         return false
     }
 
-    fun remoteMediaName(slot: String): String {
+    fun remoteMediaName(slot: String, random: Boolean = false): String {
         if (slot != HOME && slot != DEVICE && slot != GLOBAL &&
             slot != CONTACTS && slot != CONTACTS_DIALPAD
         ) {
             throw IllegalArgumentException("Unknown background slot: $slot")
         }
-        return "background_$slot.bin"
+        // random 背景用独立 remote 文件名，与用户手动背景 background_<slot>.bin 互不覆盖。
+        return if (random) "background_$slot.random.bin" else "background_$slot.bin"
     }
 
     internal fun query(ignored: Context?, slot: String): Source {
         val prefs = HookRuntime.preferences()
-        val size = prefs.getLong(SIZE_PREFIX + slot, -1L)
-        val modified = prefs.getLong(MODIFIED_PREFIX + slot, -1L)
+        // 随机背景开关：开启且该槽位被勾选、且 random 文件已下载时读 random 文件，
+        // 否则回退用户手动设置的文件（避免开了开关但还没换图时背景空白）。
+        // 显示参数（透明度/模糊/亮度/缩放/焦点）两套图共用，仍按 slot 读取。
+        val randomOn = prefs.getBoolean(UI_RANDOM_BG_ENABLED, false)
+        val randomSlots = prefs.getStringSet(UI_RANDOM_BG_SLOTS, emptySet()) ?: emptySet()
+        val randomSize = prefs.getLong(RANDOM_SIZE_PREFIX + slot, -1L)
+        val useRandom = randomOn && randomSlots.contains(slot) && randomSize >= 0L
+        val mimePrefix = if (useRandom) RANDOM_MIME_PREFIX else MIME_PREFIX
+        val sizePrefix = if (useRandom) RANDOM_SIZE_PREFIX else SIZE_PREFIX
+        val modifiedPrefix = if (useRandom) RANDOM_MODIFIED_PREFIX else MODIFIED_PREFIX
+        val size = prefs.getLong(sizePrefix + slot, -1L)
+        val modified = prefs.getLong(modifiedPrefix + slot, -1L)
         // 横纵向定位焦点、缩放大小按通道分别读取，避免拨号盘与设置主页互相污染。
         // 其它通道保持当前使用的中性 50/50/100 参数。
         val isDialpad = CONTACTS_DIALPAD == slot
@@ -146,7 +178,7 @@ object BackgroundContract {
         val brightness = prefs.getInt(BRIGHTNESS_PREFIX + slot, BRIGHTNESS_DEFAULT)
         return Source(
             slot,
-            prefs.getString(MIME_PREFIX + slot, "application/octet-stream"),
+            prefs.getString(mimePrefix + slot, "application/octet-stream"),
             size,
             modified,
             size >= 0L,
@@ -162,6 +194,7 @@ object BackgroundContract {
             focusY,
             zoom,
             brightness,
+            useRandom,
         )
     }
 
@@ -187,6 +220,8 @@ object BackgroundContract {
         focusY: Int,
         zoom: Int,
         brightness: Int,
+        // true=当前应渲染 random 背景（读 background_<slot>.random.bin）；false=用户手动背景。
+        val random: Boolean = false,
     ) {
         val mime: String = mime ?: "application/octet-stream"
         val opacity: Int = opacity.coerceIn(0, 100)
@@ -202,10 +237,10 @@ object BackgroundContract {
         fun isVideo(): Boolean = mime.startsWith("video/")
 
         @Throws(FileNotFoundException::class)
-        fun openFile(): ParcelFileDescriptor = HookRuntime.openRemoteFile(remoteMediaName(slot))
+        fun openFile(): ParcelFileDescriptor = HookRuntime.openRemoteFile(remoteMediaName(slot, random))
 
         fun cacheKey(): String {
-            return "$slot:$mime:$size:$modified:$opacity:" +
+            return "$slot:$random:$mime:$size:$modified:$opacity:" +
                 "$blurEnabled:$blurRadius:$fontMode:$deviceLogoMode:" +
                 "$deviceLogoText:$deviceLogoColor:$settingsThemeMode:" +
                 "$focusX:$focusY:$zoom:$brightness"

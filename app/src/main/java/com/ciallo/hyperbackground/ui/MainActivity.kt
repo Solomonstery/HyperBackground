@@ -61,6 +61,7 @@ import com.ciallo.hyperbackground.ui.pages.DeviceCardPage
 import com.ciallo.hyperbackground.ui.pages.DeviceInfoPage
 import com.ciallo.hyperbackground.ui.pages.HomePage
 import com.ciallo.hyperbackground.ui.pages.SettingsPage
+import com.ciallo.hyperbackground.ui.pages.RandomBackgroundPage
 import com.ciallo.hyperbackground.ui.pages.RestartScopesDialog
 import com.ciallo.hyperbackground.ui.pages.UpdateAvailableDialog
 import kotlinx.coroutines.launch
@@ -379,6 +380,7 @@ class MainActivity : ComponentActivity() {
                     ROUTE_CHANGELOG -> ChangelogScreen(onBack = { detailSlot = null })
                     ROUTE_DEVICE_CARD -> DeviceCardScreen(onBack = { detailSlot = null })
                     ROUTE_DEVICE_INFO -> DeviceInfoScreen(onBack = { detailSlot = null })
+                    ROUTE_RANDOM_BG -> RandomBackgroundScreen(onBack = { detailSlot = null })
                     else -> BackgroundDetailScreen(slot = slot, onBack = { detailSlot = null })
                 }
             }
@@ -558,7 +560,7 @@ class MainActivity : ComponentActivity() {
         content: @Composable (PaddingValues, Modifier) -> Unit,
     ) {
         val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-        val hasUiBackground = remember(revision) { config.uiBackgroundFile.isFile }
+        val hasUiBackground = remember(revision) { currentUiBackgroundFile().isFile }
         val topBarColor = if (hasUiBackground) {
             Color.Transparent
         } else {
@@ -589,7 +591,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun BackgroundDetailScreen(slot: String, onBack: () -> Unit) {
         val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-        val hasUiBackground = remember(revision) { config.uiBackgroundFile.isFile }
+        val hasUiBackground = remember(revision) { currentUiBackgroundFile().isFile }
         val topBarColor = if (hasUiBackground) {
             Color.Transparent
         } else {
@@ -630,7 +632,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun ChangelogScreen(onBack: () -> Unit) {
         val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-        val hasUiBackground = remember(revision) { config.uiBackgroundFile.isFile }
+        val hasUiBackground = remember(revision) { currentUiBackgroundFile().isFile }
         val topBarColor = if (hasUiBackground) {
             Color.Transparent
         } else {
@@ -664,7 +666,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun DeviceCardScreen(onBack: () -> Unit) {
         val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-        val hasUiBackground = remember(revision) { config.uiBackgroundFile.isFile }
+        val hasUiBackground = remember(revision) { currentUiBackgroundFile().isFile }
         val topBarColor = if (hasUiBackground) {
             Color.Transparent
         } else {
@@ -698,7 +700,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun DeviceInfoScreen(onBack: () -> Unit) {
         val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-        val hasUiBackground = remember(revision) { config.uiBackgroundFile.isFile }
+        val hasUiBackground = remember(revision) { currentUiBackgroundFile().isFile }
         val topBarColor = if (hasUiBackground) {
             Color.Transparent
         } else {
@@ -730,8 +732,62 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
+    private fun RandomBackgroundScreen(onBack: () -> Unit) {
+        val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+        val hasUiBackground = remember(revision) {
+            // 顶栏配色按当前实际展示的背景（随机或手动）判断。
+            currentUiBackgroundFile().isFile
+        }
+        val topBarColor = if (hasUiBackground) {
+            Color.Transparent
+        } else {
+            MiuixTheme.colorScheme.surface.copy(alpha = cardOpacity)
+        }
+        val title = getString(R.string.random_background)
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    color = topBarColor,
+                    title = title,
+                    largeTitle = title,
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(MiuixIcons.Back, contentDescription = getString(R.string.back))
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            RandomBackgroundPage(
+                activity = this@MainActivity,
+                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                padding = padding,
+            )
+        }
+    }
+
+    /**
+     * 当前应展示的模块 UI 背景文件：随机开关开启、ui 槽位被勾选且 random 文件存在时用 random 图，
+     * 否则用用户手动设置的 ui_background.bin。两份文件独立、互不覆盖。
+     */
+    private fun currentUiBackgroundFile(): java.io.File {
+        val randomOn = config.getBoolean(BackgroundContract.UI_RANDOM_BG_ENABLED, false)
+        val randomSlots = config.getStringSet(BackgroundContract.UI_RANDOM_BG_SLOTS, mutableSetOf()) ?: emptySet()
+        return if (randomOn &&
+            randomSlots.contains(BackgroundContract.RANDOM_SLOT_UI) &&
+            config.uiRandomBackgroundFile.isFile
+        ) {
+            config.uiRandomBackgroundFile
+        } else {
+            config.uiBackgroundFile
+        }
+    }
+
+    @Composable
     private fun ModuleBackground(revision: Int) {
-        val file = remember(revision) { config.uiBackgroundFile }
+        val file = remember(revision) { currentUiBackgroundFile() }
         if (!file.isFile) return
         val opacity = config.getInt(BackgroundContract.UI_BG_OPACITY, 100) / 100f
         val blur = config.getBoolean(BackgroundContract.UI_BG_BLUR_ENABLED, false)
@@ -763,5 +819,6 @@ class MainActivity : ComponentActivity() {
         const val ROUTE_CHANGELOG = "__changelog__"
         const val ROUTE_DEVICE_CARD = "__appearance_device_card__"
         const val ROUTE_DEVICE_INFO = "__appearance_device_info__"
+        const val ROUTE_RANDOM_BG = "__random_bg__"
     }
 }

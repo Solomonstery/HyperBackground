@@ -2,6 +2,15 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.4.4-beta1
+
+### 通讯录
+
+- 修复：联系人详情页（SubActivity / PeopleDetailActivity）无背景——反编译通讯录确认真实 Activity 类名后纳入通讯录背景通道，复用与主界面一致的背景层注入与列表适配逻辑。
+- 优化：通话/联系人列表白底清除改用 `colorFilter` 递归透明方案——不再替换 background（会丢失 9-patch 的 padding/inset 导致内容贴边），而是对 StateListDrawable 的所有状态、LayerDrawable 的所有层统一设置透明 colorFilter，布局属性完整保留。
+- 优化：新增 `View.setBackground` hook，item 重绑时即时清除不透明中性色底，避免等全局布局补扫的延迟白块；配合 OnGlobalLayout（设 dirty）+ OnPreDraw（执行清除）双监听器兜底，无闪烁且不卡。
+- 修复：`view.context` 为 `ContextThemeWrapper` 时 setBackground hook 失效的问题——递归遍历 ContextWrapper 链查找 Activity。
+
 ## 1.4.3
 
 汇总 1.4.3-beta6 至 beta8 全部测试线，作为稳定版发布。

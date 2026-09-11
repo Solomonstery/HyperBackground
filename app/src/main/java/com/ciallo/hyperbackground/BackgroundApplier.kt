@@ -32,6 +32,7 @@ object BackgroundApplier {
     private val DIALPAD_SESSION = FIELD_PREFIX + "dialpad.session"
     private val CONTACTS_RESCAN = FIELD_PREFIX + "contacts.rescan"
     private val CONTACTS_ADAPT_AT = FIELD_PREFIX + "contacts.adapt.at"
+    private val CONTACTS_ADAPT_DIRTY = FIELD_PREFIX + "contacts.adapt.dirty"
     // 清除列表不透明中性色背景前，把原背景存到该 View 的 Xposed 附加字段，便于开关关闭时还原。
     private val CONTACTS_BG_SAVED = FIELD_PREFIX + "contacts.bg.saved"
     // 自定义模式把 dialer_background_view 的原生 9-patch 底换成透明前，先存原背景到该字段供切回默认时还原。
@@ -121,6 +122,14 @@ object BackgroundApplier {
             val content = activity.findViewById<View>(android.R.id.content)
             if (content != null) adaptContactsOpaqueSurfaces(content, enabled, content, bgView)
 
+            // 联系人详情页（PeopleDetailActivity）的头像虚化底 / 滚动 / 内容容器背景是非中性色
+            // （头像模糊或主题色），通用中性底扫描清不掉；这里随重扫描一并清成透明，让模块背景透出。
+            if (enabled) {
+                clearContactsDetailSurface(activity, "container_layout")
+                clearContactsDetailSurface(activity, "zoom_scrollview")
+                clearContactsDetailSurface(activity, "content_container")
+            }
+
             // 搜索是 Miuix SearchActionMode 拉起的覆盖层（ContactsSearchFragment 的 DispatchFrameLayout），
             // 挂在 DecorView 下、android.R.id.content 之外，故上面按 content 收窄的遍历扫不到它——搜索后
             // 结果列表里某层不透明白容器会挡住背景（上半白、下半透出的分界即源于此）。这里按 Miuix 框架
@@ -169,19 +178,11 @@ object BackgroundApplier {
             try {
                 if (enabled) {
                     val bg = view.background
-                    // 列表条目随 RecyclerView 复用可能被重新赋上不透明白底：只要当前背景仍是不透明中性色就替换；
-                    // saved 仅在首次记录原始背景（供还原），后续复用不覆盖它。
                     if (bg != null && isOpaqueNeutralSurface(bg)) {
-                        val saved = view.getAdditionalInstanceField(CONTACTS_BG_SAVED)
-                        if (saved == null) view.setAdditionalInstanceField(CONTACTS_BG_SAVED, bg)
-                        view.background = ColorDrawable(Color.TRANSPARENT)
+                        makeTransparent(bg)
                     }
                 } else {
-                    val saved = view.getAdditionalInstanceField(CONTACTS_BG_SAVED)
-                    if (saved is Drawable) {
-                        view.background = saved
-                        view.removeAdditionalInstanceField(CONTACTS_BG_SAVED)
-                    }
+                    restoreTransparent(view.background)
                 }
             } catch (_: Throwable) {
             }
@@ -191,6 +192,107 @@ object BackgroundApplier {
                 adaptContactsOpaqueSurfaces(view.getChildAt(i), enabled, contentRoot, skip)
             }
         }
+    }
+
+    // 供 View.setBackground hook 回调调用：item 重绑时一定会 setBackground，在调用后立即清除
+    // 不透明中性色底色，避免等全局布局/绘制前扫描的延迟白块。只处理联系人 content 子树内、且非
+    // 拨号盘背景板的 view；已被存过原始背景（CONTACTS_BG_SAVED 非空）说明之前已清过，跳过。
+    fun onViewBackgroundChanged(view: View?) {
+        if (view == null) return
+        try {
+            val activity = findActivity(view.context) ?: return
+            if (!matchesContactsSettings(activity.javaClass.name)) return
+            // 跳过拨号盘背景板及其子树（由 setAlpha 专门处理）。
+            val bgViewId = resolveId(activity, "dialer_background_view")
+            if (bgViewId != 0) {
+                val bgView = activity.findViewById<View>(bgViewId)
+                if (bgView != null && isDescendant(view, bgView)) return
+            }
+            val bg = view.background
+            if (bg != null && isOpaqueNeutralSurface(bg)) {
+                makeTransparent(bg)
+                view.invalidate()
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
+    // 把 drawable 设为完全透明：给 StateListDrawable 的所有状态、LayerDrawable 的所有层都套上
+    // colorFilter。只设当前状态的 colorFilter/alpha 会在状态切换后失效（滑动时 pressed 态显示原色）。
+    private val transparentFilter = android.graphics.PorterDuffColorFilter(
+        0, android.graphics.PorterDuff.Mode.SRC_OUT)
+
+    private fun makeTransparent(bg: android.graphics.drawable.Drawable) {
+        try {
+            bg.mutate().colorFilter = transparentFilter
+            when (bg) {
+                is android.graphics.drawable.StateListDrawable -> {
+                    for (i in 0 until bg.stateCount) {
+                        bg.getStateDrawable(i)?.let { makeTransparent(it) }
+                    }
+                }
+                is android.graphics.drawable.LayerDrawable -> {
+                    for (i in 0 until bg.numberOfLayers) {
+                        bg.getDrawable(i)?.let { makeTransparent(it) }
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun restoreTransparent(bg: android.graphics.drawable.Drawable?) {
+        if (bg == null) return
+        try {
+            bg.mutate().clearColorFilter()
+            when (bg) {
+                is android.graphics.drawable.StateListDrawable -> {
+                    for (i in 0 until bg.stateCount) {
+                        restoreTransparent(bg.getStateDrawable(i))
+                    }
+                }
+                is android.graphics.drawable.LayerDrawable -> {
+                    for (i in 0 until bg.numberOfLayers) {
+                        restoreTransparent(bg.getDrawable(i))
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun findActivity(ctx: android.content.Context?): Activity? {
+        var c = ctx
+        var depth = 0
+        while (c is android.content.ContextWrapper && depth < 10) {
+            if (c is Activity) return c
+            c = c.baseContext
+            depth++
+        }
+        return null
+    }
+
+    private fun isDescendant(child: View, ancestor: View): Boolean {
+        var v: View? = child
+        while (v != null) {
+            if (v === ancestor) return true
+            v = v.parent as? View
+        }
+        return false
+    }
+
+    // 联系人详情页（SubActivity / PeopleDetailActivity）的头像虚化底、滚动容器、内容容器，
+    // 其背景往往是头像虚化或主题色而非中性色，通用中性底扫描清不掉；按 id 定位后强制置透明，
+    // 首次记录原始背景供适配关闭时还原。
+    private fun clearContactsDetailSurface(activity: Activity, name: String) {
+        val id = activity.resources.getIdentifier(name, "id", activity.packageName)
+        if (id == 0) return
+        val view = activity.findViewById<View>(id) ?: return
+        val bg = view.background
+        if (bg == null) return
+        val saved = view.getAdditionalInstanceField(CONTACTS_BG_SAVED + "_" + name)
+        if (saved == null) view.setAdditionalInstanceField(CONTACTS_BG_SAVED + "_" + name, bg)
+        view.background = ColorDrawable(Color.TRANSPARENT)
     }
 
     // 缓存联系人进程内 drawable 采样色，避免同一次扫描内对同一 ConstantState 反复创建 8x8 bitmap。
@@ -213,9 +315,6 @@ object BackgroundApplier {
                 try {
                     if (state == null) return false
                     val copy = state.newDrawable().mutate()
-                    // 渲染 8x8 后取中心像素，而非 1x1。9-patch（如分组吸顶头 list_view_item_group_header_bg）
-                    // 的可拉伸区/内容区划分会让 1x1 采样落到边缘透明 padding 区，深色不透明黑条被误判为透明
-                    // 而漏清；用稍大的画布取中心点采到真正的填充色，判定才准确。
                     val bmp = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
                     val canvas = Canvas(bmp)
                     copy.setBounds(0, 0, 8, 8)
@@ -235,8 +334,14 @@ object BackgroundApplier {
         return maxOf(r, maxOf(g, b)) - minOf(r, minOf(g, b)) <= 24
     }
 
-    // 拨号盘键盘是点击后异步 inflate 的，Activity 生命周期回调抓不到它出现的那一刻；挂一个
-    // 常驻的轻量布局监听（带 200ms 节流），在其出现时补设 alpha / 清一次列表底，保证展开即生效。
+    // 拨号盘键盘是点击后异步 inflate 的，Activity 生命周期回调抓不到它出现的那一刻；需要在其出现后
+    // 补设 alpha / 清一次列表底。列表项随 RecyclerView 回收重绑会恢复不透明底色，必须在绘制前清除
+    // 否则会闪白块；但每帧遍历整棵树又会卡。
+    //
+    // 双监听器配合：
+    //   OnGlobalLayoutListener：布局变化时只设一个 dirty 标记（极轻量，带 16ms 节流防抖）。
+    //   OnPreDrawListener：每帧只检查 dirty 标记，为 true 才真正遍历清除，并在绘制前一帧生效
+    //   （无闪烁），随后重置标记——没有布局变化时每帧只做一次 boolean 判断，几乎零开销。
     private fun installContactsSurfaceRescan(activity: Activity) {
         try {
             if (activity.getAdditionalInstanceField(CONTACTS_RESCAN) == true) return
@@ -244,13 +349,29 @@ object BackgroundApplier {
             if (decor !is ViewGroup) return
             val observer = decor.viewTreeObserver
             if (!observer.isAlive) return
-            val listener = ViewTreeObserver.OnGlobalLayoutListener {
+
+            val globalLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {
                 if (activity.isFinishing || activity.isDestroyed) return@OnGlobalLayoutListener
-                adaptContactsSurfaces(activity, true)
+                val now = SystemClock.uptimeMillis()
+                val last = activity.getAdditionalInstanceField(CONTACTS_ADAPT_AT) as? Long ?: 0L
+                if (now - last >= 16L) {
+                    activity.setAdditionalInstanceField(CONTACTS_ADAPT_AT, now)
+                    activity.setAdditionalInstanceField(CONTACTS_ADAPT_DIRTY, true)
+                }
             }
-            observer.addOnGlobalLayoutListener(listener)
-            // 保存引用，便于 Activity 销毁时摘除，避免监听器悬挂。
-            activity.setAdditionalInstanceField(CONTACTS_RESCAN, listener)
+            val preDrawListener = ViewTreeObserver.OnPreDrawListener {
+                if (activity.isFinishing || activity.isDestroyed) return@OnPreDrawListener true
+                val dirty = activity.getAdditionalInstanceField(CONTACTS_ADAPT_DIRTY) == true
+                if (dirty) {
+                    activity.setAdditionalInstanceField(CONTACTS_ADAPT_DIRTY, false)
+                    adaptContactsSurfaces(activity, false)
+                }
+                true
+            }
+            observer.addOnGlobalLayoutListener(globalLayoutListener)
+            observer.addOnPreDrawListener(preDrawListener)
+            // 用数组保存两个监听器引用，便于销毁时一并摘除。
+            activity.setAdditionalInstanceField(CONTACTS_RESCAN, arrayOf(globalLayoutListener, preDrawListener))
         } catch (error: Throwable) {
             log("installContactsSurfaceRescan", error)
         }
@@ -258,14 +379,22 @@ object BackgroundApplier {
 
     private fun removeContactsSurfaceRescan(activity: Activity) {
         try {
-            val listener = activity.getAdditionalInstanceField(CONTACTS_RESCAN)
-            if (listener !is ViewTreeObserver.OnGlobalLayoutListener) return
+            val saved = activity.getAdditionalInstanceField(CONTACTS_RESCAN)
+            if (saved !is Array<*>) return
             val decor = activity.window?.decorView
             if (decor != null) {
                 val observer = decor.viewTreeObserver
-                if (observer.isAlive) observer.removeOnGlobalLayoutListener(listener)
+                if (observer.isAlive) {
+                    saved.forEach {
+                        when (it) {
+                            is ViewTreeObserver.OnGlobalLayoutListener -> observer.removeOnGlobalLayoutListener(it)
+                            is ViewTreeObserver.OnPreDrawListener -> observer.removeOnPreDrawListener(it)
+                        }
+                    }
+                }
             }
             activity.setAdditionalInstanceField(CONTACTS_RESCAN, null)
+            activity.setAdditionalInstanceField(CONTACTS_ADAPT_DIRTY, null)
         } catch (_: Throwable) {
         }
     }
@@ -656,11 +785,14 @@ object BackgroundApplier {
             || n.contains("settings")
     }
 
-    // 通讯录与拨号的拨号盘/联系人/最近通话主界面统一由 PeopleActivity 承载
-    // （TwelveKeyDialer/ContactsFrontDoor 等均为其 alias），只对该主界面注入背景，
-    // 天然排除编辑、来电、快速联系卡、权限弹窗等其它页面。
+    // 通讯录主界面（PeopleActivity）、联系人详情页（SubActivity 承载 ContactDetailAtyFragment /
+    // PeopleDetailAtyFragment）以及 PeopleDetailActivity 共用同一 contacts 背景通道；
+    // 来电、快速联系卡、权限弹窗等其它页面不在此列。
     private fun matchesContactsSettings(className: String?): Boolean {
-        return className != null && className == "com.android.contacts.activities.PeopleActivity"
+        if (className == null) return false
+        return className == "com.android.contacts.activities.PeopleActivity" ||
+            className == "com.android.contacts.activities.SubActivity" ||
+            className == "com.android.contacts.activities.PeopleDetailActivity"
     }
 
     private fun removeGlobal(activity: Activity?) {
@@ -731,6 +863,11 @@ object BackgroundApplier {
                 clearNamed(activity, session, "action_bar_activity_content")
                 clearNamed(activity, session, "area_content")
                 clearNamed(activity, session, "auto_content")
+                // 联系人详情页（PeopleDetailActivity）专用容器：头像模糊底 / 滚动容器 / 内容容器，
+                // 其背景可能是头像虚化或主题色而非中性色，通用中性底扫描清不掉，这里强制透明。
+                clearNamed(activity, session, "container_layout")
+                clearNamed(activity, session, "zoom_scrollview")
+                clearNamed(activity, session, "content_container")
             }
             host.addView(media, 0, mediaParams)
             session.attach(activity, host, home, transparentTopBar)

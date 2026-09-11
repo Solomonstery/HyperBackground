@@ -37,6 +37,29 @@ object SettingsBackgroundHook {
         if (contacts) {
             hookContactsActivity(classLoader)
             hookDialpadLayout(classLoader)
+            hookContactsViewBackground()
+        }
+    }
+
+    // 联系人列表项随 RecyclerView 回收重绑（拨号盘输入过滤、快速滚动）会重新 setBackground
+    // 恢复不透明底色，等全局布局/绘制前扫描会有延迟白块。直接 hook View.setBackground，在设置后
+    // 立即清除不透明中性色底色——只在背景变化时触发，比每帧遍历轻量，且无延迟。
+    private fun hookContactsViewBackground() {
+        try {
+            val callback: HookRuntime.LegacyHookParam.() -> Unit = cb@{
+                val view = thisObject as? View ?: return@cb
+                val newBg = args[0]
+                // 我们自己设置的透明占位 ColorDrawable，跳过避免递归。
+                if (newBg is android.graphics.drawable.ColorDrawable &&
+                    newBg.color == android.graphics.Color.TRANSPARENT
+                ) return@cb
+                BackgroundApplier.onViewBackgroundChanged(view)
+            }
+            hookMethod(View::class.java, "setBackground", android.graphics.drawable.Drawable::class.java, after = callback)
+            hookMethod(View::class.java, "setBackgroundDrawable", android.graphics.drawable.Drawable::class.java, after = callback)
+        } catch (error: Throwable) {
+            // View.setBackground 在所有进程都存在，但只在联系人进程调用 BackgroundApplier；
+            // 其它进程走到 onViewBackgroundChanged 里会因 ctx 不匹配直接 return，无副作用。
         }
     }
 
@@ -142,31 +165,38 @@ object SettingsBackgroundHook {
     }
 
     private fun hookContactsActivity(classLoader: ClassLoader) {
-        val className = "com.android.contacts.activities.PeopleActivity"
-        try {
-            hookMethod(className, classLoader, "onCreate", Bundle::class.java) {
-                val activity = thisObject as? Activity ?: return@hookMethod
-                BackgroundApplier.applyContacts(activity)
+        // 通讯录主界面（PeopleActivity）与联系人详情页（SubActivity / PeopleDetailActivity）共用 contacts 背景通道。
+        val classNames = arrayOf(
+            "com.android.contacts.activities.PeopleActivity",
+            "com.android.contacts.activities.SubActivity",
+            "com.android.contacts.activities.PeopleDetailActivity",
+        )
+        classNames.forEach { className ->
+            try {
+                hookMethod(className, classLoader, "onCreate", Bundle::class.java) {
+                    val activity = thisObject as? Activity ?: return@hookMethod
+                    BackgroundApplier.applyContacts(activity)
+                }
+                hookMethod(className, classLoader, "onResume") {
+                    val activity = thisObject as? Activity ?: return@hookMethod
+                    BackgroundApplier.applyContacts(activity)
+                }
+                hookMethod(className, classLoader, "onContentChanged") {
+                    val activity = thisObject as? Activity ?: return@hookMethod
+                    BackgroundApplier.applyContacts(activity)
+                }
+                hookMethod(className, classLoader, "onStop") {
+                    val activity = thisObject as? Activity ?: return@hookMethod
+                    BackgroundApplier.stopContacts(activity)
+                }
+                hookMethod(className, classLoader, "onDestroy") {
+                    val activity = thisObject as? Activity ?: return@hookMethod
+                    BackgroundApplier.destroyContacts(activity)
+                }
+                log("[HyperBackground] Installed contacts $className background hooks")
+            } catch (error: Throwable) {
+                logHookError(className, error)
             }
-            hookMethod(className, classLoader, "onResume") {
-                val activity = thisObject as? Activity ?: return@hookMethod
-                BackgroundApplier.applyContacts(activity)
-            }
-            hookMethod(className, classLoader, "onContentChanged") {
-                val activity = thisObject as? Activity ?: return@hookMethod
-                BackgroundApplier.applyContacts(activity)
-            }
-            hookMethod(className, classLoader, "onStop") {
-                val activity = thisObject as? Activity ?: return@hookMethod
-                BackgroundApplier.stopContacts(activity)
-            }
-            hookMethod(className, classLoader, "onDestroy") {
-                val activity = thisObject as? Activity ?: return@hookMethod
-                BackgroundApplier.destroyContacts(activity)
-            }
-            log("[HyperBackground] Installed contacts PeopleActivity background hooks")
-        } catch (error: Throwable) {
-            logHookError("PeopleActivity", error)
         }
     }
 

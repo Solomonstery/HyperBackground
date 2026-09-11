@@ -8,6 +8,7 @@
 
 [![release](https://img.shields.io/github/v/release/Solomonstery/HyperBackground?include_prereleases&label=release&color=blue)](https://github.com/Solomonstery/HyperBackground/releases)
 [![downloads](https://img.shields.io/github/downloads/Solomonstery/HyperBackground/total?label=downloads&color=brightgreen)](https://github.com/Solomonstery/HyperBackground/releases)
+[![lsposed downloads](https://img.shields.io/github/downloads/Xposed-Modules-Repo/com.ciallo.hyperbackground/total?label=LSPosed%20Downloads&color=8A2BE2)](https://github.com/Xposed-Modules-Repo/com.ciallo.hyperbackground/releases)
 [![license](https://img.shields.io/badge/license-MIT-orange)](LICENSE)
 ![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white)
 ![Framework](https://img.shields.io/badge/Framework-LSPosed-8A2BE2)

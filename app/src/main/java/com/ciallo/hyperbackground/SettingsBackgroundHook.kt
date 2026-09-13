@@ -21,6 +21,7 @@ object SettingsBackgroundHook {
     fun install(packageName: String?, classLoader: ClassLoader) {
         val settings = BackgroundContract.PACKAGE_SETTINGS == packageName
         val contacts = BackgroundContract.PACKAGE_CONTACTS == packageName
+        val mms = BackgroundContract.PACKAGE_MMS == packageName
 
         hookGlobalActivities()
         hookInstrumentationLifecycle()
@@ -45,6 +46,12 @@ object SettingsBackgroundHook {
             hookContactsActivity(classLoader)
             hookDialpadLayout(classLoader)
             hookContactsViewBackground()
+        }
+
+        if (mms) {
+            hookMmsHomeActivities(classLoader)
+            hookMmsChatActivities(classLoader)
+            hookMmsViewBackground()
         }
     }
 
@@ -204,6 +211,113 @@ object SettingsBackgroundHook {
             } catch (error: Throwable) {
                 logHookError(className, error)
             }
+        }
+    }
+
+    // 短信主页通道：会话列表、验证码/推广分类列表（FlatMessageListActivity）、短信内部全部设置页。
+    private val MMS_HOME_ACTIVITIES = arrayOf(
+        "com.android.mms.ui.MmsTabActivity",
+        "com.android.mms.ui.FlatMessageListActivity",
+        // 短信内部设置页（背景跟随短信主页）
+        "com.android.mms.ui.MessagingPreferenceActivity",
+        "com.android.mms.ui.MessagingAdvancedPreferenceActivity",
+        "com.android.mms.ui.SmartMessagePreferencesActivity",
+        "com.android.mms.ui.AdSettingsPreferenceActivity",
+        "com.android.mms.ui.AiSummaryPreferenceActivity",
+        "com.android.mms.ui.PrivacyPolicyPreferenceActivity",
+        "com.android.mms.ui.PrivatePreferenceActivity",
+        "com.android.mms.ui.MxPreferenceActivity",
+        "com.android.mms.ui.MultiSimPreferenceAcitvity",
+        "com.android.mms.ui.SelectCardPreferenceActivity",
+        "com.android.mms.ui.SelectCardListPreferenceActivity",
+        "com.android.mms.ui.AuthorityManagementActivity",
+        "com.android.mms.ui.RcsAuthorityManagementActivity",
+        "com.xiaomi.rcs.ui.RcsSettingPreferenceActivity",
+        "com.xiaomi.rcs.ui.RcsPrivacyPolicyPreferenceActivity",
+        "com.xiaomi.rcs.ui.ChatbotPermissionSettingsActivity",
+    )
+
+    // 短信聊天通道：会话详情页（单/多收件人、RCS 机器人、拦截会话）与新建短信页。
+    private val MMS_CHAT_ACTIVITIES = arrayOf(
+        "com.android.mms.ui.activity.phone.activity.SingleRecipientConversationActivity",
+        "com.android.mms.ui.activity.phone.activity.MultipleRecipientsConversationActivityPhone",
+        "com.android.mms.ui.activity.phone.activity.RcsChatbotConversationActivityPhone",
+        "com.android.mms.ui.activity.phone.activity.NewMessageActivity",
+        "com.android.mms.ui.BlockedConversationActivity",
+    )
+
+    private fun hookMmsHomeActivities(classLoader: ClassLoader) {
+        hookMmsActivityGroup(
+            classLoader, MMS_HOME_ACTIVITIES, "home",
+            apply = { BackgroundApplier.applyMmsHome(it) },
+            stop = { BackgroundApplier.stopMmsHome(it) },
+            destroy = { BackgroundApplier.destroyMmsHome(it) },
+        )
+    }
+
+    private fun hookMmsChatActivities(classLoader: ClassLoader) {
+        hookMmsActivityGroup(
+            classLoader, MMS_CHAT_ACTIVITIES, "chat",
+            apply = { BackgroundApplier.applyMmsChat(it) },
+            stop = { BackgroundApplier.stopMmsChat(it) },
+            destroy = { BackgroundApplier.destroyMmsChat(it) },
+        )
+    }
+
+    private fun hookMmsActivityGroup(
+        classLoader: ClassLoader,
+        classNames: Array<String>,
+        tag: String,
+        apply: (Activity) -> Unit,
+        stop: (Activity) -> Unit,
+        destroy: (Activity) -> Unit,
+    ) {
+        classNames.forEach { className ->
+            // 大量短信 Activity 不重写生命周期方法，findMethod 会沿继承链解析到共同祖先的同一个 Method，
+            // hook 会以拦截器链形式全部挂载。必须用「实例类名 == 当前绑定类名」守卫，
+            // 否则主页组/聊天组回调会对同一个 Activity 实例交叉触发，两个通道互相拆图层导致背景串台。
+            fun targetOrNull(param: HookRuntime.LegacyHookParam): Activity? {
+                val activity = param.thisObject as? Activity ?: return null
+                return if (activity.javaClass.name == className) activity else null
+            }
+            try {
+                hookMethod(className, classLoader, "onCreate", Bundle::class.java) {
+                    targetOrNull(this)?.let(apply)
+                }
+                hookMethod(className, classLoader, "onResume") {
+                    targetOrNull(this)?.let(apply)
+                }
+                hookMethod(className, classLoader, "onContentChanged") {
+                    targetOrNull(this)?.let(apply)
+                }
+                hookMethod(className, classLoader, "onStop") {
+                    targetOrNull(this)?.let(stop)
+                }
+                hookMethod(className, classLoader, "onDestroy") {
+                    targetOrNull(this)?.let(destroy)
+                }
+                log("[HyperBackground] Installed mms-$tag $className background hooks")
+            } catch (error: Throwable) {
+                logHookError("mms-$tag $className", error)
+            }
+        }
+    }
+
+    // 会话列表项随 RecyclerView 回收重绑会重新 setBackground 恢复纯白 selector 底，
+    // hook View.setBackground 在设置后立即清除；回调内按当前 Activity 类名过滤，聊天页不处理。
+    private fun hookMmsViewBackground() {
+        try {
+            val callback: HookRuntime.LegacyHookParam.() -> Unit = cb@{
+                val view = thisObject as? View ?: return@cb
+                val newBg = args[0]
+                if (newBg is android.graphics.drawable.ColorDrawable &&
+                    newBg.color == android.graphics.Color.TRANSPARENT
+                ) return@cb
+                BackgroundApplier.onMmsViewBackgroundChanged(view)
+            }
+            hookMethod(View::class.java, "setBackground", android.graphics.drawable.Drawable::class.java, after = callback)
+            hookMethod(View::class.java, "setBackgroundDrawable", android.graphics.drawable.Drawable::class.java, after = callback)
+        } catch (_: Throwable) {
         }
     }
 

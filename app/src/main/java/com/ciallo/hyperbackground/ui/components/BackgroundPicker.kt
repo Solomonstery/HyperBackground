@@ -61,6 +61,9 @@ fun BackgroundPickerPreference(
     // 入口/对话框标题可覆盖（默认「设置背景」）：设备卡片页复用本组件时传入「动态背景（可调透明度）」。
     title: String? = null,
     summary: String? = null,
+    // 是否渲染自带的「导出当前图片」行：同一卡片内并列多个槽位（短信主页/聊天）时关闭，
+    // 由外层提供统一的导出下拉。
+    showExport: Boolean = true,
 ) {
     val config = activity.config
     // 预览与导出都以「当前实际生效的背景」为准：随机开启且生效时用 random 图，否则手动图。
@@ -107,19 +110,21 @@ fun BackgroundPickerPreference(
         onClick = { showDialog = true },
     )
     // 导出当前生效的背景图到相册（随机图优先）。无背景时点击提示无文件可导出。
-    BasicComponent(
-        title = stringResource(R.string.export_background),
-        summary = if (currentFile.isFile) {
-            stringResource(R.string.export_background_summary, humanSize(currentFile.length()))
-        } else {
-            stringResource(R.string.export_no_file)
-        },
-        enabled = currentFile.isFile,
-        endActions = {
-            Icon(imageVector = MiuixIcons.Basic.ArrowRight, contentDescription = null)
-        },
-        onClick = { activity.exportBackground(slot) },
-    )
+    if (showExport) {
+        BasicComponent(
+            title = stringResource(R.string.export_background),
+            summary = if (currentFile.isFile) {
+                stringResource(R.string.export_background_summary, humanSize(currentFile.length()))
+            } else {
+                stringResource(R.string.export_no_file)
+            },
+            enabled = currentFile.isFile,
+            endActions = {
+                Icon(imageVector = MiuixIcons.Basic.ArrowRight, contentDescription = null)
+            },
+            onClick = { activity.exportBackground(slot) },
+        )
+    }
 
     WindowDialog(
         title = entryTitle,

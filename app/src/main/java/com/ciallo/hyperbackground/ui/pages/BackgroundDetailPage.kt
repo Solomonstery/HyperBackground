@@ -61,10 +61,28 @@ fun BackgroundDetailPage(
         item { SectionTitle(stringResource(R.string.scope)) }
         item {
             UiCard(activity, Modifier.fillMaxWidth()) {
-                BackgroundPickerPreference(activity = activity, slot = slot)
-                // 通讯录：把「颜色模式」并入「背景」卡，作为「设置背景」下方的同卡条目（无独立分组标题）。
-                if (slot == BackgroundContract.CONTACTS) {
-                    ContactsThemePreference(activity)
+                if (slot == BackgroundContract.MMS) {
+                    // 短信大通道：主页背景（列表/验证码/设置页）与聊天背景（会话/新建页）两个二级槽位；
+                    // 聊天槽位未单独设图时注入侧自动回退主页图。两个 picker 隐藏自带导出行，统一用下方下拉导出。
+                    BackgroundPickerPreference(
+                        activity = activity,
+                        slot = BackgroundContract.MMS,
+                        title = stringResource(R.string.mms_set_home_bg),
+                        showExport = false,
+                    )
+                    BackgroundPickerPreference(
+                        activity = activity,
+                        slot = BackgroundContract.MMS_CHAT,
+                        title = stringResource(R.string.mms_set_chat_bg),
+                        showExport = false,
+                    )
+                    MmsExportDropdown(activity)
+                } else {
+                    BackgroundPickerPreference(activity = activity, slot = slot)
+                    // 通讯录：把「颜色模式」并入「背景」卡，作为「设置背景」下方的同卡条目（无独立分组标题）。
+                    if (slot == BackgroundContract.CONTACTS) {
+                        ContactsThemePreference(activity)
+                    }
                 }
             }
         }
@@ -408,6 +426,30 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
             }
         }
     }
+}
+
+/**
+ * 短信通道的「导出当前图片」下拉：选择导出主页背景图或聊天背景图（随机图优先）。
+ * 选中即导出；该槽位无文件时由 exportBackground 统一提示。
+ */
+@Composable
+private fun MmsExportDropdown(activity: MainActivity) {
+    val options = listOf(
+        stringResource(R.string.mms_export_home),
+        stringResource(R.string.mms_export_chat),
+    )
+    var selected by remember { mutableIntStateOf(0) }
+    OverlayDropdownPreference(
+        title = stringResource(R.string.export_background),
+        items = options,
+        selectedIndex = selected.coerceIn(options.indices),
+        onSelectedIndexChange = {
+            selected = it
+            activity.exportBackground(
+                if (it == 0) BackgroundContract.MMS else BackgroundContract.MMS_CHAT,
+            )
+        },
+    )
 }
 
 /**

@@ -17,6 +17,14 @@
     <string name="background_global_summary">Background and colors for secondary system pages</string>
     <string name="background_contacts">Contacts &amp; Dialer</string>
     <string name="background_contacts_summary">Background for the Contacts and Dialer main screen</string>
+    <string name="background_mms">Messages</string>
+    <string name="background_mms_summary">Backgrounds for the Messages home and chat screens, configurable separately</string>
+    <string name="background_mms_chat">Messages chats</string>
+    <string name="background_mms_chat_summary">Background for the conversation and new message screens</string>
+    <string name="mms_set_home_bg">Set home background</string>
+    <string name="mms_set_chat_bg">Set chat background</string>
+    <string name="mms_export_home">Home background</string>
+    <string name="mms_export_chat">Chat background</string>
     <string name="contacts_surface_title">Dialpad &amp; list</string>
     <string name="contacts_surface_adapt">Adapt surfaces</string>
     <string name="contacts_surface_adapt_summary">Clear the list\'s solid background and make the dialpad panel translucent</string>
@@ -272,5 +280,6 @@
         <item>com.xiaomi.account</item><item>com.android.thememanager</item><item>com.miui.home</item>
         <item>com.miui.securitycenter</item><item>com.miui.powerkeeper</item><item>com.xiaomi.misettings</item>
         <item>com.android.contacts</item>
+        <item>com.android.mms</item>
     </string-array>
 </resources>

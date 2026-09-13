@@ -214,7 +214,7 @@ class ConfigManager private constructor(private val context: Context) : SharedPr
     fun syncToRemote(service: XposedService? = HyperBackgroundApp.xposedService) {
         service ?: return
         val metadata = preferences.edit()
-        listOf(BackgroundContract.HOME, BackgroundContract.DEVICE, BackgroundContract.GLOBAL, BackgroundContract.CONTACTS, BackgroundContract.CONTACTS_DIALPAD).forEach { slot ->
+        listOf(BackgroundContract.HOME, BackgroundContract.DEVICE, BackgroundContract.GLOBAL, BackgroundContract.CONTACTS, BackgroundContract.CONTACTS_DIALPAD, BackgroundContract.MMS, BackgroundContract.MMS_CHAT).forEach { slot ->
             val file = backgroundFile(slot)
             if (file.isFile) {
                 metadata.putLong(BackgroundContract.SIZE_PREFIX + slot, file.length())
@@ -235,7 +235,7 @@ class ConfigManager private constructor(private val context: Context) : SharedPr
         }
         metadata.commit()
         copyPreferences(preferences, service.getRemotePreferences(BackgroundContract.PREFS))
-        listOf(BackgroundContract.HOME, BackgroundContract.DEVICE, BackgroundContract.GLOBAL, BackgroundContract.CONTACTS, BackgroundContract.CONTACTS_DIALPAD).forEach { slot ->
+        listOf(BackgroundContract.HOME, BackgroundContract.DEVICE, BackgroundContract.GLOBAL, BackgroundContract.CONTACTS, BackgroundContract.CONTACTS_DIALPAD, BackgroundContract.MMS, BackgroundContract.MMS_CHAT).forEach { slot ->
             syncMedia(BackgroundContract.remoteMediaName(slot), backgroundFile(slot).takeIf(File::isFile), service)
             // random 背景独立同步到 background_<slot>.random.bin。
             syncMedia(BackgroundContract.remoteMediaName(slot, random = true), randomBackgroundFile(slot).takeIf(File::isFile), service)

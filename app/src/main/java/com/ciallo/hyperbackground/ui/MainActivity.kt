@@ -638,6 +638,8 @@ class MainActivity : ComponentActivity() {
             BackgroundContract.HOME -> getString(R.string.background_home)
             BackgroundContract.DEVICE -> getString(R.string.background_device)
             BackgroundContract.CONTACTS -> getString(R.string.background_contacts)
+            BackgroundContract.MMS -> getString(R.string.background_mms)
+            BackgroundContract.MMS_CHAT -> getString(R.string.background_mms_chat)
             else -> getString(R.string.background_global)
         }
         Scaffold(

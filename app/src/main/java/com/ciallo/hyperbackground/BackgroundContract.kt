@@ -15,11 +15,12 @@ object BackgroundContract {
     const val PACKAGE_POWER_KEEPER = "com.miui.powerkeeper"
     const val PACKAGE_MI_SETTINGS = "com.xiaomi.misettings"
     const val PACKAGE_CONTACTS = "com.android.contacts"
+    const val PACKAGE_MMS = "com.android.mms"
 
     private val SUPPORTED_PACKAGES = arrayOf(
         PACKAGE_SETTINGS, PACKAGE_MILINK, PACKAGE_PHONE, PACKAGE_ACCOUNT,
         PACKAGE_THEME_MANAGER, PACKAGE_HOME, PACKAGE_SECURITY_CENTER,
-        PACKAGE_POWER_KEEPER, PACKAGE_MI_SETTINGS, PACKAGE_CONTACTS,
+        PACKAGE_POWER_KEEPER, PACKAGE_MI_SETTINGS, PACKAGE_CONTACTS, PACKAGE_MMS,
     )
 
     const val HOME = "home"
@@ -27,6 +28,10 @@ object BackgroundContract {
     const val GLOBAL = "global"
     // 通讯录与拨号（com.android.contacts）主界面背景通道，与 home/device/global 同构。
     const val CONTACTS = "contacts"
+    // 短信主页（com.android.mms）：会话列表、验证码/推广等分类列表、短信内部设置页共用此通道。
+    const val MMS = "mms"
+    // 短信聊天页：会话详情与新建短信页独立通道。
+    const val MMS_CHAT = "mms_chat"
     // 拨号盘独立背景通道：与 contacts 同构的一条媒体通道，但只注入到拨号盘键盘容器（DialpadLayout）内，
     // 与 contacts 整页背景叠加共存——整页背景照旧，拨号盘弹出时在键盘区额外叠这张图。
     const val CONTACTS_DIALPAD = "contacts_dialpad"
@@ -140,7 +145,7 @@ object BackgroundContract {
 
     fun remoteMediaName(slot: String, random: Boolean = false): String {
         if (slot != HOME && slot != DEVICE && slot != GLOBAL &&
-            slot != CONTACTS && slot != CONTACTS_DIALPAD
+            slot != CONTACTS && slot != CONTACTS_DIALPAD && slot != MMS && slot != MMS_CHAT
         ) {
             throw IllegalArgumentException("Unknown background slot: $slot")
         }

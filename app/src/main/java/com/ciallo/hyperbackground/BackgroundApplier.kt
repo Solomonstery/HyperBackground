@@ -28,11 +28,16 @@ object BackgroundApplier {
     private val GLOBAL_SESSION = FIELD_PREFIX + "global.session"
     private val DEVICE_SESSION = FIELD_PREFIX + "device.session"
     private val CONTACTS_SESSION = FIELD_PREFIX + "contacts.session"
+    private val MMS_SESSION = FIELD_PREFIX + "mms.session"
+    private val MMS_CHAT_SESSION = FIELD_PREFIX + "mms.chat.session"
     // 拨号盘独立背景层的会话，存到 DialpadLayout 实例上（拨号盘可被反复 inflate/复用）。
     private val DIALPAD_SESSION = FIELD_PREFIX + "dialpad.session"
     private val CONTACTS_RESCAN = FIELD_PREFIX + "contacts.rescan"
     private val CONTACTS_ADAPT_AT = FIELD_PREFIX + "contacts.adapt.at"
     private val CONTACTS_ADAPT_DIRTY = FIELD_PREFIX + "contacts.adapt.dirty"
+    private val MMS_RESCAN = FIELD_PREFIX + "mms.rescan"
+    private val MMS_ADAPT_AT = FIELD_PREFIX + "mms.adapt.at"
+    private val MMS_ADAPT_DIRTY = FIELD_PREFIX + "mms.adapt.dirty"
     // 清除列表不透明中性色背景前，把原背景存到该 View 的 Xposed 附加字段，便于开关关闭时还原。
     private val CONTACTS_BG_SAVED = FIELD_PREFIX + "contacts.bg.saved"
     // 自定义模式把 dialer_background_view 的原生 9-patch 底换成透明前，先存原背景到该字段供切回默认时还原。
@@ -415,6 +420,171 @@ object BackgroundApplier {
         removeContacts(activity)
     }
 
+    // 短信（com.android.mms）两条背景通道：
+    // 主页 MMS：会话列表、验证码/推广分类列表、短信内部各设置页共用；
+    // 聊天 MMS_CHAT：会话详情页（单/多收件人、RCS 机器人、拦截会话）与新建短信页独立。
+    fun applyMmsHome(activity: Activity?) {
+        if (activity == null) return
+        removeMmsChat(activity)
+        applyLayer(activity, BackgroundContract.MMS, MMS_SESSION, false)
+        if (isMmsListActivity(activity.javaClass.name)) {
+            adaptMmsListSurfaces(activity, false)
+            installMmsSurfaceRescan(activity)
+        }
+    }
+
+    fun applyMmsChat(activity: Activity?) {
+        if (activity == null) return
+        removeMmsHome(activity)
+        // 聊天页未单独设置背景时跟随短信主页图（主页也无图则 applyLayer 不渲染）。
+        val slot = if (BackgroundContract.query(activity, BackgroundContract.MMS_CHAT).exists) {
+            BackgroundContract.MMS_CHAT
+        } else {
+            BackgroundContract.MMS
+        }
+        applyLayer(activity, slot, MMS_CHAT_SESSION, false)
+    }
+
+    // 列表类主页：列表项 selector 是纯白实底，需要中性色递归清除 + 重扫监听。
+    private fun isMmsListActivity(className: String?) = className in MMS_LIST_ACTIVITIES
+
+    private val MMS_LIST_ACTIVITIES = hashSetOf(
+        "com.android.mms.ui.MmsTabActivity",
+        // 验证码/推广/通知分类列表（y2 Fragment 宿主），列表项同为白底 ConversationListItem。
+        "com.android.mms.ui.FlatMessageListActivity",
+    )
+
+    // 会话列表页：ConversationListItem 的 selector 底是纯白实底（miuix_appcompat_white），
+    // 复用联系人的不透明中性色递归清除方案（colorFilter 透明，不替换 background 保留 selector/padding），
+    // 但跳过 FAB 子树。仅作用于列表页；聊天页绝不走这里——收件气泡本身就是中性白（#ffffff/#f2f2f2）。
+    private fun adaptMmsListSurfaces(activity: Activity, throttled: Boolean) {
+        try {
+            if (throttled) {
+                val last = activity.getAdditionalInstanceField(MMS_ADAPT_AT) as? Long
+                val now = SystemClock.uptimeMillis()
+                if (last != null && now - last < 200L) return
+                activity.setAdditionalInstanceField(MMS_ADAPT_AT, now)
+            }
+            contactsSampledColors.clear()
+            val content = activity.findViewById<View>(android.R.id.content) ?: return
+            val fabId = resolveId(activity, "fab")
+            val fab = if (fabId == 0) null else activity.findViewById<View>(fabId)
+            adaptContactsOpaqueSurfaces(content, true, content, fab)
+        } catch (error: Throwable) {
+            log("adaptMmsListSurfaces", error)
+        }
+    }
+
+    // 与 installContactsSurfaceRescan 同构：OnGlobalLayout 只打 dirty 标，OnPreDraw 为 true
+    // 才真正遍历清除（绘制前一帧生效，无闪白），无布局变化时每帧只有一次 boolean 判断。
+    private fun installMmsSurfaceRescan(activity: Activity) {
+        try {
+            if (activity.getAdditionalInstanceField(MMS_RESCAN) == true) return
+            val decor = activity.window?.decorView
+            if (decor !is ViewGroup) return
+            val observer = decor.viewTreeObserver
+            if (!observer.isAlive) return
+
+            val globalLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {
+                if (activity.isFinishing || activity.isDestroyed) return@OnGlobalLayoutListener
+                val now = SystemClock.uptimeMillis()
+                val last = activity.getAdditionalInstanceField(MMS_ADAPT_AT) as? Long ?: 0L
+                if (now - last >= 16L) {
+                    activity.setAdditionalInstanceField(MMS_ADAPT_AT, now)
+                    activity.setAdditionalInstanceField(MMS_ADAPT_DIRTY, true)
+                }
+            }
+            val preDrawListener = ViewTreeObserver.OnPreDrawListener {
+                if (activity.isFinishing || activity.isDestroyed) return@OnPreDrawListener true
+                if (activity.getAdditionalInstanceField(MMS_ADAPT_DIRTY) == true) {
+                    activity.setAdditionalInstanceField(MMS_ADAPT_DIRTY, false)
+                    adaptMmsListSurfaces(activity, false)
+                }
+                true
+            }
+            observer.addOnGlobalLayoutListener(globalLayoutListener)
+            observer.addOnPreDrawListener(preDrawListener)
+            activity.setAdditionalInstanceField(MMS_RESCAN, arrayOf(globalLayoutListener, preDrawListener))
+        } catch (error: Throwable) {
+            log("installMmsSurfaceRescan", error)
+        }
+    }
+
+    private fun removeMmsSurfaceRescan(activity: Activity) {
+        try {
+            val saved = activity.getAdditionalInstanceField(MMS_RESCAN)
+            if (saved !is Array<*>) return
+            val decor = activity.window?.decorView
+            if (decor != null) {
+                val observer = decor.viewTreeObserver
+                if (observer.isAlive) {
+                    saved.forEach {
+                        when (it) {
+                            is ViewTreeObserver.OnGlobalLayoutListener -> observer.removeOnGlobalLayoutListener(it)
+                            is ViewTreeObserver.OnPreDrawListener -> observer.removeOnPreDrawListener(it)
+                        }
+                    }
+                }
+            }
+            activity.setAdditionalInstanceField(MMS_RESCAN, null)
+            activity.setAdditionalInstanceField(MMS_ADAPT_DIRTY, null)
+        } catch (_: Throwable) {
+        }
+    }
+
+    fun stopMmsHome(activity: Activity?) {
+        stopLayer(activity, MMS_SESSION)
+    }
+
+    fun stopMmsChat(activity: Activity?) {
+        stopLayer(activity, MMS_CHAT_SESSION)
+    }
+
+    fun destroyMmsHome(activity: Activity?) {
+        removeMmsHome(activity)
+    }
+
+    fun destroyMmsChat(activity: Activity?) {
+        removeMmsChat(activity)
+    }
+
+    private fun removeMmsHome(activity: Activity?) {
+        if (activity == null) return
+        try {
+            removeMmsSurfaceRescan(activity)
+            val old = activity.getAdditionalInstanceField(MMS_SESSION) as? LayerSession
+            if (old != null) removeLayer(activity, MMS_SESSION, old)
+        } catch (error: Throwable) {
+            log("removeMmsHome", error)
+        }
+    }
+
+    private fun removeMmsChat(activity: Activity?) {
+        if (activity == null) return
+        try {
+            val old = activity.getAdditionalInstanceField(MMS_CHAT_SESSION) as? LayerSession
+            if (old != null) removeLayer(activity, MMS_CHAT_SESSION, old)
+        } catch (error: Throwable) {
+            log("removeMmsChat", error)
+        }
+    }
+
+    // View.setBackground hook 回调（短信进程）：列表项随 RecyclerView 回收重绑会恢复 selector
+    // 纯白底，在 setBackground 后立即清除，避免等绘制前扫描的延迟白块。
+    fun onMmsViewBackgroundChanged(view: View?) {
+        if (view == null) return
+        try {
+            val activity = findActivity(view.context) ?: return
+            if (!isMmsListActivity(activity.javaClass.name)) return
+            val bg = view.background
+            if (bg != null && isOpaqueNeutralSurface(bg)) {
+                makeTransparent(bg)
+                view.invalidate()
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
     // 拨号盘键盘由 ViewStub 点击后异步 inflate，Activity 生命周期回调抓不到它「刚 inflate、绘制第一帧
     // 之前」的时机，只能靠布局监听在其出现后补设，但布局回调总在绘制后一帧，导致先露出原生不透明底色、
     // 再变半透（先灰后透闪烁）。这里由 Hook DialpadLayout.onFinishInflate（after）在首帧绘制前同步处理。
@@ -640,6 +810,11 @@ object BackgroundApplier {
 
         // 通讯录与拨号由独立的 contacts 通道处理，global 一律跳过。
         if (BackgroundContract.PACKAGE_CONTACTS == packageName) {
+            return true
+        }
+
+        // 短信由独立的 mms 通道处理，global 一律跳过。
+        if (BackgroundContract.PACKAGE_MMS == packageName) {
             return true
         }
 
@@ -1352,6 +1527,14 @@ object BackgroundApplier {
 
         private fun clearPageSurfaces(activity: Activity, view: View?, root: View, depth: Int) {
             if (view == null || view === media) return
+            // 短信聊天页保护：消息列表（收件气泡是 #ffffff/#f2f2f2 中性白，属于内容而非底色）
+            // 与底部输入面板整棵子树不清，背景只从容器层透出。列表页的 @android:id/list 不受影响。
+            if (activity.packageName == BackgroundContract.PACKAGE_MMS) {
+                val idName = resourceEntryName(activity, view.id)
+                if (idName == "message_list" || idName == "message_list_animator" ||
+                    idName == "bottom_panel"
+                ) return
+            }
             if (view.visibility != View.VISIBLE) return
             if (isPageSurface(activity, view, root, depth)) clear(view)
             if (view is ViewGroup) {

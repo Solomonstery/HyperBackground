@@ -76,6 +76,8 @@ fun RandomBackgroundPage(
         BackgroundContract.DEVICE to R.string.background_device,
         BackgroundContract.GLOBAL to R.string.background_global,
         BackgroundContract.CONTACTS to R.string.background_contacts,
+        BackgroundContract.MMS to R.string.background_mms,
+        BackgroundContract.MMS_CHAT to R.string.background_mms_chat,
         BackgroundContract.RANDOM_SLOT_UI to R.string.module_background,
     )
     // 槽位状态直接从 config 读取，slotRevision 用于修改后强制重组。

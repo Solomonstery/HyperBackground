@@ -26,6 +26,7 @@ import com.ciallo.hyperbackground.appearance.APPEARANCE_SLOT_STYLE2_DEVICE_IMAGE
 import com.ciallo.hyperbackground.appearance.APPEARANCE_SLOT_STYLE2_UPDATE_BACKGROUND
 import com.ciallo.hyperbackground.appearance.DEVICE_INTERFACE_STYLE_ONE
 import com.ciallo.hyperbackground.appearance.DEVICE_INTERFACE_STYLE_SYSTEM
+import com.ciallo.hyperbackground.appearance.DEVICE_INTERFACE_STYLE_THREE
 import com.ciallo.hyperbackground.appearance.DEVICE_INTERFACE_STYLE_TWO
 import com.ciallo.hyperbackground.appearance.LOGO_MODE_SYSTEM
 import com.ciallo.hyperbackground.appearance.SettingsAppearanceSettings
@@ -64,7 +65,7 @@ fun DeviceCardPage(
     val update: ((SettingsAppearanceSettings) -> SettingsAppearanceSettings) -> Unit = { transform ->
         activity.updateAppearance(transform)
     }
-    val style = appearance.deviceInterfaceStyle.coerceIn(DEVICE_INTERFACE_STYLE_SYSTEM, DEVICE_INTERFACE_STYLE_TWO)
+    val style = appearance.deviceInterfaceStyle.coerceIn(DEVICE_INTERFACE_STYLE_SYSTEM, DEVICE_INTERFACE_STYLE_THREE)
     val selectStyle: (Int) -> Unit = { selected ->
         update {
             it.copy(
@@ -92,6 +93,7 @@ fun DeviceCardPage(
                         stringResource(R.string.device_card_style_system),
                         stringResource(R.string.device_card_style_one),
                         stringResource(R.string.device_card_style_two),
+                        stringResource(R.string.device_card_style_three),
                     ),
                     selectedIndex = style,
                     onSelectedIndexChange = selectStyle,
@@ -107,6 +109,12 @@ fun DeviceCardPage(
                     slot = BackgroundContract.DEVICE,
                     title = stringResource(R.string.dynamic_background_title),
                     summary = stringResource(R.string.dynamic_background_summary),
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.device_background_preload),
+                    summary = stringResource(R.string.device_background_preload_summary),
+                    checked = appearance.deviceBackgroundPreload,
+                    onCheckedChange = { value -> update { it.copy(deviceBackgroundPreload = value) } },
                 )
             }
         }
@@ -254,6 +262,29 @@ fun DeviceCardPage(
         }
 
         if (style == DEVICE_INTERFACE_STYLE_TWO) {
+            item { SectionTitle(stringResource(R.string.group_text)) }
+            item {
+                UiCard(activity, Modifier.fillMaxWidth()) {
+                    TextFieldRow(
+                        label = stringResource(R.string.cos_card_title),
+                        value = appearance.cosCardTitle,
+                        onValueChange = { value -> update { it.copy(cosCardTitle = value) } },
+                    )
+                    TextFieldRow(
+                        label = stringResource(R.string.cos_card_subtitle),
+                        value = appearance.cosCardSubtitle,
+                        onValueChange = { value -> update { it.copy(cosCardSubtitle = value) } },
+                    )
+                    TextFieldRow(
+                        label = stringResource(R.string.cos_card_signature),
+                        value = appearance.cosCardSignature,
+                        onValueChange = { value -> update { it.copy(cosCardSignature = value) } },
+                    )
+                }
+            }
+        }
+
+        if (style == DEVICE_INTERFACE_STYLE_THREE) {
             item { SectionTitle(stringResource(R.string.group_device_image)) }
             item {
                 UiCard(activity, Modifier.fillMaxWidth()) {

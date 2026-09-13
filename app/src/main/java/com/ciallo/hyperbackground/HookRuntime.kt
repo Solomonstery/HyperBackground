@@ -25,6 +25,8 @@ object HookRuntime {
         return value
     }
 
+    fun remotePreferences(name: String): SharedPreferences? = module?.getRemotePreferences(name)
+
     @Throws(FileNotFoundException::class)
     fun openRemoteFile(name: String): ParcelFileDescriptor {
         val value = module ?: throw FileNotFoundException("Hook module is not initialized")

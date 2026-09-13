@@ -33,6 +33,8 @@ object SettingsAppearanceApplier {
     private val deviceInfoCards = Collections.synchronizedMap(WeakHashMap<Any, DeviceInfoCardsSession>())
     private val harmonyCards = Collections.synchronizedMap(WeakHashMap<Any, HarmonyCardSession>())
     private val harmonyInfoCards = Collections.synchronizedMap(WeakHashMap<Any, HarmonyInfoCardsSession>())
+    private val cosTopCards = Collections.synchronizedMap(WeakHashMap<Any, CosTopCardSession>())
+    private val cosQuickCards = Collections.synchronizedMap(WeakHashMap<Any, CosQuickCardsSession>())
     private val internalTextColor = ThreadLocal<Boolean>()
     private val internalLogo = ThreadLocal<Boolean>()
 
@@ -78,7 +80,8 @@ object SettingsAppearanceApplier {
             val index = parent.indexOfChild(background).coerceAtLeast(0)
             parent.addView(media, index + 1, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             val session = DeviceLayerSession(parent, background, background.visibility, media)
-            background.visibility = View.INVISIBLE
+            // 延迟隐藏原系统背景：等自定义背景 drawable 就绪后再隐藏，消除黑帧空窗。
+            media.onReady = { background.visibility = View.INVISIBLE }
             deviceLayers[fragment] = session
             Log.i(TAG, "device attached media=${media.javaClass.name} parent=${media.parent?.javaClass?.name}")
             fragmentActivity(fragment)?.let { applyFontMode(it, source.fontMode) }
@@ -113,7 +116,7 @@ object SettingsAppearanceApplier {
             val index = parent.indexOfChild(background).coerceAtLeast(0)
             parent.addView(media, index + 1, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             val session = DeviceLayerSession(parent, background, background.visibility, media)
-            background.visibility = View.INVISIBLE
+            media.onReady = { background.visibility = View.INVISIBLE }
             deviceLayers[activity] = session
             applyFontMode(activity, source.fontMode)
         }
@@ -129,6 +132,8 @@ object SettingsAppearanceApplier {
         deviceInfoCards.remove(fragment)?.remove()
         harmonyCards.remove(fragment)?.remove()
         harmonyInfoCards.remove(fragment)?.remove()
+        cosTopCards.remove(fragment)?.remove()
+        cosQuickCards.remove(fragment)?.remove()
     }
     fun stop(activity: Activity?) { activity?.let { layers[it]?.view?.onHostStop() } }
     fun destroy(activity: Activity?) {
@@ -164,6 +169,8 @@ object SettingsAppearanceApplier {
                 DEVICE_INTERFACE_STYLE_ONE -> {
                     harmonyCards.remove(fragment)?.remove()
                     harmonyInfoCards.remove(fragment)?.remove()
+                    cosTopCards.remove(fragment)?.remove()
+                    cosQuickCards.remove(fragment)?.remove()
                     val source = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_DEVICE_IMAGE)
                     val logo = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_CUSTOM_DEVICE_LOGO)
                     applyDeviceInfoCards(fragment, context, root, source.copy(tutorialCardInfoCardsEnabled = true))
@@ -186,6 +193,29 @@ object SettingsAppearanceApplier {
                 DEVICE_INTERFACE_STYLE_TWO -> {
                     tutorialCards.remove(fragment)?.remove()
                     deviceInfoCards.remove(fragment)?.remove()
+                    harmonyCards.remove(fragment)?.remove()
+                    harmonyInfoCards.remove(fragment)?.remove()
+                    val source = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_DEVICE_IMAGE)
+                    val old = cosTopCards[fragment]
+                    val key = source.cacheKey()
+                    if (old != null && old.matches(target, spacer) && old.key == key) {
+                        old.enforce(context)
+                        old.view.refresh(source)
+                    } else {
+                        old?.remove()
+                        val card = CosTopCardView(context, target, source)
+                        target.addView(card, tutorialCardLayoutParams(context))
+                        val session = CosTopCardSession(target, spacer, spacer?.layoutParams, animationSource, card, key)
+                        session.enforce(context)
+                        cosTopCards[fragment] = session
+                    }
+                    applyCosQuickCards(fragment, context, root)
+                }
+                DEVICE_INTERFACE_STYLE_THREE -> {
+                    tutorialCards.remove(fragment)?.remove()
+                    deviceInfoCards.remove(fragment)?.remove()
+                    cosTopCards.remove(fragment)?.remove()
+                    cosQuickCards.remove(fragment)?.remove()
                     val image = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_STYLE2_DEVICE_IMAGE)
                     val logo = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_STYLE2_CUSTOM_DEVICE_LOGO)
                     val background = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_STYLE2_UPDATE_BACKGROUND)
@@ -211,6 +241,8 @@ object SettingsAppearanceApplier {
                     deviceInfoCards.remove(fragment)?.remove()
                     harmonyCards.remove(fragment)?.remove()
                     harmonyInfoCards.remove(fragment)?.remove()
+                    cosTopCards.remove(fragment)?.remove()
+                    cosQuickCards.remove(fragment)?.remove()
                 }
             }
         }.onFailure { error -> Log.e(TAG, "tutorial card apply failed", error) }
@@ -275,6 +307,30 @@ object SettingsAppearanceApplier {
         val session = DeviceInfoCardsSession(parent, name, storage, row)
         session.enforce()
         deviceInfoCards[fragment] = session
+    }
+
+    private fun applyCosQuickCards(fragment: Any, context: android.content.Context, root: View) {
+        val old = cosQuickCards[fragment]
+        val nameId = context.resources.getIdentifier("device_name_card_view", "id", context.packageName)
+        val storageId = context.resources.getIdentifier("device_memory_card_view", "id", context.packageName)
+        val name = root.findViewById<View>(nameId) ?: return
+        val storage = root.findViewById<View>(storageId) ?: return
+        val parent = name.parent as? LinearLayout ?: return
+        if (parent !== storage.parent) return
+        if (old != null && old.matches(parent, name, storage)) {
+            old.enforce()
+            return
+        }
+        old?.remove()
+        val row = CosQuickCardsView(context, name, storage)
+        val index = parent.indexOfChild(name).coerceAtLeast(0)
+        parent.addView(row, index, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            tutorialDp(context, 130),
+        ))
+        val session = CosQuickCardsSession(context, root, parent, name, storage, row)
+        session.enforce()
+        cosQuickCards[fragment] = session
     }
 
     private fun tutorialCardLayoutParams(context: android.content.Context) = FrameLayout.LayoutParams(
@@ -848,6 +904,108 @@ object SettingsAppearanceApplier {
             view.scaleX = source.scaleX
             view.scaleY = source.scaleY
             view.alpha = source.alpha
+        }
+    }
+
+    private class CosTopCardSession(
+        private val host: FrameLayout,
+        private val spacer: View?,
+        private val spacerLayoutParams: ViewGroup.LayoutParams?,
+        private val animationSource: View?,
+        val view: CosTopCardView,
+        val key: String,
+    ) {
+        private val originalHostBackground = host.background
+        private val originalChildVisibility = List(host.childCount) { index -> host.getChildAt(index) }
+            .filter { it !== view }
+            .map { it to it.visibility }
+        private val animationSync = ViewTreeObserver.OnPreDrawListener {
+            syncCardAnimation()
+            true
+        }
+        private var animationListenerAttached = false
+
+        fun matches(host: FrameLayout, spacer: View?): Boolean =
+            this.host === host && this.spacer === spacer && view.parent === host
+
+        fun enforce(context: android.content.Context) {
+            host.background = null
+            view.visibility = View.VISIBLE
+            originalChildVisibility.forEach { (child, _) -> child.visibility = View.INVISIBLE }
+            if (!animationListenerAttached) {
+                host.viewTreeObserver.addOnPreDrawListener(animationSync)
+                animationListenerAttached = true
+            }
+            syncCardAnimation()
+            val original = spacerLayoutParams ?: return
+            spacer?.layoutParams = SettingsAppearanceApplier.compactVersionCardSpacer(
+                original,
+                SettingsAppearanceApplier.tutorialDp(context, 211),
+            )
+        }
+
+        fun remove() {
+            if (animationListenerAttached) {
+                runCatching { host.viewTreeObserver.removeOnPreDrawListener(animationSync) }
+                animationListenerAttached = false
+            }
+            host.removeView(view)
+            host.background = originalHostBackground
+            originalChildVisibility.forEach { (child, visibility) -> child.visibility = visibility }
+            spacer?.let { spacerView -> spacerLayoutParams?.let { spacerView.layoutParams = it } }
+        }
+
+        private fun syncCardAnimation() {
+            val source = animationSource ?: return
+            view.translationX = source.translationX
+            view.translationY = source.translationY
+            view.scaleX = source.scaleX
+            view.scaleY = source.scaleY
+            view.alpha = source.alpha
+        }
+    }
+
+    private class CosQuickCardsSession(
+        context: android.content.Context,
+        root: View,
+        private val parent: LinearLayout,
+        private val name: View,
+        private val storage: View,
+        private val view: CosQuickCardsView,
+    ) {
+        private val originalBackground = parent.background
+        private val originalChildVisibility = List(parent.childCount) { index ->
+            parent.getChildAt(index)
+        }.filter { child -> child !== view }.map { child -> child to child.visibility }
+        // COS 同时把参数大卡玻璃化（id device_params，圆角16），随会话一起恢复原状。
+        private val paramCard: View? = run {
+            val id = context.resources.getIdentifier("device_params", "id", context.packageName)
+            if (id != 0) root.findViewById(id) else null
+        }
+        private val originalParamBackground = paramCard?.background
+
+        fun matches(parent: LinearLayout, name: View, storage: View): Boolean =
+            this.parent === parent && this.name === name && this.storage === storage && view.parent === parent
+
+        fun enforce() {
+            parent.background = null
+            originalChildVisibility.forEach { (child, _) -> child.visibility = View.GONE }
+            view.attach()
+            paramCard?.let { card ->
+                val radius = 16f * card.resources.displayMetrics.density
+                card.background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(CosTopCardView.GLASS)
+                    cornerRadius = radius
+                }
+            }
+        }
+
+        fun remove() {
+            view.dispose()
+            (view.parent as? ViewGroup)?.removeView(view)
+            parent.background = originalBackground
+            originalChildVisibility.forEach { (child, visibility) -> child.visibility = visibility }
+            paramCard?.background = originalParamBackground
         }
     }
 

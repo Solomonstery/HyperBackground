@@ -10,6 +10,7 @@ import android.graphics.drawable.Drawable
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.util.LruCache
 import android.view.Surface
 import android.view.TextureView
 import android.view.ViewGroup
@@ -31,6 +32,9 @@ class SettingsBackgroundView(
     private var videoHeight = 0
     private var hostResumed = true
     private var disposed = false
+
+    /** 当背景 drawable 就绪（第一帧可显示）时回调，用于延迟隐藏原系统背景，消除黑帧空窗。 */
+    var onReady: (() -> Unit)? = null
 
     init {
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO)
@@ -67,11 +71,24 @@ class SettingsBackgroundView(
     }
 
     private fun createImageView() {
-        // 先创建空 ImageView 占位，图片在后台线程解码，避免阻塞主线程导致账号绑定等异步回调延迟。
         imageView = ImageView(context).also {
             it.scaleType = ImageView.ScaleType.CENTER_CROP
         }
         addView(imageView, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        val key = source.cacheKey()
+        val cached = drawableCache.get(key)
+        if (cached != null) {
+            // 缓存命中：同步设置 drawable，第一帧即为自定义背景，无黑帧。
+            imageDrawable = cached
+            imageView?.setImageDrawable(cached)
+            (cached as? AnimatedImageDrawable)?.apply {
+                repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
+                if (hostResumed) start()
+            }
+            post { if (!disposed) onReady?.invoke() }
+            return
+        }
+        // 缓存未命中：异步解码，完成后入缓存并触发 onReady。
         val uri = source.uri
         val resolver = context.contentResolver
         Thread {
@@ -80,6 +97,7 @@ class SettingsBackgroundView(
                     ImageDecoder.createSource(resolver, uri),
                 )
                 imageDrawable = drawable
+                drawableCache.put(key, drawable)
                 post {
                     if (!disposed) {
                         imageView?.setImageDrawable(drawable)
@@ -87,6 +105,7 @@ class SettingsBackgroundView(
                             repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
                             if (hostResumed) start()
                         }
+                        onReady?.invoke()
                     }
                 }
             }.onFailure { Log.e(TAG, "Cannot decode Settings background", it) }
@@ -128,6 +147,7 @@ class SettingsBackgroundView(
                     this@SettingsBackgroundView.videoHeight = it.videoHeight
                     this@SettingsBackgroundView.updateVideoTransform()
                     if (hostResumed) it.start()
+                    if (!disposed) onReady?.invoke()
                 }
                 setOnErrorListener { _, what, extra -> Log.e(TAG, "Video background failed: $what/$extra"); closeDescriptor(); true }
                 prepareAsync()
@@ -162,5 +182,39 @@ class SettingsBackgroundView(
 
     override fun onDetachedFromWindow() { dispose(); super.onDetachedFromWindow() }
 
-    companion object { private const val TAG = "HyperChangerSettingsAppearance" }
+    companion object {
+        private const val TAG = "HyperChangerSettingsAppearance"
+
+        /** 按图片像素数估算占用字节，上限约 12MB，通常可容纳 1–3 张全屏壁纸。 */
+        private val drawableCache = object : LruCache<String, Drawable>(12 * 1024 * 1024) {
+            override fun sizeOf(key: String, value: Drawable): Int {
+                val w = value.intrinsicWidth.coerceAtLeast(1)
+                val h = value.intrinsicHeight.coerceAtLeast(1)
+                // ARGB_8888 每像素 4 字节
+                return (w * h * 4).coerceAtLeast(1)
+            }
+        }
+
+        /**
+         * 预加载：在进入「我的设备」页面前异步解码背景图入缓存，
+         * 使页面首帧即可命中缓存同步显示自定义背景，消除黑帧。
+         * 仅对图片有效，视频背景需 SurfaceTexture 无法预加载。
+         */
+        fun preload(context: android.content.Context, source: SettingsAppearanceSource) {
+            if (!source.exists || source.isVideo) return
+            val key = source.cacheKey()
+            if (drawableCache.get(key) != null) return
+            val resolver = context.contentResolver
+            val uri = source.uri
+            Thread {
+                runCatching {
+                    val drawable = ImageDecoder.decodeDrawable(
+                        ImageDecoder.createSource(resolver, uri),
+                    )
+                    drawableCache.put(key, drawable)
+                    Log.i(TAG, "Preloaded device background cacheKey=$key")
+                }.onFailure { Log.e(TAG, "Cannot preload Settings background", it) }
+            }.start()
+        }
+    }
 }

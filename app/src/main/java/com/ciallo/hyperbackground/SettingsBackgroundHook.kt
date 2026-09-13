@@ -1,9 +1,15 @@
 package com.ciallo.hyperbackground
 
 import android.app.Activity
+import android.app.Application
 import android.app.Instrumentation
+import android.content.Context
 import android.os.Bundle
 import android.view.View
+import com.ciallo.hyperbackground.appearance.APPEARANCE_SLOT_DEVICE
+import com.ciallo.hyperbackground.appearance.SETTINGS_APPEARANCE_PREFERENCES
+import com.ciallo.hyperbackground.appearance.SettingsAppearanceSources
+import com.ciallo.hyperbackground.appearance.SettingsBackgroundView
 import java.util.Collections
 import java.util.WeakHashMap
 
@@ -32,6 +38,7 @@ object SettingsBackgroundHook {
             hookHomeActivity(classLoader)
             hookHomeFragment(classLoader)
             hookDeviceFragment(classLoader)
+            hookApplicationPreload()
         }
 
         if (contacts) {
@@ -294,5 +301,30 @@ object SettingsBackgroundHook {
     private fun logHookError(target: String, error: Throwable) {
         log("[HyperBackground] Could not hook $target: $error")
         log(error)
+    }
+
+    // 预加载：hook Application.onCreate，进程启动后立即异步解码「我的设备」背景图入缓存，
+    // 使用户进入页面时第一帧即可命中缓存同步显示自定义背景，消除黑帧。
+    // 仅当用户在模块设置里开启了「背景预加载」开关时生效；视频背景不预加载（需 SurfaceTexture）。
+    private fun hookApplicationPreload() {
+        try {
+            hookMethod(Application::class.java, "onCreate") {
+                val app = thisObject as? Application ?: return@hookMethod
+                val context = app as Context
+                val prefs = HookRuntime.remotePreferences(SETTINGS_APPEARANCE_PREFERENCES) ?: return@hookMethod
+                if (!prefs.getBoolean("device_background_preload", false)) return@hookMethod
+                Thread {
+                    runCatching {
+                        val source = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_DEVICE)
+                        if (source.exists && !source.isVideo) {
+                            SettingsBackgroundView.preload(context, source)
+                        }
+                    }.onFailure { error -> logHookError("preload device background", error) }
+                }.start()
+            }
+            log("[HyperBackground] Installed Application.onCreate preload hook")
+        } catch (error: Throwable) {
+            logHookError("Application.onCreate preload", error)
+        }
     }
 }

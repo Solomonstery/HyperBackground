@@ -20,6 +20,11 @@ const val APPEARANCE_SLOT_STYLE2_UPDATE_BACKGROUND = "style2_update_background"
 const val DEVICE_INTERFACE_STYLE_SYSTEM = 0
 const val DEVICE_INTERFACE_STYLE_ONE = 1
 const val DEVICE_INTERFACE_STYLE_TWO = 2
+const val DEVICE_INTERFACE_STYLE_THREE = 3
+
+const val COS_CARD_DEFAULT_TITLE = "HyperOS4"
+const val COS_CARD_DEFAULT_SUBTITLE = "一千万内最好的系统"
+const val COS_CARD_DEFAULT_SIGNATURE = "Cangcu"
 
 const val LOGO_MODE_SYSTEM = 0
 const val LOGO_MODE_NO_ADVANCED_MATERIAL = 1
@@ -105,6 +110,11 @@ private const val KEY_STYLE2_BACKGROUND_BLUR = "style2_background_blur"
 private const val KEY_STYLE2_BACKGROUND_VERTICAL_OFFSET = "style2_background_vertical_offset"
 private const val KEY_STYLE2_BACKGROUND_HORIZONTAL_OFFSET = "style2_background_horizontal_offset"
 private const val KEY_STYLE2_BACKGROUND_SCALE = "style2_background_scale"
+private const val KEY_COS_CARD_TITLE = "cos_card_title"
+private const val KEY_COS_CARD_SUBTITLE = "cos_card_subtitle"
+private const val KEY_COS_CARD_SIGNATURE = "cos_card_signature"
+private const val KEY_STYLE_RENUMBER_MIGRATED = "style_renumber_migrated"
+private const val KEY_DEVICE_BACKGROUND_PRELOAD = "device_background_preload"
 
 data class SettingsAppearanceSettings(
     val homeEnabled: Boolean = false,
@@ -186,12 +196,33 @@ data class SettingsAppearanceSettings(
     val style2BackgroundVerticalOffset: Int = 0,
     val style2BackgroundHorizontalOffset: Int = 0,
     val style2BackgroundScale: Int = 100,
+    val cosCardTitle: String = COS_CARD_DEFAULT_TITLE,
+    val cosCardSubtitle: String = COS_CARD_DEFAULT_SUBTITLE,
+    val cosCardSignature: String = COS_CARD_DEFAULT_SIGNATURE,
+    val deviceBackgroundPreload: Boolean = false,
 )
 
 class SettingsAppearanceStore(context: Context) {
     private val local = context.getSharedPreferences(SETTINGS_APPEARANCE_PREFERENCES, Context.MODE_PRIVATE)
-    var settings: SettingsAppearanceSettings = local.toSettingsAppearance()
+    var settings: SettingsAppearanceSettings = run {
+        migrateStyleRenumber()
+        local.toSettingsAppearance()
+    }
         private set
+
+    /**
+     * 样式重排一次性迁移：旧版值 2 = Harmony 样式，新版 2 = COS 样式、Harmony 顺延为 3。
+     * 仅迁移显式选过 2 的安装，标记位保证只执行一次。
+     */
+    private fun migrateStyleRenumber() {
+        if (local.getBoolean(KEY_STYLE_RENUMBER_MIGRATED, false)) return
+        val harmonySelected = local.contains(KEY_DEVICE_INTERFACE_STYLE) &&
+            local.getInt(KEY_DEVICE_INTERFACE_STYLE, DEVICE_INTERFACE_STYLE_SYSTEM) == DEVICE_INTERFACE_STYLE_TWO
+        local.edit()
+            .putBoolean(KEY_STYLE_RENUMBER_MIGRATED, true)
+            .apply { if (harmonySelected) putInt(KEY_DEVICE_INTERFACE_STYLE, DEVICE_INTERFACE_STYLE_THREE) }
+            .apply()
+    }
 
     fun reload() {
         settings = local.toSettingsAppearance()
@@ -291,6 +322,10 @@ internal fun SharedPreferences.toSettingsAppearance() = SettingsAppearanceSettin
     style2BackgroundVerticalOffset = getInt(KEY_STYLE2_BACKGROUND_VERTICAL_OFFSET, 0),
     style2BackgroundHorizontalOffset = getInt(KEY_STYLE2_BACKGROUND_HORIZONTAL_OFFSET, 0),
     style2BackgroundScale = getInt(KEY_STYLE2_BACKGROUND_SCALE, 100),
+    cosCardTitle = getString(KEY_COS_CARD_TITLE, COS_CARD_DEFAULT_TITLE).orEmpty().ifBlank { COS_CARD_DEFAULT_TITLE },
+    cosCardSubtitle = getString(KEY_COS_CARD_SUBTITLE, COS_CARD_DEFAULT_SUBTITLE).orEmpty().ifBlank { COS_CARD_DEFAULT_SUBTITLE },
+    cosCardSignature = getString(KEY_COS_CARD_SIGNATURE, COS_CARD_DEFAULT_SIGNATURE).orEmpty().ifBlank { COS_CARD_DEFAULT_SIGNATURE },
+    deviceBackgroundPreload = getBoolean(KEY_DEVICE_BACKGROUND_PRELOAD, false),
 ).normalized()
 
 private fun SettingsAppearanceSettings.normalized() = copy(
@@ -312,7 +347,7 @@ private fun SettingsAppearanceSettings.normalized() = copy(
     tutorialCardBackgroundVerticalOffset = tutorialCardBackgroundVerticalOffset.coerceIn(-120, 120),
     tutorialCardBackgroundHorizontalOffset = tutorialCardBackgroundHorizontalOffset.coerceIn(-120, 120),
     tutorialCardBackgroundScale = tutorialCardBackgroundScale.coerceIn(40, 200),
-    deviceInterfaceStyle = deviceInterfaceStyle.coerceIn(DEVICE_INTERFACE_STYLE_SYSTEM, DEVICE_INTERFACE_STYLE_TWO),
+    deviceInterfaceStyle = deviceInterfaceStyle.coerceIn(DEVICE_INTERFACE_STYLE_SYSTEM, DEVICE_INTERFACE_STYLE_THREE),
     style2ImageScale = style2ImageScale.coerceIn(40, 200),
     style2LogoVerticalOffset = style2LogoVerticalOffset.coerceIn(-120, 120),
     style2LogoVerticalOffsetLeft = style2LogoVerticalOffsetLeft.coerceIn(-120, 120),
@@ -429,6 +464,11 @@ private fun SharedPreferences.writeSettingsAppearance(value: SettingsAppearanceS
         .putInt(KEY_STYLE2_BACKGROUND_VERTICAL_OFFSET, value.style2BackgroundVerticalOffset)
         .putInt(KEY_STYLE2_BACKGROUND_HORIZONTAL_OFFSET, value.style2BackgroundHorizontalOffset)
         .putInt(KEY_STYLE2_BACKGROUND_SCALE, value.style2BackgroundScale)
+        .putString(KEY_COS_CARD_TITLE, value.cosCardTitle)
+        .putString(KEY_COS_CARD_SUBTITLE, value.cosCardSubtitle)
+        .putString(KEY_COS_CARD_SIGNATURE, value.cosCardSignature)
+        .putBoolean(KEY_DEVICE_BACKGROUND_PRELOAD, value.deviceBackgroundPreload)
+        .putBoolean(KEY_STYLE_RENUMBER_MIGRATED, true)
         .apply()
 }
 

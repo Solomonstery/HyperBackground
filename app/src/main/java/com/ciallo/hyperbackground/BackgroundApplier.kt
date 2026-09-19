@@ -1169,13 +1169,9 @@ object BackgroundApplier {
     }
 
     fun shouldSuppressDeviceShader(fragment: Any?): Boolean {
-        return try {
-            val context = contextFromFragment(fragment)
-            context != null && BackgroundContract.query(context, BackgroundContract.DEVICE).exists
-        } catch (error: Throwable) {
-            log("shouldSuppressDeviceShader", error)
-            false
-        }
+        val session = fragment?.getAdditionalInstanceField(DEVICE_SESSION) as? DeviceSession ?: return false
+        return session.media.hasRenderedFrame && !session.media.loadFailed &&
+            session.media.isAttachedToWindow && session.media.parent === session.backgroundView.parent
     }
 
     fun applyDevice(fragment: Any?) {
@@ -1190,10 +1186,13 @@ object BackgroundApplier {
                 if (activity != null) applyFontMode(activity)
                 return
             }
-            if (old != null && !old.media.loadFailed && old.media.sourceKey() == source.cacheKey()) {
-                if (old.media.isReady) {
-                    stopOriginalShader(fragment, old.backgroundView)
+            if (old != null && !old.media.loadFailed && old.media.sourceKey() == source.cacheKey()
+                && old.media.parent != null && old.media.parent === old.backgroundView.parent
+                && fragment.getObjectField("mBgEffectView") === old.backgroundView
+            ) {
+                if (old.media.hasRenderedFrame) {
                     old.backgroundView.visibility = View.INVISIBLE
+                    stopOriginalShader(fragment, old.backgroundView)
                 }
                 old.media.onHostResume()
                 if (activity != null) applyFontMode(activity)
@@ -1207,7 +1206,7 @@ object BackgroundApplier {
             val parent = backgroundView.parent as ViewGroup
             val media = BackgroundMediaView(context, source)
             if (old != null) removeDevice(fragment, old, false)
-            if (!media.isReady && rememberedVisibility != Int.MIN_VALUE) {
+            if (rememberedVisibility != Int.MIN_VALUE) {
                 backgroundView.visibility = rememberedVisibility
             }
             var index = parent.indexOfChild(backgroundView)
@@ -1226,9 +1225,12 @@ object BackgroundApplier {
                 if (rememberedVisibility != Int.MIN_VALUE) rememberedVisibility else backgroundView.visibility,
                 media)
             fragment.setAdditionalInstanceField(DEVICE_SESSION, session)
-            media.onReady = {
-                stopOriginalShader(fragment, backgroundView)
-                backgroundView.visibility = View.INVISIBLE
+            media.onFirstFrame = {
+                if (fragment.getAdditionalInstanceField(DEVICE_SESSION) === session &&
+                    !media.loadFailed && media.parent === parent && backgroundView.parent === parent) {
+                    backgroundView.visibility = View.INVISIBLE
+                    stopOriginalShader(fragment, backgroundView)
+                }
             }
             if (activity != null) applyFontMode(activity)
         } catch (error: Throwable) {

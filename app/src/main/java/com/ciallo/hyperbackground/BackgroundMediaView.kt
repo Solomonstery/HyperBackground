@@ -44,6 +44,13 @@ internal class BackgroundMediaView(
     private var hostResumed = true
     private var disposed = false
     private var imageTask: Future<*>? = null
+    private var videoFrameAvailable = false
+    private var videoBrightnessMask: View? = null
+    private val firstFrame = FirstFrameCallback(this)
+    val hasRenderedFrame: Boolean get() = firstFrame.isReady
+    var onFirstFrame: (() -> Unit)?
+        get() = firstFrame.onReady
+        set(value) { firstFrame.onReady = value }
     var isReady = false
         private set
     var loadFailed = false
@@ -107,6 +114,7 @@ internal class BackgroundMediaView(
     fun dispose() {
         disposed = true
         onReady = null
+        firstFrame.dispose()
         imageTask?.cancel(true)
         imageTask = null
         (imageDrawable as? AnimatedImageDrawable)?.stop()
@@ -149,7 +157,12 @@ internal class BackgroundMediaView(
     }
 
     private fun createImageView() {
-        val view = ImageView(context)
+        val view = object : ImageView(context) {
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                if (drawable != null && !loadFailed) firstFrame.afterDraw()
+            }
+        }
         imageView = view
         view.adjustViewBounds = false
         addView(
@@ -191,7 +204,7 @@ internal class BackgroundMediaView(
     }
 
     private fun markReady() {
-        if (disposed) return
+        if (disposed || isReady || loadFailed) return
         isReady = true
         onReady?.invoke()
     }
@@ -315,6 +328,9 @@ internal class BackgroundMediaView(
             overlayAlpha = minOf(0.5f, b / 100f - 1f) // 0..0.5（越亮越白，封顶）
         }
         val mask = View(context)
+        videoBrightnessMask = mask
+        // An empty TextureView must not darken the system background while video is preparing.
+        mask.visibility = View.INVISIBLE
         mask.setBackgroundColor(overlayColor)
         mask.alpha = overlayAlpha
         mask.isClickable = false
@@ -341,7 +357,12 @@ internal class BackgroundMediaView(
     }
 
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
-        // No-op.
+        if (disposed || loadFailed) return
+        firstFrame.afterDraw()
+        if (videoFrameAvailable) return
+        videoFrameAvailable = true
+        videoBrightnessMask?.visibility = View.VISIBLE
+        post { markReady() }
     }
 
     private fun startPlayer(surfaceTexture: SurfaceTexture) {
@@ -369,7 +390,6 @@ internal class BackgroundMediaView(
                 videoHeight = mp.videoHeight
                 updateVideoTransform()
                 if (hostResumed) mp.start()
-                markReady()
             }
             player.setOnErrorListener { _, what, extra ->
                 loadFailed = true

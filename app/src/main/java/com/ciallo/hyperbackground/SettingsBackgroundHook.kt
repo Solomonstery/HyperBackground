@@ -378,9 +378,10 @@ object SettingsBackgroundHook {
     private fun hookDeviceFragment(classLoader: ClassLoader) {
         val className = "com.android.settings.device.MiuiMyDeviceSettings"
         try {
-            hookMethod(className, classLoader, "startRuntimeShader", Boolean::class.javaPrimitiveType!!) {
-                if (BackgroundApplier.shouldSuppressDeviceShader(thisObject)) setResult(null)
-            }
+            hookMethod(className, classLoader, "startRuntimeShader", Boolean::class.javaPrimitiveType!!,
+                before = {
+                    if (BackgroundApplier.shouldSuppressDeviceShader(thisObject)) setResult(null)
+                })
 
             hookMethod(className, classLoader, "onViewCreated", View::class.java, Bundle::class.java) {
                 val a = thisObject!!.callMethod("getActivity")

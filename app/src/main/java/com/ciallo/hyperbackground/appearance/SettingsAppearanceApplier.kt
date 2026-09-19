@@ -40,10 +40,12 @@ object SettingsAppearanceApplier {
     private val internalLogo = ThreadLocal<Boolean>()
 
     fun applyHome(activity: Activity) = applyActivity(activity, APPEARANCE_SLOT_HOME)
-    fun shouldSuppressDeviceShader(fragment: Any): Boolean = runCatching {
-        val context = fragment.javaClass.getMethod("getContext").invoke(fragment) as? android.content.Context ?: return false
-        SettingsAppearanceSources.query(context, APPEARANCE_SLOT_DEVICE).exists
-    }.getOrDefault(false)
+    fun shouldSuppressDeviceShader(fragment: Any): Boolean {
+        val session = deviceLayers[fragment] ?: return false
+        return session.view.hasRenderedFrame && !session.view.loadFailed &&
+            session.view.isAttachedToWindow && session.view.parent === session.parent &&
+            session.systemBackground.parent === session.parent
+    }
 
     fun applyDevice(fragment: Any) {
         runCatching {
@@ -60,8 +62,10 @@ object SettingsAppearanceApplier {
                 return
             }
             if (old != null && !old.view.loadFailed && old.view.sourceKey() == source.cacheKey() && old.view.parent === old.parent) {
-                stopOriginalDeviceShader(fragment, old.systemBackground)
-                if (old.view.isReady) old.systemBackground.visibility = View.INVISIBLE
+                if (old.view.hasRenderedFrame) {
+                    old.systemBackground.visibility = View.INVISIBLE
+                    stopOriginalDeviceShader(fragment, old.systemBackground)
+                }
                 old.view.onHostResume()
                 old.refresh(context)
                 fragmentActivity(fragment)?.let { applyFontMode(it, source.fontMode) }
@@ -76,14 +80,19 @@ object SettingsAppearanceApplier {
             val parent = background.parent as? ViewGroup ?: return
             Log.i(TAG, "device target=${background.javaClass.name} parent=${parent.javaClass.name} index=${parent.indexOfChild(background)} visibility=${background.visibility}")
             old?.remove()
-            stopOriginalDeviceShader(fragment, background)
             val media = SettingsBackgroundView(context, source)
             val index = parent.indexOfChild(background).coerceAtLeast(0)
             parent.addView(media, index + 1, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             val session = DeviceLayerSession(parent, background, background.visibility, media)
-            // 延迟隐藏原系统背景：等自定义背景 drawable 就绪后再隐藏，消除黑帧空窗。
-            media.onReady = { background.visibility = View.INVISIBLE }
             deviceLayers[fragment] = session
+            // Keep the original shader running until a frame containing the replacement is submitted.
+            media.onFirstFrame = {
+                if (deviceLayers[fragment] === session && !media.loadFailed &&
+                    media.parent === parent && background.parent === parent) {
+                    background.visibility = View.INVISIBLE
+                    stopOriginalDeviceShader(fragment, background)
+                }
+            }
             Log.i(TAG, "device attached media=${media.javaClass.name} parent=${media.parent?.javaClass?.name}")
             fragmentActivity(fragment)?.let { applyFontMode(it, source.fontMode) }
             applyTutorialCard(fragment)
@@ -112,13 +121,18 @@ object SettingsAppearanceApplier {
                 return
             }
             old?.remove()
-            background.setRenderEffect(null)
             val media = SettingsBackgroundView(activity, source)
             val index = parent.indexOfChild(background).coerceAtLeast(0)
             parent.addView(media, index + 1, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             val session = DeviceLayerSession(parent, background, background.visibility, media)
-            media.onReady = { background.visibility = View.INVISIBLE }
             deviceLayers[activity] = session
+            media.onFirstFrame = {
+                if (deviceLayers[activity] === session && !media.loadFailed &&
+                    media.parent === parent && background.parent === parent) {
+                    background.visibility = View.INVISIBLE
+                    background.setRenderEffect(null)
+                }
+            }
             applyFontMode(activity, source.fontMode)
         }
     }

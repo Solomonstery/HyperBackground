@@ -1,5 +1,6 @@
 package com.ciallo.hyperbackground.appearance
 
+import android.graphics.Canvas
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.graphics.RenderEffect
@@ -19,6 +20,7 @@ import android.util.Log
 import java.io.IOException
 import java.util.concurrent.Future
 import com.ciallo.hyperbackground.BackgroundImageLoader
+import com.ciallo.hyperbackground.FirstFrameCallback
 
 class SettingsBackgroundView(
     context: android.content.Context,
@@ -33,8 +35,14 @@ class SettingsBackgroundView(
     private var videoHeight = 0
     private var hostResumed = true
     private var disposed = false
+    private var videoFrameAvailable = false
+    private val firstFrame = FirstFrameCallback(this)
+    val hasRenderedFrame: Boolean get() = firstFrame.isReady
+    var onFirstFrame: (() -> Unit)?
+        get() = firstFrame.onReady
+        set(value) { firstFrame.onReady = value }
 
-    /** 当背景 drawable 就绪（第一帧可显示）时回调，用于延迟隐藏原系统背景，消除黑帧空窗。 */
+    /** 内容已加载；替换系统背景时使用 onFirstFrame 等待首帧提交。 */
     var isReady = false
         private set
     var loadFailed = false
@@ -75,6 +83,7 @@ class SettingsBackgroundView(
     fun dispose() {
         disposed = true
         onReady = null
+        firstFrame.dispose()
         imageTask?.cancel(true)
         imageTask = null
         (imageDrawable as? AnimatedImageDrawable)?.stop()
@@ -84,7 +93,12 @@ class SettingsBackgroundView(
     }
 
     private fun createImageView() {
-        imageView = ImageView(context).also {
+        imageView = object : ImageView(context) {
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                if (drawable != null && !loadFailed) firstFrame.afterDraw()
+            }
+        }.also {
             it.scaleType = ImageView.ScaleType.CENTER_CROP
         }
         addView(imageView, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -118,7 +132,7 @@ class SettingsBackgroundView(
     }
 
     private fun markReady() {
-        if (disposed) return
+        if (disposed || isReady || loadFailed) return
         isReady = true
         onReady?.invoke()
     }
@@ -134,7 +148,13 @@ class SettingsBackgroundView(
     override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) = startPlayer(surfaceTexture)
     override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, width: Int, height: Int) = updateVideoTransform()
     override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean { releasePlayer(); return true }
-    override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) = Unit
+    override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) {
+        if (disposed || loadFailed) return
+        firstFrame.afterDraw()
+        if (videoFrameAvailable) return
+        videoFrameAvailable = true
+        post { markReady() }
+    }
 
     private fun startPlayer(surfaceTexture: SurfaceTexture) {
         releasePlayer()
@@ -158,7 +178,6 @@ class SettingsBackgroundView(
                     this@SettingsBackgroundView.videoHeight = it.videoHeight
                     this@SettingsBackgroundView.updateVideoTransform()
                     if (hostResumed) it.start()
-                    markReady()
                 }
                 setOnErrorListener { _, what, extra ->
                     loadFailed = true

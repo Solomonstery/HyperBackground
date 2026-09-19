@@ -22,6 +22,7 @@ import java.util.WeakHashMap
 import kotlin.math.roundToInt
 
 object SettingsAppearanceApplier {
+    @Volatile private var applicationContext: android.content.Context? = null
     private val layers = Collections.synchronizedMap(WeakHashMap<Activity, LayerSession>())
     private val deviceLayers = Collections.synchronizedMap(WeakHashMap<Any, DeviceLayerSession>())
     private val originalTextColors = Collections.synchronizedMap(WeakHashMap<TextView, Int>())
@@ -58,9 +59,9 @@ object SettingsAppearanceApplier {
                 applyTutorialCard(fragment)
                 return
             }
-            if (old != null && old.view.sourceKey() == source.cacheKey() && old.view.parent === old.parent) {
+            if (old != null && !old.view.loadFailed && old.view.sourceKey() == source.cacheKey() && old.view.parent === old.parent) {
                 stopOriginalDeviceShader(fragment, old.systemBackground)
-                old.systemBackground.visibility = View.INVISIBLE
+                if (old.view.isReady) old.systemBackground.visibility = View.INVISIBLE
                 old.view.onHostResume()
                 old.refresh(context)
                 fragmentActivity(fragment)?.let { applyFontMode(it, source.fontMode) }
@@ -104,7 +105,7 @@ object SettingsAppearanceApplier {
             val background = activity.findViewById<View>(id) ?: return
             val parent = background.parent as? ViewGroup ?: return
             Log.i(TAG, "device background hit activity=${activity.javaClass.name} id=$id source=${source.cacheKey()}")
-            if (old != null && old.view.sourceKey() == source.cacheKey() && old.view.parent === old.parent) {
+            if (old != null && !old.view.loadFailed && old.view.sourceKey() == source.cacheKey() && old.view.parent === old.parent) {
                 old.view.onHostResume()
                 old.refresh(activity)
                 applyFontMode(activity, source.fontMode)
@@ -424,9 +425,10 @@ object SettingsAppearanceApplier {
 
     fun logoReplacement(view: ImageView): Drawable? {
         if (internalLogo.get() == true || view.context.packageName != "com.android.settings") return null
-        if (isCustomDeviceCardEnabled(view.context)) return null
+        if (view.id == View.NO_ID || view.id == 0) return null
         val idName = runCatching { view.resources.getResourceEntryName(view.id).lowercase() }.getOrDefault("")
         if (idName != "miui_logo_view" && !idName.contains("logo")) return null
+        if (isCustomDeviceCardEnabled(view.context)) return null
         val source = SettingsAppearanceSources.query(view.context, APPEARANCE_SLOT_LOGO)
         if (!source.exists || source.logoMode == LOGO_MODE_SYSTEM) return null
         return LogoDrawableLoader.load(view.context, source)
@@ -437,11 +439,11 @@ object SettingsAppearanceApplier {
     }
 
     fun logoResourceReplacement(resources: Resources, resourceId: Int): Drawable? {
-        val context = runCatching {
+        val context = applicationContext ?: runCatching {
             Class.forName("android.app.ActivityThread")
                 .getMethod("currentApplication")
                 .invoke(null) as? android.content.Context
-        }.getOrNull() ?: return null
+        }.getOrNull()?.also { applicationContext = it } ?: return null
         return logoResourceReplacementInternal(context, resources, resourceId)
     }
 
@@ -450,17 +452,19 @@ object SettingsAppearanceApplier {
         resources: Resources,
         resourceId: Int,
     ): Drawable? {
-        if (internalLogo.get() == true || context.packageName != "com.android.settings" || isCustomDeviceCardEnabled(context)) return null
+        if (internalLogo.get() == true || context.packageName != "com.android.settings" || resourceId == 0) return null
         val packageName = runCatching { resources.getResourcePackageName(resourceId) }.getOrNull()
         if (packageName != null && packageName != "com.android.settings") return null
         val name = runCatching { resources.getResourceEntryName(resourceId).lowercase() }.getOrNull() ?: return null
+        // Most resource loads are not logos. Reject them before any configuration/IPC work.
+        if (!isLogoResource(name, LOGO_MODE_KEEP_ADVANCED_MATERIAL)) return null
+        if (isCustomDeviceCardEnabled(context)) return null
         val source = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_LOGO)
         if (!source.exists || source.logoMode == LOGO_MODE_SYSTEM || !isLogoResource(name, source.logoMode)) return null
         val drawable = LogoDrawableLoader.load(context, source) ?: run {
             Log.e(TAG, "logo resource replacement load failed name=$name mime=${source.mime} size=${source.size}")
             return null
         }
-        Log.i(TAG, "logo resource hit name=$name mode=${source.logoMode} mime=${source.mime}")
         return LogoDrawableLoader.forBackground(drawable, source.scale / 100f)
     }
 
@@ -485,18 +489,13 @@ object SettingsAppearanceApplier {
         resolvedColor: Int,
     ): Int? {
         if (context.packageName != "com.android.settings" || !isLightMode(resources)) return null
-        val packageName = runCatching { resources.getResourcePackageName(resourceId) }.getOrNull().orEmpty()
         val name = runCatching { resources.getResourceEntryName(resourceId).lowercase() }.getOrNull() ?: return null
+        if (name !in LIGHT_CARD_COLOR_RESOURCES) return null
         val opacity = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_HOME)
             .lightCardOpacity.coerceIn(0, 100)
         if (opacity >= 100) return null
-        if (name !in LIGHT_CARD_COLOR_RESOURCES) return null
         val alpha = opacity * 255 / 100
         val replacement = (alpha shl 24) or 0x00FFFFFF
-        Log.i(
-            TAG,
-            "card color resource hit package=$packageName name=$name original=0x${resolvedColor.toUInt().toString(16)} replacement=0x${replacement.toUInt().toString(16)}",
-        )
         return replacement
     }
 
@@ -593,8 +592,9 @@ object SettingsAppearanceApplier {
 
     fun cardBlurAlpha(view: View): Float? {
         if (view.context.packageName != "com.android.settings") return null
+        if (!isLightMode(view) || !isCardLike(view)) return null
         val source = SettingsAppearanceSources.query(view.context, APPEARANCE_SLOT_DEVICE)
-        if (!isLightMode(view) || source.lightCardOpacity >= 100 || !isCardLike(view)) return null
+        if (source.lightCardOpacity >= 100) return null
         return source.lightCardOpacity.coerceIn(0, 100) / 100f
     }
 
@@ -609,7 +609,7 @@ object SettingsAppearanceApplier {
                 return
             }
             val content = activity.findViewById<View>(android.R.id.content) as? ViewGroup ?: return
-            if (old != null && old.view.sourceKey() == source.cacheKey() && old.view.parent === content) {
+            if (old != null && !old.view.loadFailed && old.view.sourceKey() == source.cacheKey() && old.view.parent === content) {
                 old.view.onHostResume()
                 content.post { applyFontMode(activity, source.fontMode) }
                 return

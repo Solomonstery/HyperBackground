@@ -26,6 +26,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import java.io.IOException
 import java.util.concurrent.Callable
+import java.util.concurrent.Future
 
 internal class BackgroundMediaView(
     context: Context,
@@ -42,6 +43,16 @@ internal class BackgroundMediaView(
     private var videoHeight = 0
     private var hostResumed = true
     private var disposed = false
+    private var imageTask: Future<*>? = null
+    var isReady = false
+        private set
+    var loadFailed = false
+        private set
+    var onReady: (() -> Unit)? = null
+        set(value) {
+            field = value
+            if (isReady && !disposed) value?.invoke()
+        }
 
     // 顶部圆角半径（px，>0 才裁切）。用自绘 clipPath 而非 setClipToOutline，后者对内部 MATRIX 绘制的
     // ImageView 内容裁切不稳定，直接在 dispatchDraw 裁路径可确保对任意子内容一定生效。
@@ -95,6 +106,9 @@ internal class BackgroundMediaView(
 
     fun dispose() {
         disposed = true
+        onReady = null
+        imageTask?.cancel(true)
+        imageTask = null
         (imageDrawable as? AnimatedImageDrawable)?.stop()
         releasePlayer()
         textureView?.setSurfaceTextureListener(null)
@@ -138,24 +152,48 @@ internal class BackgroundMediaView(
         val view = ImageView(context)
         imageView = view
         view.adjustViewBounds = false
-        val decoderSource = ImageDecoder.createSource(Callable {
-            AssetFileDescriptor(source.openFile(), 0, AssetFileDescriptor.UNKNOWN_LENGTH)
-        })
-        val drawable = ImageDecoder.decodeDrawable(decoderSource)
-        imageDrawable = drawable
-        view.setImageDrawable(drawable)
-        applyImageBrightness()
         addView(
             view, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
             )
         )
-        applyImageScale()
-        if (drawable is AnimatedImageDrawable) {
-            drawable.setRepeatCount(AnimatedImageDrawable.REPEAT_INFINITE)
-            drawable.start()
+        val mediaKey = "remote:${source.slot}:${source.random}:${source.mime}:${source.size}:${source.modified}"
+        val cached = BackgroundImageLoader.cached(resources, mediaKey, source.zoom)
+        if (cached != null) {
+            bindImage(cached)
+            return
         }
+        imageTask = BackgroundImageLoader.load(resources, mediaKey, source.zoom, source = {
+            ImageDecoder.createSource(Callable {
+                AssetFileDescriptor(source.openFile(), 0, AssetFileDescriptor.UNKNOWN_LENGTH)
+            })
+        }) { result ->
+            post {
+                if (!disposed) result.fold(::bindImage) {
+                    loadFailed = true
+                    Log.e(TAG, "Cannot decode background", it)
+                }
+            }
+        }
+    }
+
+    private fun bindImage(drawable: Drawable) {
+        imageDrawable = drawable
+        imageView?.setImageDrawable(drawable)
+        applyImageBrightness()
+        applyImageScale()
+        (drawable as? AnimatedImageDrawable)?.let {
+            it.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
+            if (hostResumed) it.start()
+        }
+        markReady()
+    }
+
+    private fun markReady() {
+        if (disposed) return
+        isReady = true
+        onReady?.invoke()
     }
 
     // 背景亮度：对图片用 ColorMatrix 缩放 RGB 通道实现（100=原图，<100 变暗，>100 提亮），
@@ -331,14 +369,17 @@ internal class BackgroundMediaView(
                 videoHeight = mp.videoHeight
                 updateVideoTransform()
                 if (hostResumed) mp.start()
+                markReady()
             }
             player.setOnErrorListener { _, what, extra ->
+                loadFailed = true
                 Log.e(TAG, "Video background failed: $what/$extra")
                 closeDescriptor()
                 true
             }
             player.prepareAsync()
         } catch (error: Throwable) {
+            loadFailed = true
             Log.e(TAG, "Cannot start video background", error)
             releasePlayer()
         }

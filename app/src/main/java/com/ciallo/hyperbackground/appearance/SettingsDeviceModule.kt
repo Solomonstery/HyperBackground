@@ -19,8 +19,10 @@ import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam
 
 /** Hooks only Settings' presentation models; no system property is written. */
 class SettingsDeviceModule : XposedModule() {
+    @Volatile private var applicationContext: Context? = null
     override fun onPackageLoaded(param: PackageLoadedParam) {
-        if (param.packageName != SETTINGS_PACKAGE) return
+        if (!param.isFirstPackage || param.packageName != SETTINGS_PACKAGE) return
+        SettingsAppearanceSources.initialize(getRemotePreferences(SETTINGS_APPEARANCE_PREFERENCES))
         val preferences = getRemotePreferences(DEVICE_PROFILE_PREFERENCES)
         runCatching {
             installCardBindingHook(param.defaultClassLoader, preferences)
@@ -328,11 +330,11 @@ class SettingsDeviceModule : XposedModule() {
         }
     }
 
-    private fun currentApplicationContext(): Context? = runCatching {
+    private fun currentApplicationContext(): Context? = applicationContext ?: runCatching {
         Class.forName("android.app.ActivityThread")
             .getMethod("currentApplication")
             .invoke(null) as? Context
-    }.getOrNull()
+    }.getOrNull()?.also { applicationContext = it }
 
     private fun installAppearanceHooks(classLoader: ClassLoader) {
         installActivityAppearanceHooks(classLoader)

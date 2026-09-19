@@ -1003,8 +1003,8 @@ object BackgroundApplier {
             // their expanded action bar is a sibling of android.R.id.content, so the media must
             // sit one level higher in the known ActionBarOverlayLayout to continue behind the
             // status bar, back button and large title. We never promote to DecorView.
-            if (old != null && old.media.sourceKey() == source.cacheKey()
-                && old.media.parent === host && old.observedRoot === host
+            if (old != null && !old.media.loadFailed && old.media.sourceKey() == source.cacheKey()
+                && old.media.parent === host && (old.observedRoot === host || !old.media.isReady)
             ) {
                 old.media.onHostResume()
                 old.refresh(activity, home)
@@ -1021,32 +1021,36 @@ object BackgroundApplier {
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
 
             val session = LayerSession(media)
-            if (host !== content) session.clear(host)
-            session.clear(content)
-            if (originalRoot != null) session.clear(originalRoot)
-            clearNamed(activity, session, "nestedheaderlayout")
-            clearNamed(activity, session, "nested_header_layout")
-            clearNamed(activity, session, "scroll_headers")
-            clearNamed(activity, session, "main_content")
-            if (!home) {
-                clearNamed(activity, session, "prefs_container")
-                clearNamed(activity, session, "preference_recyclerview")
-                clearNamed(activity, session, "recycler_view")
-                clearNamed(activity, session, "content")
-                clearNamed(activity, session, "content_view")
-                clearNamed(activity, session, "content_wrapper")
-                clearNamed(activity, session, "action_bar_activity_content")
-                clearNamed(activity, session, "area_content")
-                clearNamed(activity, session, "auto_content")
-                // 联系人详情页（PeopleDetailActivity）专用容器：头像模糊底 / 滚动容器 / 内容容器，
-                // 其背景可能是头像虚化或主题色而非中性色，通用中性底扫描清不掉，这里强制透明。
-                clearNamed(activity, session, "container_layout")
-                clearNamed(activity, session, "zoom_scrollview")
-                clearNamed(activity, session, "content_container")
-            }
             host.addView(media, 0, mediaParams)
-            session.attach(activity, host, home, transparentTopBar)
             activity.setAdditionalInstanceField(fieldKey, session)
+            media.onReady = {
+                if (!activity.isDestroyed && media.parent === host) {
+                    if (host !== content) session.clear(host)
+                    session.clear(content)
+                    if (originalRoot != null) session.clear(originalRoot)
+                    clearNamed(activity, session, "nestedheaderlayout")
+                    clearNamed(activity, session, "nested_header_layout")
+                    clearNamed(activity, session, "scroll_headers")
+                    clearNamed(activity, session, "main_content")
+                    if (!home) {
+                        clearNamed(activity, session, "prefs_container")
+                        clearNamed(activity, session, "preference_recyclerview")
+                        clearNamed(activity, session, "recycler_view")
+                        clearNamed(activity, session, "content")
+                        clearNamed(activity, session, "content_view")
+                        clearNamed(activity, session, "content_wrapper")
+                        clearNamed(activity, session, "action_bar_activity_content")
+                        clearNamed(activity, session, "area_content")
+                        clearNamed(activity, session, "auto_content")
+                        // 联系人详情页（PeopleDetailActivity）专用容器：头像模糊底 / 滚动容器 / 内容容器，
+                        // 其背景可能是头像虚化或主题色而非中性色，通用中性底扫描清不掉，这里强制透明。
+                        clearNamed(activity, session, "container_layout")
+                        clearNamed(activity, session, "zoom_scrollview")
+                        clearNamed(activity, session, "content_container")
+                    }
+                    session.attach(activity, host, home, transparentTopBar)
+                }
+            }
             if (BackgroundContract.GLOBAL == slot) {
                 diagnostic(activity, "applied host=" + host.javaClass.name
                     + " root=" + (if (originalRoot == null) "none" else originalRoot.javaClass.name)
@@ -1186,8 +1190,11 @@ object BackgroundApplier {
                 if (activity != null) applyFontMode(activity)
                 return
             }
-            if (old != null && old.media.sourceKey() == source.cacheKey()) {
-                stopOriginalShader(fragment, old.backgroundView)
+            if (old != null && !old.media.loadFailed && old.media.sourceKey() == source.cacheKey()) {
+                if (old.media.isReady) {
+                    stopOriginalShader(fragment, old.backgroundView)
+                    old.backgroundView.visibility = View.INVISIBLE
+                }
                 old.media.onHostResume()
                 if (activity != null) applyFontMode(activity)
                 return
@@ -1200,7 +1207,9 @@ object BackgroundApplier {
             val parent = backgroundView.parent as ViewGroup
             val media = BackgroundMediaView(context, source)
             if (old != null) removeDevice(fragment, old, false)
-            stopOriginalShader(fragment, backgroundView)
+            if (!media.isReady && rememberedVisibility != Int.MIN_VALUE) {
+                backgroundView.visibility = rememberedVisibility
+            }
             var index = parent.indexOfChild(backgroundView)
             if (index < 0) index = 0
             try {
@@ -1216,8 +1225,11 @@ object BackgroundApplier {
                 backgroundView,
                 if (rememberedVisibility != Int.MIN_VALUE) rememberedVisibility else backgroundView.visibility,
                 media)
-            backgroundView.visibility = View.INVISIBLE
             fragment.setAdditionalInstanceField(DEVICE_SESSION, session)
+            media.onReady = {
+                stopOriginalShader(fragment, backgroundView)
+                backgroundView.visibility = View.INVISIBLE
+            }
             if (activity != null) applyFontMode(activity)
         } catch (error: Throwable) {
             log("applyDevice", error)

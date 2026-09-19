@@ -46,7 +46,7 @@ object HookRuntime {
         value.hook(executable).intercept { chain ->
             val param = LegacyHookParam(chain)
             callback.before(param)
-            val result = if (param.hasResult) param.result else chain.proceed(param.args)
+            val result = if (param.hasResult) param.result else param.proceed()
             param.setResultFromOriginal(result)
             callback.after(param)
             param.result
@@ -61,9 +61,16 @@ object HookRuntime {
         open fun after(param: LegacyHookParam) {}
     }
 
-    class LegacyHookParam internal constructor(chain: XposedInterface.Chain) {
+    class LegacyHookParam internal constructor(private val chain: XposedInterface.Chain) {
         val thisObject: Any? = chain.thisObject
-        val args: Array<Any?> = chain.args.toTypedArray()
+        private var copiedArgs: Array<Any?>? = null
+        val args: Array<Any?>
+            get() = copiedArgs ?: chain.args.toTypedArray().also { copiedArgs = it }
+
+        internal fun proceed(): Any? {
+            val arguments = copiedArgs
+            return if (arguments == null) chain.proceed() else chain.proceed(arguments)
+        }
 
         var result: Any? = null
             private set

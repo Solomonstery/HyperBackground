@@ -203,6 +203,7 @@ data class SettingsAppearanceSettings(
 )
 
 class SettingsAppearanceStore(context: Context) {
+    private val resolver = context.applicationContext.contentResolver
     private val local = context.getSharedPreferences(SETTINGS_APPEARANCE_PREFERENCES, Context.MODE_PRIVATE)
     var settings: SettingsAppearanceSettings = run {
         migrateStyleRenumber()
@@ -233,12 +234,18 @@ class SettingsAppearanceStore(context: Context) {
         settings = if (remote.contains(KEY_INITIALIZED)) remote.toSettingsAppearance() else settings
         remote.writeSettingsAppearance(settings)
         local.writeSettingsAppearance(settings)
+        notifyChanged()
     }
 
     fun update(service: XposedService?, transform: (SettingsAppearanceSettings) -> SettingsAppearanceSettings) {
         settings = transform(settings).normalized()
         local.writeSettingsAppearance(settings)
         service?.getRemotePreferences(SETTINGS_APPEARANCE_PREFERENCES)?.writeSettingsAppearance(settings)
+        notifyChanged()
+    }
+
+    private fun notifyChanged() {
+        resolver.notifyChange(android.net.Uri.parse("content://$SETTINGS_APPEARANCE_AUTHORITY"), null)
     }
 }
 

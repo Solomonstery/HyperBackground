@@ -27,8 +27,8 @@ android {
         applicationId = "com.ciallo.hyperbackground"
         minSdk = 33
         targetSdk = 35
-        versionCode = 66
-        versionName = "1.4.4-beta3"
+        versionCode = 67
+        versionName = "1.4.4-beta4"
         resourceConfigurations += listOf("en", "zh-rCN")
     }
 
@@ -103,4 +103,6 @@ dependencies {
     compileOnly("io.github.libxposed:api:102.0.0")
     implementation("io.github.libxposed:service:102.0.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("io.github.libxposed:api:102.0.0")
 }

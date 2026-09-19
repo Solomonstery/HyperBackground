@@ -24,6 +24,8 @@ object SettingsTopBarBlurHook {
     private const val LOG_BAR_MASK = "hyperbackground_blur_logged_bar_mask"
     private const val LOG_BAR_BLUR = "hyperbackground_blur_logged_bar_view"
     private const val BAR_BLUR_SUPPRESSED = "hyperbackground_bar_blur_suppressed"
+    private const val OWNED_BLUR_STATE = "hyperbackground_owned_blur_state"
+    private data class BlurState(val radius: Float, val height: Int)
     private lateinit var setBlurTypeMethod: Method
     private var setBlurModeMethod: Method? = null
     private var setViewBlurModeMethod: Method? = null
@@ -144,6 +146,18 @@ object SettingsTopBarBlurHook {
                 }
 
                 val scrollFraction = min(1f, -progress / headerHeight.toFloat())
+                val clearEnabled = SettingsTopBarClearHook.shouldClear(layout.context)
+                val strength = if (clearEnabled) 0 else HookRuntime.preferences().getInt(
+                    BackgroundContract.UI_TOP_BLUR_STRENGTH, 10)
+                val opacity = if (clearEnabled) 0 else HookRuntime.preferences().getInt(
+                    BackgroundContract.UI_TOP_BLUR_OPACITY, 100)
+                if (strength <= 0 || opacity <= 0) {
+                    clearGradientBlur(overlay)
+                    setBlurEnabled(thisObject, blurHelper, false)
+                    overlay.alpha = 0f
+                    overlay.visibility = View.INVISIBLE
+                    return@hookMethod
+                }
                 setBlurEnabled(thisObject, blurHelper, true)
                 clearNativeStickyMask(overlay)
                 clearNativeBlurBackground(thisObject, overlay)
@@ -157,11 +171,6 @@ object SettingsTopBarBlurHook {
                 val density = overlay.resources.displayMetrics.density
                 // 开启"清除顶栏"时复用模糊管线但透明度与强度归零，
                 // 视觉上顶栏完全透明，且不产生无意义的模糊渲染开销。
-                val clearEnabled = SettingsTopBarClearHook.shouldClear(layout.context)
-                val strength = if (clearEnabled) 0 else HookRuntime.preferences().getInt(
-                    BackgroundContract.UI_TOP_BLUR_STRENGTH, 10)
-                val opacity = if (clearEnabled) 0 else HookRuntime.preferences().getInt(
-                    BackgroundContract.UI_TOP_BLUR_OPACITY, 100)
                 val blurAlpha = scrollFraction * opacity.coerceIn(0, 100) / 100f
                 val peakRadius = min(strength.coerceIn(0, 100) * density, height * 0.5f)
                 val radius = peakRadius * scrollFraction
@@ -413,8 +422,7 @@ object SettingsTopBarBlurHook {
         if (blurView == null) return
 
         if (activity.getAdditionalInstanceField(NESTED_ACTIVITY) == true) {
-            clearGradientBlur(blurView)
-            blurView.visibility = View.INVISIBLE
+            hideOwnedBlur(blurView)
             return
         }
 
@@ -425,9 +433,7 @@ object SettingsTopBarBlurHook {
             maskAlpha = 1f
         }
         if (maskAlpha <= 0f) {
-            clearGradientBlur(blurView)
-            blurView.alpha = 0f
-            blurView.visibility = View.INVISIBLE
+            hideOwnedBlur(blurView)
             return
         }
 
@@ -440,12 +446,24 @@ object SettingsTopBarBlurHook {
         val density = bar.resources.displayMetrics.density
         val radius = min(strength.coerceIn(0, 100) * density, height * 0.5f)
         val alpha = maskAlpha * opacity.coerceIn(0, 100) / 100f
-        val gradient = floatArrayOf(0f, 0f, radius, 0f, height.toFloat(), 0f)
+        if (radius <= 0f || alpha <= 0f) {
+            hideOwnedBlur(blurView)
+            return
+        }
         try {
-            setBlurModeMethod?.invoke(blurView, 1)
-            setViewBlurModeMethod?.invoke(blurView, 1)
-            setBlurTypeMethod?.invoke(blurView, 2)
-            setGradientParamsMethod?.invoke(blurView, gradient, 1)
+            val old = blurView.getAdditionalInstanceField(OWNED_BLUR_STATE) as? BlurState
+            val state = BlurState(radius, height)
+            // Repeating vendor setters from draw() can schedule another frame indefinitely.
+            if (old == null || old.radius <= 0f) {
+                setBlurModeMethod?.invoke(blurView, 1)
+                setViewBlurModeMethod?.invoke(blurView, 1)
+                setBlurTypeMethod?.invoke(blurView, 2)
+            }
+            if (old != state) {
+                val gradient = floatArrayOf(0f, 0f, radius, 0f, height.toFloat(), 0f)
+                setGradientParamsMethod?.invoke(blurView, gradient, 1)
+                blurView.setAdditionalInstanceField(OWNED_BLUR_STATE, state)
+            }
             blurView.alpha = alpha
             blurView.visibility = View.VISIBLE
             logOnce(bar, LOG_BAR_BLUR,
@@ -458,9 +476,17 @@ object SettingsTopBarBlurHook {
     private fun clearInjectedActionBarBlur(barObject: Any?) {
         val bar = barObject as? ViewGroup ?: return
         val blurView = bar.getAdditionalInstanceField(ACTION_BAR_BLUR_VIEW) as? View ?: return
-        clearGradientBlur(blurView)
-        blurView.alpha = 0f
-        blurView.visibility = View.INVISIBLE
+        hideOwnedBlur(blurView)
+    }
+
+    private fun hideOwnedBlur(view: View) {
+        val disabled = BlurState(0f, 0)
+        if (view.getAdditionalInstanceField(OWNED_BLUR_STATE) != disabled) {
+            clearGradientBlur(view)
+            view.setAdditionalInstanceField(OWNED_BLUR_STATE, disabled)
+        }
+        view.alpha = 0f
+        view.visibility = View.INVISIBLE
     }
 
     private fun restoreNativeActionBarBlur(bar: Any?) {
@@ -498,13 +524,17 @@ object SettingsTopBarBlurHook {
                 mask = getField(overlay, "mStickyMaskImpl")
             }
             if (mask != null) {
-                setIntField(mask, "mMaskColor", 0)
+                if (getIntField(mask, "mMaskColor") != 0) {
+                    setIntField(mask, "mMaskColor", 0)
+                    overlay.invalidate()
+                }
                 try {
-                    overlay.callMethod("setStickyMaskEnabled", false, false)
+                    if (overlay.callMethod("isStickyMaskEnabled") == true) {
+                        overlay.callMethod("setStickyMaskEnabled", false, false)
+                    }
                 } catch (_: Throwable) {
                     // Older builds do not expose the two-argument overload.
                 }
-                overlay.invalidate()
             }
         } catch (_: Throwable) {
             // OS3 does not expose the sticky mask implementation.

@@ -4,6 +4,7 @@ import java.lang.reflect.Field
 import java.lang.reflect.Method
 import java.util.Collections
 import java.util.WeakHashMap
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * libxposed 102 的 Kotlin 化 hook 工具层。
@@ -13,6 +14,13 @@ import java.util.WeakHashMap
  */
 private val ADDITIONAL_FIELDS: MutableMap<Any, MutableMap<String, Any?>> =
     Collections.synchronizedMap(WeakHashMap())
+
+private data class MethodKey(val type: Class<*>, val name: String, val parameters: List<Class<*>?>)
+private data class FieldKey(val type: Class<*>, val name: String)
+private data class Lookup<T>(val member: T?)
+private val exactMethods = ConcurrentHashMap<MethodKey, Lookup<Method>>()
+private val compatibleMethods = ConcurrentHashMap<MethodKey, Lookup<Method>>()
+private val fields = ConcurrentHashMap<FieldKey, Lookup<Field>>()
 
 fun log(message: String) {
     HookRuntime.log(message)
@@ -58,7 +66,6 @@ fun hookMethod(
 fun Any.callMethod(name: String, vararg args: Any?): Any? {
     val method = findCompatibleMethod(javaClass, name, args)
     return try {
-        method.isAccessible = true
         method.invoke(this, *args)
     } catch (error: ReflectiveOperationException) {
         throw IllegalStateException(error)
@@ -99,6 +106,12 @@ private fun wrap(
 }
 
 private fun findMethod(type: Class<*>, name: String, parameterTypes: Array<out Class<*>>): Method {
+    val key = MethodKey(type, name, parameterTypes.toList())
+    return exactMethods.getOrPut(key) { Lookup(searchMethod(type, name, parameterTypes)) }.member
+        ?: throw IllegalStateException(NoSuchMethodException("${type.name}#$name"))
+}
+
+private fun searchMethod(type: Class<*>, name: String, parameterTypes: Array<out Class<*>>): Method? {
     var current: Class<*>? = type
     while (current != null) {
         try {
@@ -107,10 +120,16 @@ private fun findMethod(type: Class<*>, name: String, parameterTypes: Array<out C
         }
         current = current.superclass
     }
-    throw IllegalStateException(NoSuchMethodException("${type.name}#$name"))
+    return null
 }
 
 private fun findCompatibleMethod(type: Class<*>, name: String, args: Array<out Any?>): Method {
+    val key = MethodKey(type, name, args.map { it?.javaClass })
+    return compatibleMethods.getOrPut(key) { Lookup(searchCompatibleMethod(type, name, args)) }.member
+        ?: throw IllegalStateException(NoSuchMethodException("${type.name}#$name"))
+}
+
+private fun searchCompatibleMethod(type: Class<*>, name: String, args: Array<out Any?>): Method? {
     var current: Class<*>? = type
     while (current != null) {
         for (method in current.declaredMethods) {
@@ -118,31 +137,37 @@ private fun findCompatibleMethod(type: Class<*>, name: String, args: Array<out A
             val parameterTypes = method.parameterTypes
             var compatible = true
             for (i in args.indices) {
-                if (args[i] != null && !boxed(parameterTypes[i]).isInstance(args[i])) {
+                if (if (args[i] == null) parameterTypes[i].isPrimitive
+                    else !boxed(parameterTypes[i]).isInstance(args[i])) {
                     compatible = false
                     break
                 }
             }
-            if (compatible) return method
+            if (compatible) return method.apply { isAccessible = true }
         }
         current = current.superclass
     }
-    throw IllegalStateException(NoSuchMethodException("${type.name}#$name"))
+    return null
 }
 
 private fun boxed(type: Class<*>): Class<*> = when (type) {
-    java.lang.Boolean.TYPE -> Boolean::class.java
-    java.lang.Byte.TYPE -> Byte::class.java
-    java.lang.Character.TYPE -> Char::class.java
-    java.lang.Short.TYPE -> Short::class.java
-    Integer.TYPE -> Int::class.java
-    java.lang.Long.TYPE -> Long::class.java
-    java.lang.Float.TYPE -> Float::class.java
-    java.lang.Double.TYPE -> Double::class.java
+    java.lang.Boolean.TYPE -> Boolean::class.javaObjectType
+    java.lang.Byte.TYPE -> Byte::class.javaObjectType
+    java.lang.Character.TYPE -> Char::class.javaObjectType
+    java.lang.Short.TYPE -> Short::class.javaObjectType
+    Integer.TYPE -> Int::class.javaObjectType
+    java.lang.Long.TYPE -> Long::class.javaObjectType
+    java.lang.Float.TYPE -> Float::class.javaObjectType
+    java.lang.Double.TYPE -> Double::class.javaObjectType
     else -> type
 }
 
 internal fun findField(type: Class<*>, name: String): Field {
+    return fields.getOrPut(FieldKey(type, name)) { Lookup(searchField(type, name)) }.member
+        ?: throw NoSuchFieldException(name)
+}
+
+private fun searchField(type: Class<*>, name: String): Field? {
     var current: Class<*>? = type
     while (current != null) {
         try {
@@ -151,5 +176,5 @@ internal fun findField(type: Class<*>, name: String): Field {
         }
         current = current.superclass
     }
-    throw NoSuchFieldException(name)
+    return null
 }

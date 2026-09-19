@@ -1,7 +1,14 @@
 package com.ciallo.hyperbackground.appearance
 
 import android.content.Context
+import android.content.SharedPreferences
+import android.database.ContentObserver
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import com.ciallo.hyperbackground.InvalidatingCache
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class SettingsAppearanceSource(
     val slot: String,
@@ -82,6 +89,32 @@ fun SettingsAppearanceSource.style2TextVerticalOffsetForAlignment(): Int = when 
 }
 
 object SettingsAppearanceSources {
+    private data class CachedSource(val source: SettingsAppearanceSource, val retryAt: Long)
+    private val cache = InvalidatingCache<String, CachedSource>()
+    private val observing = AtomicBoolean(false)
+    private var preferences: SharedPreferences? = null
+    // SharedPreferences keeps listeners weakly; keep both listeners alive for this process.
+    private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> cache.invalidate() }
+    private val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) = cache.invalidate()
+    }
+
+    fun initialize(value: SharedPreferences) {
+        preferences?.unregisterOnSharedPreferenceChangeListener(preferenceListener)
+        preferences = value
+        value.registerOnSharedPreferenceChangeListener(preferenceListener)
+        cache.invalidate()
+    }
+
+    private fun observe(context: Context) {
+        if (!observing.compareAndSet(false, true)) return
+        runCatching {
+            context.contentResolver.registerContentObserver(
+                Uri.parse("content://$SETTINGS_APPEARANCE_AUTHORITY"), true, observer,
+            )
+        }.onFailure { observing.set(false) }
+    }
+
     fun uri(slot: String) = Uri.Builder()
         .scheme("content")
         .authority(SETTINGS_APPEARANCE_AUTHORITY)
@@ -89,6 +122,18 @@ object SettingsAppearanceSources {
         .build()
 
     fun query(context: Context, slot: String): SettingsAppearanceSource {
+        observe(context)
+        return cache.getOrLoad(slot, { SystemClock.uptimeMillis() < it.retryAt }) {
+            val source = readSource(context, slot)
+            CachedSource(
+                source ?: missing(slot, uri(slot)),
+                // A temporarily unavailable provider must recover without restarting Settings.
+                if (source == null) SystemClock.uptimeMillis() + 1_000L else Long.MAX_VALUE,
+            )
+        }.source
+    }
+
+    private fun readSource(context: Context, slot: String): SettingsAppearanceSource? {
         val uri = uri(slot)
         return runCatching {
             context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -155,8 +200,8 @@ object SettingsAppearanceSources {
                     cosCardSubtitle = cursor.string(SettingsAppearanceProvider.COLUMN_COS_CARD_SUBTITLE).ifBlank { COS_CARD_DEFAULT_SUBTITLE },
                     cosCardSignature = cursor.string(SettingsAppearanceProvider.COLUMN_COS_CARD_SIGNATURE).ifBlank { COS_CARD_DEFAULT_SIGNATURE },
                 )
-            } ?: missing(slot, uri)
-        }.getOrElse { missing(slot, uri) }
+            }
+        }.getOrNull()
     }
 
     private fun missing(slot: String, uri: Uri) = SettingsAppearanceSource(

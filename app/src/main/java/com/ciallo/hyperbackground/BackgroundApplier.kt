@@ -621,8 +621,9 @@ object BackgroundApplier {
             val bgView = if (bgId == 0) null else dialpad.findViewById<View>(bgId)
             val container = if (containerId == 0) null else dialpad.findViewById<View>(containerId)
             // The container also includes keypad padding / controls and is larger than the native
-            // painted background on some Contacts versions. Use the native background's laid-out
-            // rectangle as the common geometry; it is only a bounds source, never a child host.
+            // painted background on some Contacts versions. Use the native background as the
+            // geometry source; DialpadLayerSession trims its 9-patch shadow padding to the opaque
+            // body. It remains only a bounds source, never a child host.
             val panel = bgView ?: container ?: dialpad
             // These surfaces are owned here, not by the list's generic transparency scan.
             bgView?.setAdditionalInstanceField(DialpadBackdropView.OWNED_VIEW_FIELD, true)

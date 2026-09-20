@@ -1,6 +1,7 @@
 package com.ciallo.hyperbackground
 
 import android.graphics.Matrix
+import android.graphics.Rect
 import android.graphics.RectF
 import android.view.View
 import android.view.ViewGroup
@@ -17,7 +18,9 @@ internal class DialpadLayerSession(
     private val layer: DialpadPanelView,
 ) : View.OnAttachStateChangeListener {
     private val originalBackgroundAlpha = nativeBackground?.alpha
+    private val panelPadding = Rect()
     private val panelBounds = RectF()
+    private val contentBounds = RectF()
     private val panelTransform = Matrix()
     private var observer: ViewTreeObserver? = null
     private var disposed = false
@@ -61,13 +64,34 @@ internal class DialpadLayerSession(
             layer.visibility = View.INVISIBLE
             return
         }
-        // Follow the selected native bounds source without becoming its child. Mapping into host
-        // coordinates also follows the dialpad's native slide and scale animations.
+        // The native dialer_background_new 9-patch fills this View but keeps its opaque panel
+        // inside the Drawable padding (the surrounding pixels are only its shadow). Follow that
+        // inner rectangle so custom media and blur do not cover the shadow and look oversized.
         panelBounds.set(0f, 0f, panel.width.toFloat(), panel.height.toFloat())
+        contentBounds.set(panelBounds)
+        panelPadding.setEmpty()
+        if (panel === nativeBackground) {
+            nativeBackground?.background?.getPadding(panelPadding)
+            val paddedLeft = panelPadding.left.coerceAtLeast(0)
+            val paddedTop = panelPadding.top.coerceAtLeast(0)
+            val paddedRight = panelPadding.right.coerceAtLeast(0)
+            val paddedBottom = panelPadding.bottom.coerceAtLeast(0)
+            if (paddedLeft + paddedRight < panel.width &&
+                paddedTop + paddedBottom < panel.height) {
+                contentBounds.set(
+                    paddedLeft.toFloat(),
+                    paddedTop.toFloat(),
+                    (panel.width - paddedRight).toFloat(),
+                    (panel.height - paddedBottom).toFloat(),
+                )
+            }
+        }
+        // Mapping into host coordinates also follows the dialpad's native slide/scale animation.
         panelTransform.reset()
         panel.transformMatrixToGlobal(panelTransform)
         host.transformMatrixToLocal(panelTransform)
         panelTransform.mapRect(panelBounds)
+        panelTransform.mapRect(contentBounds)
         val left = floor(panelBounds.left).toInt()
         val top = floor(panelBounds.top).toInt()
         val right = ceil(panelBounds.right).toInt()
@@ -87,6 +111,12 @@ internal class DialpadLayerSession(
             )
             layer.layout(left, top, right, bottom)
         }
+        layer.followPanelBounds(
+            contentBounds.left - left,
+            contentBounds.top - top,
+            contentBounds.right - left,
+            contentBounds.bottom - top,
+        )
         layer.visibility = View.VISIBLE
         // nativeBackground is made transparent below, so never mirror its alpha back to the
         // replacement layer on the next pre-draw. Other fallback panels may still animate alpha.
@@ -99,6 +129,8 @@ internal class DialpadLayerSession(
             val mode = if (layer is DialpadImageView) "image" else "backdrop"
             log("[HyperBackground] Dialpad layer=$mode panel=${panel.javaClass.name} " +
                 "bounds=($left,$top,$right,$bottom) host=${host.width}x${host.height} " +
+                "padding=(${panelPadding.left},${panelPadding.top}," +
+                "${panelPadding.right},${panelPadding.bottom}) " +
                 "native=${nativeBackground?.javaClass?.name}:" +
                 "${nativeBackground?.width}x${nativeBackground?.height}")
         }

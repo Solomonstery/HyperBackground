@@ -13,8 +13,11 @@ import android.widget.FrameLayout
 internal abstract class DialpadPanelView(context: Context) : FrameLayout(context) {
     private val cornerRadius = 30f * resources.displayMetrics.density
     private val roundedBounds = Path()
+    private val panelBounds = RectF()
+    private val allowedBounds = RectF()
     private val requestedBounds = RectF()
     private val resolvedBounds = RectF()
+    private var usePanelBounds = false
     private var useContentBounds = false
     private var contentScale = 1f
 
@@ -46,6 +49,16 @@ internal abstract class DialpadPanelView(context: Context) : FrameLayout(context
         rebuildRoundedBounds()
     }
 
+    /** Restricts both modes to the opaque body inside the native background's shadow padding. */
+    internal fun followPanelBounds(left: Float, top: Float, right: Float, bottom: Float) {
+        if (usePanelBounds && panelBounds.left == left && panelBounds.top == top &&
+            panelBounds.right == right && panelBounds.bottom == bottom) return
+        panelBounds.set(left, top, right, bottom)
+        usePanelBounds = true
+        rebuildRoundedBounds()
+        invalidate()
+    }
+
     /** Custom images call this with their matrix-mapped drawable bounds; default mode never does. */
     protected fun followContentBounds(bounds: RectF, scale: Float) {
         requestedBounds.set(bounds)
@@ -62,13 +75,17 @@ internal abstract class DialpadPanelView(context: Context) : FrameLayout(context
             invalidateOutline()
             return
         }
+        allowedBounds.set(0f, 0f, width.toFloat(), height.toFloat())
+        if (usePanelBounds && !allowedBounds.intersect(panelBounds)) {
+            allowedBounds.setEmpty()
+        }
         if (useContentBounds) {
             resolvedBounds.set(requestedBounds)
-            if (!resolvedBounds.intersect(0f, 0f, width.toFloat(), height.toFloat())) {
+            if (allowedBounds.isEmpty || !resolvedBounds.intersect(allowedBounds)) {
                 resolvedBounds.setEmpty()
             }
         } else {
-            resolvedBounds.set(0f, 0f, width.toFloat(), height.toFloat())
+            resolvedBounds.set(allowedBounds)
         }
         if (!resolvedBounds.isEmpty) {
             val radius = resolvedCornerRadius()

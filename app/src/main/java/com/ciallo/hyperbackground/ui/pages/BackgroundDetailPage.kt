@@ -28,6 +28,7 @@ import com.ciallo.hyperbackground.BackgroundContract
 import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.ui.MainActivity
 import com.ciallo.hyperbackground.ui.components.SectionTitle
+import com.ciallo.hyperbackground.ui.components.SettingsCardColors
 import com.ciallo.hyperbackground.ui.components.BackgroundPickerPreference
 import com.ciallo.hyperbackground.ui.components.SliderPreference
 import com.ciallo.hyperbackground.ui.components.SliderWithInputPreference
@@ -87,6 +88,8 @@ fun BackgroundDetailPage(
             }
         }
         if (slot == BackgroundContract.HOME) {
+            item { SectionTitle(stringResource(R.string.settings_card_background)) }
+            item { SettingsCardColors(activity) }
             item { SectionTitle(stringResource(R.string.home_scale_title)) }
             item { HomeScaleCard(activity) }
             item { SectionTitle(stringResource(R.string.blur)) }

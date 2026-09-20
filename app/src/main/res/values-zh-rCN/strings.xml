@@ -47,4 +47,10 @@
     <string name="random_slot_off">不使用</string><string name="random_slot_refresh">随刷新</string><string name="random_slot_pinned">固定</string><string name="random_no_refreshable">没有可刷新的槽位（已全部固定或未选择）</string>
     <string name="random_fetch">立刻更换</string><string name="random_fetching">正在更换…</string><string name="random_fetch_done">随机背景已更新</string><string name="random_fetch_failed">%2$d 个槽位中 %1$d 个失败</string><string name="random_no_slots">请先在「作用范围」中选择至少一个位置</string>
     <string name="export_background">导出当前图片</string><string name="export_background_summary">保存到相册（%1$s）</string><string name="export_no_file">无背景可导出</string><string name="export_done">已导出：%1$s</string>
+    <string name="settings_card_background">设置分组卡片</string>
+    <string name="settings_card_custom">自定义卡片背景</string>
+    <string name="settings_card_custom_summary">分别设置浅色与深色卡片的颜色和不透明度，适用于设置首页、搜索及支持的二级页面，无需设置背景图片。关闭后恢复系统样式。</string>
+    <string name="settings_card_light">浅色模式卡片颜色</string>
+    <string name="settings_card_dark">深色模式卡片颜色</string>
+    <string name="settings_card_opacity">卡片不透明度</string>
 </resources>

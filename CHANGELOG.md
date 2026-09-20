@@ -2,6 +2,14 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.4.4-beta7
+
+### 设置卡片
+
+- 新增：「设置主页 → 设置分组卡片」可启用自定义背景，浅色、深色各自保存颜色及不透明度，无需选择背景图片；关闭后重新解析当前系统主题的卡片背景。
+- 适配：按设置 17 的反编译分析，直接处理首页／搜索 `CardItemDecoration` 与二级页面 `PreferenceFragment.FrameDecoration` 的分组底色，保留原有分组、边距、尺寸、圆角和点击前景。
+- 性能：配置变更时缓存整组配色，绘制阶段不查询 ContentProvider；各装饰实例复用自己的 ColorDrawable，避免逐帧新建对象以及跨页面共享颜色缓存导致的漏更新。
+
 ## 1.4.4-beta6
 
 ### 拨号盘

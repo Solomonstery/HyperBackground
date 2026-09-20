@@ -48,6 +48,11 @@ private const val KEY_LOGO_SCALE = "logo_scale"
 private const val KEY_LOGO_MIME = "logo_mime"
 private const val KEY_LOGO_VERSION = "logo_version"
 private const val KEY_LIGHT_CARD_OPACITY = "light_card_opacity"
+internal const val KEY_CUSTOM_CARD_ENABLED = "custom_card_enabled"
+internal const val KEY_LIGHT_CARD_COLOR = "light_card_color"
+internal const val KEY_DARK_CARD_COLOR = "dark_card_color"
+internal const val DEFAULT_LIGHT_CARD_COLOR = -1 // #FFFFFFFF
+internal const val DEFAULT_DARK_CARD_COLOR = -14671580 // #FF202124
 private const val KEY_TUTORIAL_CARD_ENABLED = "tutorial_card_enabled"
 private const val KEY_TUTORIAL_CARD_TITLE = "tutorial_card_title"
 private const val KEY_TUTORIAL_CARD_SLOGAN = "tutorial_card_slogan"
@@ -134,6 +139,9 @@ data class SettingsAppearanceSettings(
     val logoMime: String = "",
     val logoVersion: Long = 0L,
     val lightCardOpacity: Int = 100,
+    val customCardEnabled: Boolean = false,
+    val lightCardColor: Int = DEFAULT_LIGHT_CARD_COLOR,
+    val darkCardColor: Int = DEFAULT_DARK_CARD_COLOR,
     val tutorialCardEnabled: Boolean = false,
     val tutorialCardTitle: String = "",
     val tutorialCardSlogan: String = "",
@@ -267,6 +275,9 @@ internal fun SharedPreferences.toSettingsAppearance() = SettingsAppearanceSettin
     logoMime = getString(KEY_LOGO_MIME, "").orEmpty(),
     logoVersion = getLong(KEY_LOGO_VERSION, 0L),
     lightCardOpacity = getInt(KEY_LIGHT_CARD_OPACITY, 100),
+    customCardEnabled = getBoolean(KEY_CUSTOM_CARD_ENABLED, false),
+    lightCardColor = getInt(KEY_LIGHT_CARD_COLOR, DEFAULT_LIGHT_CARD_COLOR),
+    darkCardColor = getInt(KEY_DARK_CARD_COLOR, DEFAULT_DARK_CARD_COLOR),
     tutorialCardEnabled = getBoolean(KEY_TUTORIAL_CARD_ENABLED, false),
     tutorialCardTitle = getString(KEY_TUTORIAL_CARD_TITLE, "").orEmpty(),
     tutorialCardSlogan = getString(KEY_TUTORIAL_CARD_SLOGAN, "").orEmpty(),
@@ -409,6 +420,9 @@ private fun SharedPreferences.writeSettingsAppearance(value: SettingsAppearanceS
         .putString(KEY_LOGO_MIME, value.logoMime)
         .putLong(KEY_LOGO_VERSION, value.logoVersion)
         .putInt(KEY_LIGHT_CARD_OPACITY, value.lightCardOpacity)
+        .putBoolean(KEY_CUSTOM_CARD_ENABLED, value.customCardEnabled)
+        .putInt(KEY_LIGHT_CARD_COLOR, value.lightCardColor)
+        .putInt(KEY_DARK_CARD_COLOR, value.darkCardColor)
         .putBoolean(KEY_TUTORIAL_CARD_ENABLED, value.tutorialCardEnabled)
         .putString(KEY_TUTORIAL_CARD_TITLE, value.tutorialCardTitle)
         .putString(KEY_TUTORIAL_CARD_SLOGAN, value.tutorialCardSlogan)

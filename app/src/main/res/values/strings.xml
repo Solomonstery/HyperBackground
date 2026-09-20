@@ -284,4 +284,10 @@
         <item>com.android.contacts</item>
         <item>com.android.mms</item>
     </string-array>
+    <string name="settings_card_background">Settings group cards</string>
+    <string name="settings_card_custom">Custom card background</string>
+    <string name="settings_card_custom_summary">Choose separate colors and opacity for light and dark Settings cards. Applies to home, search and supported subpages without requiring a background image. Turn off to restore the system style.</string>
+    <string name="settings_card_light">Light mode card color</string>
+    <string name="settings_card_dark">Dark mode card color</string>
+    <string name="settings_card_opacity">Card opacity</string>
 </resources>

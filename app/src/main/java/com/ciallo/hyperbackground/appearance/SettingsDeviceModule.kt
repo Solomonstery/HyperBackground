@@ -22,7 +22,10 @@ class SettingsDeviceModule : XposedModule() {
     @Volatile private var applicationContext: Context? = null
     override fun onPackageLoaded(param: PackageLoadedParam) {
         if (!param.isFirstPackage || param.packageName != SETTINGS_PACKAGE) return
-        SettingsAppearanceSources.initialize(getRemotePreferences(SETTINGS_APPEARANCE_PREFERENCES))
+        val appearancePreferences = getRemotePreferences(SETTINGS_APPEARANCE_PREFERENCES)
+        SettingsAppearanceSources.initialize(appearancePreferences)
+        runCatching { SettingsCardBackgroundHook.install(this, param.defaultClassLoader, appearancePreferences) }
+            .onFailure { error -> log(Log.WARN, TAG, "Could not install Settings group card colors", error) }
         val preferences = getRemotePreferences(DEVICE_PROFILE_PREFERENCES)
         runCatching {
             installCardBindingHook(param.defaultClassLoader, preferences)

@@ -328,11 +328,21 @@ object SettingsBackgroundHook {
         try {
             hookMethod(className, classLoader, "onFinishInflate") {
                 val view = thisObject as? View ?: return@hookMethod
+                if (view.javaClass.name != className) return@hookMethod
                 BackgroundApplier.applyDialpadOnInflate(view)
             }
             log("[HyperBackground] Installed DialpadLayout background hook")
         } catch (error: Throwable) {
             logHookError("DialpadLayout", error)
+        }
+        try {
+            hookMethod(className, classLoader, "onAttachedToWindow") {
+                val view = thisObject as? View ?: return@hookMethod
+                // The resolved method may belong to View; guard before touching another view.
+                if (view.javaClass.name == className) BackgroundApplier.applyDialpadOnInflate(view)
+            }
+        } catch (error: Throwable) {
+            logHookError("DialpadLayout attach", error)
         }
     }
 

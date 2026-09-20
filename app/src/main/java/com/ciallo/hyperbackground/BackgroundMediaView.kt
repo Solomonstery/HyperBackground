@@ -7,8 +7,6 @@ import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
-import android.graphics.Path
-import android.graphics.RectF
 import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.graphics.SurfaceTexture
@@ -43,6 +41,7 @@ internal class BackgroundMediaView(
     private var videoHeight = 0
     private var hostResumed = true
     private var disposed = false
+    val isDisposed: Boolean get() = disposed
     private var imageTask: Future<*>? = null
     private var videoFrameAvailable = false
     private var videoBrightnessMask: View? = null
@@ -60,12 +59,6 @@ internal class BackgroundMediaView(
             field = value
             if (isReady && !disposed) value?.invoke()
         }
-
-    // 顶部圆角半径（px，>0 才裁切）。用自绘 clipPath 而非 setClipToOutline，后者对内部 MATRIX 绘制的
-    // ImageView 内容裁切不稳定，直接在 dispatchDraw 裁路径可确保对任意子内容一定生效。
-    private var topCornerRadius = 0f
-    private val clipPath = Path()
-    private val clipRect = RectF()
 
     init {
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO)
@@ -125,35 +118,6 @@ internal class BackgroundMediaView(
         }
         imageLayoutListener = null
         removeAllViews()
-    }
-
-    // 设置圆角半径（px）：四角同半径圆角裁切。
-    fun setTopCornerRadius(radiusPx: Float) {
-        topCornerRadius = radiusPx.coerceAtLeast(0f)
-        setWillNotDraw(false)
-        invalidate()
-    }
-
-    override fun dispatchDraw(canvas: Canvas) {
-        if (topCornerRadius <= 0f) {
-            super.dispatchDraw(canvas)
-            return
-        }
-        val w = width
-        val h = height
-        if (w <= 0 || h <= 0) {
-            super.dispatchDraw(canvas)
-            return
-        }
-        // 四角同半径圆角。半径不超过宽/高一半，避免面板从底部往上弹出、动画中途高度较小时圆角画不全。
-        val r = minOf(topCornerRadius, minOf(w, h) / 2f)
-        clipPath.reset()
-        clipRect.set(0f, 0f, w.toFloat(), h.toFloat())
-        clipPath.addRoundRect(clipRect, r, r, Path.Direction.CW)
-        val save = canvas.save()
-        canvas.clipPath(clipPath)
-        super.dispatchDraw(canvas)
-        canvas.restoreToCount(save)
     }
 
     private fun createImageView() {

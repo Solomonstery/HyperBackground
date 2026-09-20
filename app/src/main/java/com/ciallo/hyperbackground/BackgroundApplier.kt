@@ -32,6 +32,7 @@ object BackgroundApplier {
     private val MMS_CHAT_SESSION = FIELD_PREFIX + "mms.chat.session"
     // 拨号盘独立背景层的会话，存到 DialpadLayout 实例上（拨号盘可被反复 inflate/复用）。
     private val DIALPAD_SESSION = FIELD_PREFIX + "dialpad.session"
+    private val DIALPAD_CONFIG = FIELD_PREFIX + "dialpad.config"
     private val CONTACTS_RESCAN = FIELD_PREFIX + "contacts.rescan"
     private val CONTACTS_ADAPT_AT = FIELD_PREFIX + "contacts.adapt.at"
     private val CONTACTS_ADAPT_DIRTY = FIELD_PREFIX + "contacts.adapt.dirty"
@@ -40,8 +41,6 @@ object BackgroundApplier {
     private val MMS_ADAPT_DIRTY = FIELD_PREFIX + "mms.adapt.dirty"
     // 清除列表不透明中性色背景前，把原背景存到该 View 的 Xposed 附加字段，便于开关关闭时还原。
     private val CONTACTS_BG_SAVED = FIELD_PREFIX + "contacts.bg.saved"
-    // 自定义模式把 dialer_background_view 的原生 9-patch 底换成透明前，先存原背景到该字段供切回默认时还原。
-    private val DIALPAD_BGVIEW_SAVED = FIELD_PREFIX + "dialpad.bgview.saved"
     // 默认模式下承载面板底、可整体调 alpha 的置底纯背景 view（作为 dialpad_container 的第一个子 view）。
     private val DIALPAD_PANEL_ALPHA_VIEW = FIELD_PREFIX + "dialpad.panel.alpha.view"
     // 缓存联系人进程内的资源 id（进程内固定），避免每次布局回调都走 getIdentifier 慢查询。-1=未解析。
@@ -86,6 +85,7 @@ object BackgroundApplier {
             return
         }
         applyLayer(activity, BackgroundContract.CONTACTS, CONTACTS_SESSION, false)
+        refreshDialpad(activity)
         adaptContactsSurfaces(activity, false)
         installContactsSurfaceRescan(activity)
     }
@@ -178,7 +178,8 @@ object BackgroundApplier {
     // 若清成 null 会失去覆盖整块区域的背景，硬件加速脏区重绘无法擦除上一帧内容而留下残影/拖拽；
     // 保留一个铺满的透明背景即可让绘制系统正常重绘，同时背景仍透出。
     private fun adaptContactsOpaqueSurfaces(view: View?, enabled: Boolean, contentRoot: View?, skip: View?) {
-        if (view == null || view === skip) return
+        if (view == null || view === skip ||
+            view.getAdditionalInstanceField(DialpadBackdropView.OWNED_VIEW_FIELD) == true) return
         if (view !== contentRoot) {
             try {
                 if (enabled) {
@@ -203,8 +204,9 @@ object BackgroundApplier {
     // 不透明中性色底色，避免等全局布局/绘制前扫描的延迟白块。只处理联系人 content 子树内、且非
     // 拨号盘背景板的 view；已被存过原始背景（CONTACTS_BG_SAVED 非空）说明之前已清过，跳过。
     fun onViewBackgroundChanged(view: View?) {
-        if (view == null) return
+        if (view == null || view.getAdditionalInstanceField(DialpadBackdropView.OWNED_VIEW_FIELD) == true) return
         try {
+            if (!HookRuntime.preferences().getBoolean(BackgroundContract.CONTACTS_SURFACE_ADAPT, true)) return
             val activity = findActivity(view.context) ?: return
             if (!matchesContactsSettings(activity.javaClass.name)) return
             // 跳过拨号盘背景板及其子树（由 setAlpha 专门处理）。
@@ -589,19 +591,18 @@ object BackgroundApplier {
     // 之前」的时机，只能靠布局监听在其出现后补设，但布局回调总在绘制后一帧，导致先露出原生不透明底色、
     // 再变半透（先灰后透闪烁）。这里由 Hook DialpadLayout.onFinishInflate（after）在首帧绘制前同步处理。
     //
-    // DialpadLayout 实际结构（见 dialer_dialpad.xml）：
+    // DialpadLayout 中按 id 定位三个原生区域（背景类随通讯录版本变化）：
     //   DialpadLayout
-    //   ├─[0] FrameLayout  dialer_background_view   bg=dialer_background_new （整块拨号盘底，9-patch）
+    //   ├─[0] View/ViewGroup dialer_background_view   原生背景，可能自行绘制或使用 9-patch
     //   ├─[1] LinearLayout dialpad_container        bg=dialer_background_pad （键盘面板底，含数字键；不透明，盖住[0]）
     //   └─[2] FrameLayout  dialer_input_container   输入框
     // 关键：只把 dialer_background_view 设透明/隐藏并不够——dialpad_container 自己那层不透明的
     // dialer_background_pad 会把下面全挡住（这是之前自定义图“不生效”的根因）。故两层底都要处理。
     //
-    //  · 默认模式：dialer_background_view 与 dialpad_container 两层底一起按 opacity 设 alpha，让背景透出，
-    //    数字键（dialpad_keys_container 的子 view，各自有 alpha=1）不受容器 alpha 影响仍清晰。
-    //  · 自定义模式：把用户选的独立背景（BackgroundMediaView）塞进 dialer_background_view 内铺满，
-    //    并把 dialpad_container 的面板底 dialer_background_pad 换成透明占位（存原背景供还原），
-    //    让自定义图透出到整个键盘区，与 contacts 整页背景叠加共存。
+    //  · 默认模式：原生底色与背景模糊分层，opacity 只控制底色，不改变模糊层或数字键的 alpha。
+    //  · 两种模式均作为 DialpadLayout 的独立置底层，按 dialpad_container 的实际边界布局。
+    //    不再把原生背景 View 当宿主；原生 onMeasure/onLayout 不负责布局新增层，由会话同步。
+    //    数字键容器本身保持原结构，仅把面板底换成透明占位，供关闭功能时还原。
     // dialpadView 是 DialpadLayout 实例本身。
     fun applyDialpadOnInflate(dialpadView: View?) {
         if (dialpadView !is ViewGroup) return
@@ -619,7 +620,10 @@ object BackgroundApplier {
             val containerId = ctx.resources.getIdentifier("dialpad_container", "id", pkg)
             val bgView = if (bgId == 0) null else dialpad.findViewById<View>(bgId)
             val container = if (containerId == 0) null else dialpad.findViewById<View>(containerId)
-            val bgHost: ViewGroup = if (bgView is ViewGroup) bgView else dialpad
+            val panel = container ?: dialpad
+            // These surfaces are owned here, not by the list's generic transparency scan.
+            bgView?.setAdditionalInstanceField(DialpadBackdropView.OWNED_VIEW_FIELD, true)
+            container?.setAdditionalInstanceField(DialpadBackdropView.OWNED_VIEW_FIELD, true)
 
             val source = BackgroundContract.query(ctx, BackgroundContract.CONTACTS_DIALPAD)
             // 拨号盘背景仅支持图片：新选图入口已限定 image/*，此处再兜底排除历史遗留的视频配置，
@@ -627,61 +631,60 @@ object BackgroundApplier {
             val custom = enabled && mode == BackgroundContract.CONTACTS_DIALPAD_BG_CUSTOM
                 && source.exists && !source.isVideo()
 
-            // 先清旧会话：拨号盘复用时避免叠加多层，并还原上次改动的面板底。
-            removeDialpadMedia(dialpad)
-
-            if (custom) {
-                // 自定义图塞进 dialer_background_view 内铺满（置底、不挡数字键）；原生 9-patch 底随
-                // 背景板 alpha 归零而隐去；面板底 dialer_background_pad 换透明占位让图透出。
-                val media = BackgroundMediaView(ctx, source)
-                // 拨号盘键盘面板不透明度滑块也作用于自定义图：与该图自身 opacity 叠乘，滑块不再失效。
-                media.alpha = (if (enabled) padAlpha else 1f) * (source.opacity / 100f)
-                // 给自定义背景图裁出四角圆角（30dp）：用 BackgroundMediaView 内部 dispatchDraw 自绘裁切，
-                // 逐帧按当前尺寸构造路径，不受面板从底部弹出动画的影响。
-                val density = ctx.resources.displayMetrics.density
-                media.setTopCornerRadius(30f * density)
-                bgHost.addView(media, 0, FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-                dialpad.setAdditionalInstanceField(DIALPAD_SESSION, media)
-                // 先存原生 9-patch 底（首次），再换透明，让自定义图透出且切回默认能还原原底。
-                if (bgView != null) {
-                    val orig = bgView.background
-                    if (orig != null && bgView.getAdditionalInstanceField(DIALPAD_BGVIEW_SAVED) == null) {
-                        bgView.setAdditionalInstanceField(DIALPAD_BGVIEW_SAVED, orig)
-                    }
-                    bgView.alpha = 1f
-                    bgView.background = ColorDrawable(Color.TRANSPARENT)
-                }
-                clearDialpadPanelBackground(container)
-            } else {
-                // 默认模式（beta5 已验证有效的做法）：不透明度直接对拨号盘背景板 dialer_background_view
-                // 本身 setAlpha —— 保留它原生的 9-patch 底作为 setAlpha 的作用对象（清除遍历已跳过它及
-                // 其子树，见 adaptContactsSurfaces 的 skip，故其底不会被通用中性底清成透明而使滑块失效）。
-                // 先撤销上次自定义模式对 bgView / container 的改动，再对 bgView 施加透明度。
-                val a = if (enabled) padAlpha else 1f
-                restoreDialpadPanelBackground(container)
-                container?.alpha = 1f
-                if (bgView != null) {
-                    restoreDialpadBgView(bgView) // 若曾在自定义模式换成透明底，先还原原生 9-patch 底
-                    bgView.alpha = a
-                }
+            val configKey = "$enabled:$opacity:$mode:${source.cacheKey()}"
+            val old = dialpad.getAdditionalInstanceField(DIALPAD_SESSION) as? DialpadLayerSession
+            if (old?.matches(dialpad, panel, bgView) == true &&
+                dialpad.getAdditionalInstanceField(DIALPAD_CONFIG) == configKey) {
+                old.onHostResume()
+                return
             }
+
+            // Rebuild only when configuration changes; undo the previous mode first.
+            removeDialpadMedia(dialpad)
+            restoreDialpadPanelBackground(container)
+            container?.alpha = 1f
+            if (!enabled) return
+            val layer = if (custom) {
+                DialpadImageView(ctx, source, padAlpha)
+            } else {
+                // No media is required: blur the content behind the panel, not the keys or tint.
+                DialpadBackdropView(
+                    ctx,
+                    bgView?.background ?: container?.background,
+                    padAlpha,
+                    if (source.blurEnabled) source.blurRadius else 0,
+                )
+            }
+            val session = DialpadLayerSession(dialpad, panel, bgView, layer)
+            dialpad.setAdditionalInstanceField(DIALPAD_SESSION, session)
+            session.attach()
+            clearDialpadPanelBackground(container)
+            dialpad.setAdditionalInstanceField(DIALPAD_CONFIG, configKey)
         } catch (error: Throwable) {
             log("applyDialpadOnInflate", error)
         }
     }
 
-    // 把自定义模式下换成透明的 dialer_background_view 原生 9-patch 底还原回去（若曾保存）。
-    private fun restoreDialpadBgView(bgView: View?) {
-        if (bgView == null) return
-        try {
-            val saved = bgView.getAdditionalInstanceField(DIALPAD_BGVIEW_SAVED)
-            if (saved is Drawable) {
-                bgView.background = saved
-                bgView.removeAdditionalInstanceField(DIALPAD_BGVIEW_SAVED)
+    private fun refreshDialpad(activity: Activity) {
+        val id = resolveId(activity, "dialer_background_view")
+        if (id == 0) return
+        var view = activity.findViewById<View>(id)?.parent as? View
+        while (view != null) {
+            if (view.javaClass.name == "com.android.contacts.dialer.view.DialpadLayout") {
+                applyDialpadOnInflate(view)
+                return
             }
-        } catch (_: Throwable) {
+            view = view.parent as? View
         }
+    }
+
+    private fun setDialpadBackground(view: View, drawable: Drawable) {
+        val left = view.paddingLeft
+        val top = view.paddingTop
+        val right = view.paddingRight
+        val bottom = view.paddingBottom
+        view.background = drawable
+        view.setPadding(left, top, right, bottom)
     }
 
     // 自定义模式下把 dialpad_container 的不透明面板底换成透明占位（首次记录原背景供还原）。
@@ -692,7 +695,7 @@ object BackgroundApplier {
             if (bg != null) {
                 val saved = container.getAdditionalInstanceField(CONTACTS_BG_SAVED)
                 if (saved == null) container.setAdditionalInstanceField(CONTACTS_BG_SAVED, bg)
-                container.background = ColorDrawable(Color.TRANSPARENT)
+                setDialpadBackground(container, ColorDrawable(Color.TRANSPARENT))
             }
             container.alpha = 1f
         } catch (_: Throwable) {
@@ -711,9 +714,10 @@ object BackgroundApplier {
             }
             val saved = container.getAdditionalInstanceField(CONTACTS_BG_SAVED)
             if (saved is Drawable) {
-                container.background = saved
+                setDialpadBackground(container, saved)
                 container.removeAdditionalInstanceField(CONTACTS_BG_SAVED)
             }
+            restoreTransparent(container.background)
         } catch (_: Throwable) {
         }
     }
@@ -721,13 +725,9 @@ object BackgroundApplier {
     // 移除拨号盘上已叠加的自定义背景层（若有）。原生底 / 面板底的复位由调用方按当前模式重设。
     private fun removeDialpadMedia(dialpad: ViewGroup) {
         try {
-            val old = dialpad.getAdditionalInstanceField(DIALPAD_SESSION)
-            if (old is BackgroundMediaView) {
-                val parent = old.parent
-                if (parent is ViewGroup) parent.removeView(old)
-                old.dispose()
-            }
+            (dialpad.getAdditionalInstanceField(DIALPAD_SESSION) as? DialpadLayerSession)?.dispose()
             dialpad.removeAdditionalInstanceField(DIALPAD_SESSION)
+            dialpad.removeAdditionalInstanceField(DIALPAD_CONFIG)
         } catch (_: Throwable) {
         }
     }
@@ -1540,7 +1540,8 @@ object BackgroundApplier {
         }
 
         private fun clearPageSurfaces(activity: Activity, view: View?, root: View, depth: Int) {
-            if (view == null || view === media) return
+            if (view == null || view === media ||
+                view.getAdditionalInstanceField(DialpadBackdropView.OWNED_VIEW_FIELD) == true) return
             // 短信聊天页保护：消息列表（收件气泡是 #ffffff/#f2f2f2 中性白，属于内容而非底色）
             // 与底部输入面板整棵子树不清，背景只从容器层透出。列表页的 @android:id/list 不受影响。
             if (activity.packageName == BackgroundContract.PACKAGE_MMS) {

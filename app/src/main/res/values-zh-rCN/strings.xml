@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="contacts_dialpad_blur">拨号盘模糊</string>
+    <string name="contacts_dialpad_blur_summary">默认背景模糊面板后方内容，自定义背景模糊图片，按键保持清晰</string>
     <string name="app_name">HyperBG</string>
     <string name="app_description">为 HyperOS 系统设置及相关系统页面注入统一可配置的自定义背景。</string>
     <string name="nav_home">主页</string><string name="nav_settings">设置</string><string name="nav_about">关于</string>

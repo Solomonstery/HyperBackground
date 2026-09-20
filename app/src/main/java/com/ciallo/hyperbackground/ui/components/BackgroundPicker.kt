@@ -64,6 +64,8 @@ fun BackgroundPickerPreference(
     // 是否渲染自带的「导出当前图片」行：同一卡片内并列多个槽位（短信主页/聊天）时关闭，
     // 由外层提供统一的导出下拉。
     showExport: Boolean = true,
+    // Dialpad blur is configured outside the image dialog, including when no image is selected.
+    showBlurControls: Boolean = true,
 ) {
     val config = activity.config
     // 预览与导出都以「当前实际生效的背景」为准：随机开启且生效时用 random 图，否则手动图。
@@ -176,24 +178,26 @@ fun BackgroundPickerPreference(
                 onValueChange = { opacity = it },
                 onValueChangeFinished = {},
             )
-            SwitchPreference(
-                title = stringResource(R.string.background_blur),
-                summary = stringResource(R.string.background_blur_summary),
-                checked = blur,
-                onCheckedChange = { blur = it },
-            )
-            AnimatedVisibility(
-                visible = blur,
-                enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(220)),
-                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(180)),
-            ) {
-                SliderPreference(
-                    label = stringResource(R.string.blur_strength),
-                    value = radius,
-                    range = 0f..80f,
-                    onValueChange = { radius = it },
-                    onValueChangeFinished = {},
+            if (showBlurControls) {
+                SwitchPreference(
+                    title = stringResource(R.string.background_blur),
+                    summary = stringResource(R.string.background_blur_summary),
+                    checked = blur,
+                    onCheckedChange = { blur = it },
                 )
+                AnimatedVisibility(
+                    visible = blur,
+                    enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(220)),
+                    exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(180)),
+                ) {
+                    SliderPreference(
+                        label = stringResource(R.string.blur_strength),
+                        value = radius,
+                        range = 0f..80f,
+                        onValueChange = { radius = it },
+                        onValueChangeFinished = {},
+                    )
+                }
             }
             if (brightnessKey != null) {
                 SliderPreference(
@@ -212,11 +216,9 @@ fun BackgroundPickerPreference(
                     modifier = Modifier.weight(1f),
                     onClick = {
                         if (slot == null) activity.clearUiBackground() else activity.clearBackground(slot)
-                        config.edit()
-                            .putInt(opacityKey, 100)
-                            .putBoolean(blurKey, false)
-                            .putInt(radiusKey, 20)
-                            .apply()
+                        val editor = config.edit().putInt(opacityKey, 100)
+                        if (showBlurControls) editor.putBoolean(blurKey, false).putInt(radiusKey, 20)
+                        editor.apply()
                         if (brightnessKey != null) {
                             config.edit().putInt(brightnessKey, BackgroundContract.BRIGHTNESS_DEFAULT).apply()
                         }
@@ -235,11 +237,9 @@ fun BackgroundPickerPreference(
                             if (slot == null) activity.saveUiBackground(uri, mime)
                             else activity.saveBackground(slot, uri, mime)
                         }
-                        config.edit()
-                            .putInt(opacityKey, opacity.toInt())
-                            .putBoolean(blurKey, blur)
-                            .putInt(radiusKey, radius.toInt())
-                            .apply()
+                        val editor = config.edit().putInt(opacityKey, opacity.toInt())
+                        if (showBlurControls) editor.putBoolean(blurKey, blur).putInt(radiusKey, radius.toInt())
+                        editor.apply()
                         if (brightnessKey != null) {
                             config.edit().putInt(brightnessKey, brightness.toInt()).apply()
                         }

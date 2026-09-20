@@ -304,6 +304,12 @@ private fun HomeScaleCard(activity: MainActivity) {
 @Composable
 private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
     val config = activity.config
+    val blurKey = BackgroundContract.BLUR_ENABLED_PREFIX + BackgroundContract.CONTACTS_DIALPAD
+    val radiusKey = BackgroundContract.BLUR_RADIUS_PREFIX + BackgroundContract.CONTACTS_DIALPAD
+    var blur by remember(revision) { mutableStateOf(config.getBoolean(blurKey, false)) }
+    var blurRadius by remember(revision) {
+        mutableFloatStateOf(config.getInt(radiusKey, 20).coerceIn(0, 80).toFloat())
+    }
     var enabled by remember {
         mutableStateOf(config.getBoolean(BackgroundContract.CONTACTS_SURFACE_ADAPT, true))
     }
@@ -373,6 +379,30 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
                                 .apply()
                         },
                     )
+                    SwitchPreference(
+                        title = stringResource(R.string.contacts_dialpad_blur),
+                        summary = stringResource(R.string.contacts_dialpad_blur_summary),
+                        checked = blur,
+                        onCheckedChange = {
+                            blur = it
+                            config.edit().putBoolean(blurKey, it).apply()
+                        },
+                    )
+                    AnimatedVisibility(
+                        visible = blur,
+                        enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(220)),
+                        exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(180)),
+                    ) {
+                        SliderWithInputPreference(
+                            label = stringResource(R.string.blur_strength),
+                            value = blurRadius,
+                            range = 0f..80f,
+                            onValueChange = { blurRadius = it },
+                            onValueChangeFinished = {
+                                config.edit().putInt(radiusKey, it.toInt()).apply()
+                            },
+                        )
+                    }
                 }
             }
             // 「拨号盘背景 默认/自定义」并入本卡：选「自定义」展开与其它通道一致的选图 + 透明度 + 清除。
@@ -392,7 +422,11 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
             ) {
                 Column(Modifier.padding(bottom = 8.dp)) {
                     key(revision) {
-                        BackgroundPickerPreference(activity = activity, slot = BackgroundContract.CONTACTS_DIALPAD)
+                        BackgroundPickerPreference(
+                            activity = activity,
+                            slot = BackgroundContract.CONTACTS_DIALPAD,
+                            showBlurControls = false,
+                        )
                     }
                     // 缩放大小：等比缩放，100% 为贴满基准，可放大到 200% 或缩小到 1%。
                     SliderPreference(

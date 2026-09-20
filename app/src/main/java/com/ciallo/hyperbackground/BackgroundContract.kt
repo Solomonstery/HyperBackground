@@ -56,7 +56,7 @@ object BackgroundContract {
     const val CONTACTS_SURFACE_ADAPT = "contacts_surface_adapt"
     // 拨号盘键盘面板不透明度（0-100，默认 60），仅在适配开关开启时生效。
     const val CONTACTS_DIALPAD_OPACITY = "contacts_dialpad_opacity"
-    // 拨号盘背景模式：默认（用系统原生拨号盘底、仅按上面的不透明度设 alpha）/ 自定义（叠加用户选的图）。
+    // 默认模式调整原生底色并模糊后方内容；自定义模式模糊所选图片。两者共用该槽位的模糊参数。
     const val CONTACTS_DIALPAD_BG_MODE = "contacts_dialpad_bg_mode"
     const val CONTACTS_DIALPAD_BG_DEFAULT = 0
     const val CONTACTS_DIALPAD_BG_CUSTOM = 1

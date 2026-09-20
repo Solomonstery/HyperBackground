@@ -29,6 +29,8 @@
     <string name="contacts_surface_adapt">Adapt surfaces</string>
     <string name="contacts_surface_adapt_summary">Clear the list\'s solid background and make the dialpad panel translucent</string>
     <string name="contacts_dialpad_opacity">Dialpad panel opacity</string>
+    <string name="contacts_dialpad_blur">Dialpad blur</string>
+    <string name="contacts_dialpad_blur_summary">Blur content behind the default panel, or blur a custom background image. Keys stay sharp.</string>
     <string name="contacts_dialpad_bg_mode">Dialpad background</string>
     <string name="contacts_dialpad_bg_default">Default</string>
     <string name="contacts_dialpad_bg_custom">Custom</string>

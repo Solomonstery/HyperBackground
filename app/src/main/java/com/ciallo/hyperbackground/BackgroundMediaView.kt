@@ -43,6 +43,7 @@ internal class BackgroundMediaView(
     private var videoHeight = 0
     private var hostResumed = true
     private var disposed = false
+    val isDisposed: Boolean get() = disposed
     private var imageTask: Future<*>? = null
     private var videoFrameAvailable = false
     private var videoBrightnessMask: View? = null

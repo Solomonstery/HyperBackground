@@ -9,7 +9,7 @@ import android.widget.FrameLayout
 import kotlin.math.ceil
 import kotlin.math.floor
 
-/** An underlay of the whole keypad, independent of the native background view's measurement. */
+/** An independent underlay positioned from the native dialpad background's final bounds. */
 internal class DialpadLayerSession(
     private val host: ViewGroup,
     private val panel: View,
@@ -61,8 +61,8 @@ internal class DialpadLayerSession(
             layer.visibility = View.INVISIBLE
             return
         }
-        // Follow the actual keypad, not dialer_background_view, its padding, or its minimum
-        // drawable size. Mapping to host coordinates also follows native slide/scale animations.
+        // Follow the selected native bounds source without becoming its child. Mapping into host
+        // coordinates also follows the dialpad's native slide and scale animations.
         panelBounds.set(0f, 0f, panel.width.toFloat(), panel.height.toFloat())
         panelTransform.reset()
         panel.transformMatrixToGlobal(panelTransform)
@@ -88,7 +88,9 @@ internal class DialpadLayerSession(
             layer.layout(left, top, right, bottom)
         }
         layer.visibility = View.VISIBLE
-        layer.alpha = if (panel === host) 1f else panel.alpha
+        // nativeBackground is made transparent below, so never mirror its alpha back to the
+        // replacement layer on the next pre-draw. Other fallback panels may still animate alpha.
+        layer.alpha = if (panel === host || panel === nativeBackground) 1f else panel.alpha
         // A DialerBgView can paint in onDraw: replacing only its Drawable does not hide it.
         // Keep its geometry intact and hide its rendering while the independent layer is active.
         nativeBackground?.alpha = 0f

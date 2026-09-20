@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Outline
 import android.graphics.Path
+import android.graphics.RectF
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
@@ -12,6 +13,10 @@ import android.widget.FrameLayout
 internal abstract class DialpadPanelView(context: Context) : FrameLayout(context) {
     private val cornerRadius = 30f * resources.displayMetrics.density
     private val roundedBounds = Path()
+    private val requestedBounds = RectF()
+    private val resolvedBounds = RectF()
+    private var useContentBounds = false
+    private var contentScale = 1f
 
     abstract val canReuse: Boolean
 
@@ -22,8 +27,15 @@ internal abstract class DialpadPanelView(context: Context) : FrameLayout(context
         isFocusable = false
         outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
-                val radius = minOf(cornerRadius, minOf(view.width, view.height) / 2f)
-                outline.setRoundRect(0, 0, view.width, view.height, radius)
+                if (resolvedBounds.isEmpty) {
+                    outline.setEmpty()
+                    return
+                }
+                outline.setRoundRect(
+                    resolvedBounds.left.toInt(), resolvedBounds.top.toInt(),
+                    resolvedBounds.right.toInt(), resolvedBounds.bottom.toInt(),
+                    resolvedCornerRadius(),
+                )
             }
         }
         clipToOutline = true
@@ -31,12 +43,45 @@ internal abstract class DialpadPanelView(context: Context) : FrameLayout(context
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
+        rebuildRoundedBounds()
+    }
+
+    /** Custom images call this with their matrix-mapped drawable bounds; default mode never does. */
+    protected fun followContentBounds(bounds: RectF, scale: Float) {
+        requestedBounds.set(bounds)
+        useContentBounds = true
+        contentScale = scale.coerceAtLeast(0f)
+        rebuildRoundedBounds()
+        invalidate()
+    }
+
+    private fun rebuildRoundedBounds() {
         roundedBounds.rewind()
-        if (w > 0 && h > 0) {
-            val radius = minOf(cornerRadius, minOf(w, h) / 2f)
-            roundedBounds.addRoundRect(0f, 0f, w.toFloat(), h.toFloat(), radius, radius, Path.Direction.CW)
+        if (width <= 0 || height <= 0) {
+            resolvedBounds.setEmpty()
+            invalidateOutline()
+            return
+        }
+        if (useContentBounds) {
+            resolvedBounds.set(requestedBounds)
+            if (!resolvedBounds.intersect(0f, 0f, width.toFloat(), height.toFloat())) {
+                resolvedBounds.setEmpty()
+            }
+        } else {
+            resolvedBounds.set(0f, 0f, width.toFloat(), height.toFloat())
+        }
+        if (!resolvedBounds.isEmpty) {
+            val radius = resolvedCornerRadius()
+            roundedBounds.addRoundRect(resolvedBounds, radius, radius, Path.Direction.CW)
         }
         invalidateOutline()
+    }
+
+    private fun resolvedCornerRadius(): Float {
+        // The custom image's corner radius uses the same scale as its matrix. Default mode
+        // never enables content bounds and therefore always keeps the established 30dp radius.
+        val scaledRadius = if (useContentBounds) cornerRadius * contentScale else cornerRadius
+        return minOf(scaledRadius, minOf(resolvedBounds.width(), resolvedBounds.height()) / 2f)
     }
 
     override fun dispatchDraw(canvas: Canvas) {

@@ -600,7 +600,7 @@ object BackgroundApplier {
     // dialer_background_pad 会把下面全挡住（这是之前自定义图“不生效”的根因）。故两层底都要处理。
     //
     //  · 默认模式：原生底色与背景模糊分层，opacity 只控制底色，不改变模糊层或数字键的 alpha。
-    //  · 两种模式均作为 DialpadLayout 的独立置底层，按 dialpad_container 的实际边界布局。
+    //  · 两种模式均作为 DialpadLayout 的独立置底层，按原生 dialer_background_view 的实际边界布局。
     //    不再把原生背景 View 当宿主；原生 onMeasure/onLayout 不负责布局新增层，由会话同步。
     //    数字键容器本身保持原结构，仅把面板底换成透明占位，供关闭功能时还原。
     // dialpadView 是 DialpadLayout 实例本身。
@@ -620,7 +620,10 @@ object BackgroundApplier {
             val containerId = ctx.resources.getIdentifier("dialpad_container", "id", pkg)
             val bgView = if (bgId == 0) null else dialpad.findViewById<View>(bgId)
             val container = if (containerId == 0) null else dialpad.findViewById<View>(containerId)
-            val panel = container ?: dialpad
+            // The container also includes keypad padding / controls and is larger than the native
+            // painted background on some Contacts versions. Use the native background's laid-out
+            // rectangle as the common geometry; it is only a bounds source, never a child host.
+            val panel = bgView ?: container ?: dialpad
             // These surfaces are owned here, not by the list's generic transparency scan.
             bgView?.setAdditionalInstanceField(DialpadBackdropView.OWNED_VIEW_FIELD, true)
             container?.setAdditionalInstanceField(DialpadBackdropView.OWNED_VIEW_FIELD, true)

@@ -7,6 +7,7 @@ import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
+import android.graphics.RectF
 import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.graphics.SurfaceTexture
@@ -37,6 +38,8 @@ internal class BackgroundMediaView(
     private var mediaPlayer: MediaPlayer? = null
     private var dataDescriptor: ParcelFileDescriptor? = null
     private var imageLayoutListener: View.OnLayoutChangeListener? = null
+    private var lastImageDisplayBounds: RectF? = null
+    private var lastImageDisplayScale = 1f
     private var videoWidth = 0
     private var videoHeight = 0
     private var hostResumed = true
@@ -54,6 +57,14 @@ internal class BackgroundMediaView(
         private set
     var loadFailed = false
         private set
+    var onImageDisplayBoundsChanged: ((RectF, Float) -> Unit)? = null
+        set(value) {
+            field = value
+            val bounds = lastImageDisplayBounds
+            if (value != null && bounds != null && !disposed) {
+                value(RectF(bounds), lastImageDisplayScale)
+            }
+        }
     var onReady: (() -> Unit)? = null
         set(value) {
             field = value
@@ -107,6 +118,8 @@ internal class BackgroundMediaView(
     fun dispose() {
         disposed = true
         onReady = null
+        onImageDisplayBoundsChanged = null
+        lastImageDisplayBounds = null
         firstFrame.dispose()
         imageTask?.cancel(true)
         imageTask = null
@@ -243,6 +256,7 @@ internal class BackgroundMediaView(
             matrix.setScale(scale, scale)
             matrix.postTranslate(Math.round(dx).toFloat(), Math.round(dy).toFloat())
             view.imageMatrix = matrix
+            publishImageDisplayBounds(matrix, dw, dh, zoom)
             return
         }
 
@@ -261,6 +275,16 @@ internal class BackgroundMediaView(
         matrix.setScale(scale, scale)
         matrix.postTranslate(Math.round(dx).toFloat(), Math.round(dy).toFloat())
         view.imageMatrix = matrix
+        publishImageDisplayBounds(matrix, dw, dh, zoom)
+    }
+
+    private fun publishImageDisplayBounds(matrix: Matrix, width: Int, height: Int, zoom: Float) {
+        if (BackgroundContract.CONTACTS_DIALPAD != source.slot) return
+        val bounds = RectF(0f, 0f, width.toFloat(), height.toFloat())
+        matrix.mapRect(bounds)
+        lastImageDisplayBounds = RectF(bounds)
+        lastImageDisplayScale = zoom
+        onImageDisplayBoundsChanged?.invoke(RectF(bounds), zoom)
     }
 
     private fun createVideoView() {

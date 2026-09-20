@@ -14,6 +14,11 @@ internal class DialpadImageView(
     override val canReuse: Boolean get() = !media.isDisposed && !media.loadFailed
 
     init {
+        // Only custom-image mode follows the scaled drawable. Default backdrop mode keeps the
+        // full, fixed keypad outline supplied by DialpadPanelView.
+        media.onImageDisplayBoundsChanged = { bounds, scale ->
+            followContentBounds(bounds, scale)
+        }
         media.alpha = panelOpacity.coerceIn(0f, 1f) * (source.opacity / 100f)
         addView(media, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
@@ -22,5 +27,8 @@ internal class DialpadImageView(
 
     override fun onHostResume() = media.onHostResume()
 
-    override fun dispose() = media.dispose()
+    override fun dispose() {
+        media.onImageDisplayBoundsChanged = null
+        media.dispose()
+    }
 }

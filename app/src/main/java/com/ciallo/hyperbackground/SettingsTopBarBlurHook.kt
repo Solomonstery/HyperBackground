@@ -342,6 +342,11 @@ object SettingsTopBarBlurHook {
             clearGradientBlur(overlay)
         }
         overlay.alpha = 0f
+        // alpha 不影响触摸命中，VISIBLE 的 view 会拦截点击（挡住搜索框）。
+        // 显式清除可点击属性使触摸事件穿透到下层视图。
+        overlay.isClickable = false
+        overlay.isLongClickable = false
+        overlay.isFocusable = false
         overlay.visibility = View.VISIBLE
     }
 

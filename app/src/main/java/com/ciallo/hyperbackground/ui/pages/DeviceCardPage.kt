@@ -42,7 +42,7 @@ import com.ciallo.hyperbackground.ui.MainActivity
 import com.ciallo.hyperbackground.ui.components.AppearancePickerPreference
 import com.ciallo.hyperbackground.ui.components.BackgroundPickerPreference
 import com.ciallo.hyperbackground.ui.components.SectionTitle
-import com.ciallo.hyperbackground.ui.components.SliderWithInputPreference
+import com.ciallo.hyperbackground.ui.components.SliderPreference
 import com.ciallo.hyperbackground.ui.components.UiCard
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
@@ -52,7 +52,7 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
  * 「自定义我的设备界面」二级页。表单结构严格照搬 HyperChanger 的 TutorialDeviceCardSettings：
  * 顶部选择「系统默认 / 样式1 / 样式2」，其余分组按所选样式动态展开。
  *
- * 适配点（仅换壳，不改逻辑）：卡片用 [UiCard]，滑块用带输入框的 [SliderWithInputPreference]，
+ * 适配点（仅换壳，不改逻辑）：卡片用 [UiCard]，滑块用统一的 [SliderPreference]（点击弹窗精确输入），
  * 导入/清除行用与主页背景一致的 [AppearancePickerPreference]（BasicComponent 入口 + 预览对话框）。
  */
 @Composable
@@ -146,6 +146,7 @@ fun DeviceCardPage(
                             value = appearance.logoScale.toFloat(),
                             range = 50f..200f,
                             suffix = "%",
+                            defaultValue = 100f,
                             onValueChangeFinished = { value -> update { it.copy(logoScale = value.toInt()) } },
                         )
                     }
@@ -168,6 +169,7 @@ fun DeviceCardPage(
                         value = appearance.tutorialCardImageScale.toFloat(),
                         range = 40f..200f,
                         suffix = "%",
+                        defaultValue = 100f,
                         onValueChangeFinished = { value -> update { it.copy(tutorialCardImageScale = value.toInt()) } },
                     )
                     AppearanceSlider(
@@ -175,6 +177,7 @@ fun DeviceCardPage(
                         value = appearance.tutorialCardImageLogoSpacing.toFloat(),
                         range = -120f..120f,
                         suffix = "%",
+                        defaultValue = 0f,
                         onValueChangeFinished = { value -> update { it.copy(tutorialCardImageLogoSpacing = value.toInt()) } },
                     )
                 }
@@ -198,6 +201,7 @@ fun DeviceCardPage(
                         value = appearance.tutorialCardBackgroundHorizontalOffset.toFloat(),
                         range = -120f..120f,
                         suffix = "%",
+                        defaultValue = 0f,
                         onValueChangeFinished = { value -> update { it.copy(tutorialCardBackgroundHorizontalOffset = value.toInt()) } },
                     )
                     AppearanceSlider(
@@ -205,6 +209,7 @@ fun DeviceCardPage(
                         value = appearance.tutorialCardBackgroundVerticalOffset.toFloat(),
                         range = -120f..120f,
                         suffix = "%",
+                        defaultValue = 0f,
                         onValueChangeFinished = { value -> update { it.copy(tutorialCardBackgroundVerticalOffset = value.toInt()) } },
                     )
                     AppearanceSlider(
@@ -212,6 +217,7 @@ fun DeviceCardPage(
                         value = appearance.tutorialCardBackgroundScale.toFloat(),
                         range = 40f..200f,
                         suffix = "%",
+                        defaultValue = 100f,
                         onValueChangeFinished = { value -> update { it.copy(tutorialCardBackgroundScale = value.toInt()) } },
                     )
                 }
@@ -231,6 +237,7 @@ fun DeviceCardPage(
                         value = appearance.tutorialCardLogoScale.toFloat(),
                         range = 40f..200f,
                         suffix = "%",
+                        defaultValue = 100f,
                         onValueChangeFinished = { value -> update { it.copy(tutorialCardLogoScale = value.toInt()) } },
                     )
                     AppearanceSlider(
@@ -238,6 +245,7 @@ fun DeviceCardPage(
                         value = appearance.tutorialCardLogoVerticalOffset.toFloat(),
                         range = -120f..120f,
                         suffix = "%",
+                        defaultValue = 0f,
                         onValueChangeFinished = { value -> update { it.copy(tutorialCardLogoVerticalOffset = value.toInt()) } },
                     )
                 }
@@ -250,6 +258,7 @@ fun DeviceCardPage(
                         value = appearance.tutorialCardTextSpacing.toFloat(),
                         range = -120f..120f,
                         suffix = "%",
+                        defaultValue = 0f,
                         onValueChangeFinished = { value -> update { it.copy(tutorialCardTextSpacing = value.toInt()) } },
                     )
                     TextFieldRow(
@@ -299,6 +308,7 @@ fun DeviceCardPage(
                         value = appearance.style2ImageScale.toFloat(),
                         range = 40f..200f,
                         suffix = "%",
+                        defaultValue = 100f,
                         onValueChangeFinished = { value -> update { it.copy(style2ImageScale = value.toInt()) } },
                     )
                 }
@@ -322,6 +332,7 @@ fun DeviceCardPage(
                         value = appearance.style2BackgroundHorizontalOffset.toFloat(),
                         range = -120f..120f,
                         suffix = "%",
+                        defaultValue = 0f,
                         onValueChangeFinished = { value -> update { it.copy(style2BackgroundHorizontalOffset = value.toInt()) } },
                     )
                     AppearanceSlider(
@@ -329,6 +340,7 @@ fun DeviceCardPage(
                         value = appearance.style2BackgroundVerticalOffset.toFloat(),
                         range = -120f..120f,
                         suffix = "%",
+                        defaultValue = 0f,
                         onValueChangeFinished = { value -> update { it.copy(style2BackgroundVerticalOffset = value.toInt()) } },
                     )
                     AppearanceSlider(
@@ -336,6 +348,7 @@ fun DeviceCardPage(
                         value = appearance.style2BackgroundScale.toFloat(),
                         range = 40f..200f,
                         suffix = "%",
+                        defaultValue = 100f,
                         onValueChangeFinished = { value -> update { it.copy(style2BackgroundScale = value.toInt()) } },
                     )
                 }
@@ -365,6 +378,7 @@ fun DeviceCardPage(
                         value = appearance.style2LogoVersionSpacing.toFloat(),
                         range = -120f..120f,
                         suffix = "%",
+                        defaultValue = 0f,
                         onValueChangeFinished = { value -> update { it.copy(style2LogoVersionSpacing = value.toInt()) } },
                     )
                     AppearanceSlider(
@@ -372,6 +386,7 @@ fun DeviceCardPage(
                         value = appearance.style2LogoHorizontalOffsetForAlignment().toFloat(),
                         range = -120f..120f,
                         suffix = "%",
+                        defaultValue = 0f,
                         onValueChangeFinished = { value -> update { current -> current.withStyle2LogoHorizontalOffset(current.style2LogoAlignment, value.toInt()) } },
                     )
                     AppearanceSlider(
@@ -379,6 +394,7 @@ fun DeviceCardPage(
                         value = appearance.style2LogoVerticalOffsetForAlignment().toFloat(),
                         range = -120f..120f,
                         suffix = "%",
+                        defaultValue = 0f,
                         onValueChangeFinished = { value -> update { current -> current.withStyle2LogoVerticalOffset(current.style2LogoAlignment, value.toInt()) } },
                     )
                 }
@@ -407,6 +423,7 @@ fun DeviceCardPage(
                             value = appearance.style2TextScale.toFloat(),
                             range = 40f..200f,
                             suffix = "%",
+                            defaultValue = 100f,
                             onValueChangeFinished = { value -> update { it.copy(style2TextScale = value.toInt()) } },
                         )
                         if (!appearance.style2TextIndependent) {
@@ -425,6 +442,7 @@ fun DeviceCardPage(
                                     value = appearance.style2TextSpacingAbove.toFloat(),
                                     range = -120f..120f,
                                     suffix = "%",
+                                    defaultValue = 0f,
                                     onValueChangeFinished = { value -> update { it.copy(style2TextSpacingAbove = value.toInt()) } },
                                 )
                             } else {
@@ -433,6 +451,7 @@ fun DeviceCardPage(
                                     value = appearance.style2TextSpacingBelow.toFloat(),
                                     range = -120f..120f,
                                     suffix = "%",
+                                    defaultValue = 0f,
                                     onValueChangeFinished = { value -> update { it.copy(style2TextSpacingBelow = value.toInt()) } },
                                 )
                             }
@@ -452,6 +471,7 @@ fun DeviceCardPage(
                                 value = appearance.style2TextVerticalOffsetForAlignment().toFloat(),
                                 range = -120f..120f,
                                 suffix = "%",
+                                defaultValue = 0f,
                                 onValueChangeFinished = { value -> update { current -> current.withStyle2TextVerticalOffset(current.style2TextAlignment, value.toInt()) } },
                             )
                             AppearanceSlider(
@@ -459,6 +479,7 @@ fun DeviceCardPage(
                                 value = appearance.style2TextHorizontalOffsetForAlignment().toFloat(),
                                 range = -120f..120f,
                                 suffix = "%",
+                                defaultValue = 0f,
                                 onValueChangeFinished = { value -> update { current -> current.withStyle2TextHorizontalOffset(current.style2TextAlignment, value.toInt()) } },
                             )
                         }
@@ -507,14 +528,16 @@ private fun AppearanceSlider(
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     suffix: String = "%",
+    defaultValue: Float,
     onValueChangeFinished: (Float) -> Unit,
 ) {
     var local by remember(value) { mutableFloatStateOf(value) }
-    SliderWithInputPreference(
+    SliderPreference(
         label = label,
         value = local,
         range = range,
         suffix = suffix,
+        defaultValue = defaultValue,
         onValueChange = { local = it },
         onValueChangeFinished = onValueChangeFinished,
     )
@@ -532,6 +555,7 @@ private fun BlurSlider(
         value = value,
         range = 0f..25f,
         suffix = "dp",
+        defaultValue = 0f,
         onValueChangeFinished = onValueChangeFinished,
     )
 }

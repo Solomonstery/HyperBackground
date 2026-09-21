@@ -3,11 +3,8 @@ package com.ciallo.hyperbackground.ui.pages
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
@@ -19,7 +16,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.appearance.DEFAULT_CARD_BLUR
@@ -33,12 +29,7 @@ import com.ciallo.hyperbackground.ui.components.SectionTitle
 import com.ciallo.hyperbackground.ui.components.SliderPreference
 import com.ciallo.hyperbackground.ui.components.UiCard
 import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Slider
-import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.preference.SwitchPreference
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import java.util.Locale
-import kotlin.math.roundToInt
 
 /**
  * 「卡片材质」二级页，结构对齐 HyperIsland 的 IslandMaterialPage：
@@ -161,6 +152,7 @@ private fun SoftGlassSection(activity: MainActivity, dark: Boolean) {
                 label = stringResource(R.string.settings_card_glass_blur_radius),
                 value = blur,
                 range = 0f..80f,
+                defaultValue = GLASS_DEFAULTS.blurRadiusDp.toFloat(),
                 onValueChange = { blur = it },
                 onValueChangeFinished = { value -> save { it.copy(blurRadiusDp = value.toInt()) } },
             )
@@ -172,81 +164,65 @@ private fun SoftGlassSection(activity: MainActivity, dark: Boolean) {
         }
         SectionTitle(stringResource(R.string.settings_card_glass_lighting_section))
         UiCard(activity, Modifier.fillMaxWidth()) {
-            DecimalSlider(stringResource(R.string.settings_card_glass_soft_light), params.softLight) { value ->
+            DecimalSlider(stringResource(R.string.settings_card_glass_soft_light), params.softLight, GLASS_DEFAULTS.softLight) { value ->
                 save { it.copy(softLight = value) }
             }
-            DecimalSlider(stringResource(R.string.settings_card_glass_saturation), params.saturation) { value ->
+            DecimalSlider(stringResource(R.string.settings_card_glass_saturation), params.saturation, GLASS_DEFAULTS.saturation) { value ->
                 save { it.copy(saturation = value) }
             }
-            DecimalSlider(stringResource(R.string.settings_card_glass_brightness), params.brightness) { value ->
+            DecimalSlider(stringResource(R.string.settings_card_glass_brightness), params.brightness, GLASS_DEFAULTS.brightness) { value ->
                 save { it.copy(brightness = value) }
             }
-            DecimalSlider(stringResource(R.string.settings_card_glass_darker), params.darker) { value ->
+            DecimalSlider(stringResource(R.string.settings_card_glass_darker), params.darker, GLASS_DEFAULTS.darker) { value ->
                 save { it.copy(darker = value) }
             }
-            DecimalSlider(stringResource(R.string.settings_card_glass_transparency), params.transparency) { value ->
+            DecimalSlider(stringResource(R.string.settings_card_glass_transparency), params.transparency, GLASS_DEFAULTS.transparency) { value ->
                 save { it.copy(transparency = value) }
             }
-            DecimalSlider(stringResource(R.string.settings_card_glass_burn), params.burn) { value ->
+            DecimalSlider(stringResource(R.string.settings_card_glass_burn), params.burn, GLASS_DEFAULTS.burn) { value ->
                 save { it.copy(burn = value) }
             }
         }
         SectionTitle(stringResource(R.string.settings_card_glass_refraction_section))
         UiCard(activity, Modifier.fillMaxWidth()) {
-            DecimalSlider(stringResource(R.string.settings_card_glass_refraction), params.refraction) { value ->
+            DecimalSlider(stringResource(R.string.settings_card_glass_refraction), params.refraction, GLASS_DEFAULTS.refraction) { value ->
                 save { it.copy(refraction = value) }
             }
-            DecimalSlider(stringResource(R.string.settings_card_glass_edge_thickness), params.edgeThickness) { value ->
+            DecimalSlider(stringResource(R.string.settings_card_glass_edge_thickness), params.edgeThickness, GLASS_DEFAULTS.edgeThickness) { value ->
                 save { it.copy(edgeThickness = value) }
             }
-            DecimalSlider(stringResource(R.string.settings_card_glass_reflection), params.reflection) { value ->
+            DecimalSlider(stringResource(R.string.settings_card_glass_reflection), params.reflection, GLASS_DEFAULTS.reflection) { value ->
                 save { it.copy(reflection = value) }
             }
-            DecimalSlider(stringResource(R.string.settings_card_glass_directional_light), params.directionalLightIntensity) { value ->
+            DecimalSlider(stringResource(R.string.settings_card_glass_directional_light), params.directionalLightIntensity, GLASS_DEFAULTS.directionalLightIntensity) { value ->
                 save { it.copy(directionalLightIntensity = value) }
             }
         }
         SectionTitle(stringResource(R.string.settings_card_glass_background_section))
         UiCard(activity, Modifier.fillMaxWidth()) {
-            DecimalSlider(stringResource(R.string.settings_card_glass_background_saturation), params.backgroundSaturation) { value ->
+            DecimalSlider(stringResource(R.string.settings_card_glass_background_saturation), params.backgroundSaturation, GLASS_DEFAULTS.backgroundSaturation) { value ->
                 save { it.copy(backgroundSaturation = value) }
             }
-            DecimalSlider(stringResource(R.string.settings_card_glass_background_brightness), params.backgroundBrightness) { value ->
+            DecimalSlider(stringResource(R.string.settings_card_glass_background_brightness), params.backgroundBrightness, GLASS_DEFAULTS.backgroundBrightness) { value ->
                 save { it.copy(backgroundBrightness = value) }
             }
         }
     }
 }
 
-/** Bionics 柔光参数均为 -50..50 的百分比刻度，0.1 步进，保留一位小数显示。 */
-@Composable
-private fun DecimalSlider(label: String, value: Double, onSave: (Double) -> Unit) {
-    var draft by remember(value) { mutableFloatStateOf(value.toFloat()) }
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(
-                text = label,
-                fontSize = MiuixTheme.textStyles.headline1.fontSize,
-                fontWeight = FontWeight.Medium,
-            )
-            Text(
-                text = decimalDisplay(draft),
-                fontSize = MiuixTheme.textStyles.headline1.fontSize,
-                fontWeight = FontWeight.Medium,
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Slider(
-            value = draft,
-            onValueChange = { draft = (it * 10).toInt() / 10f },
-            onValueChangeFinished = { onSave((draft * 10).roundToInt() / 10.0) },
-            valueRange = -50f..50f,
-            steps = 999,
-        )
-    }
-}
+/** 柔光玻璃参数均为 -50..50 百分比刻度（0.1 步进小数），复用统一滑块的小数模式。 */
+private val GLASS_DEFAULTS = SoftGlassParams()
 
-private fun decimalDisplay(value: Float): String {
-    val hundredths = String.format(Locale.ROOT, "%.2f", value)
-    return if (hundredths.endsWith("0")) String.format(Locale.ROOT, "%.1f", value) else hundredths
+@Composable
+private fun DecimalSlider(label: String, value: Double, defaultValue: Double, onSave: (Double) -> Unit) {
+    var draft by remember(value) { mutableFloatStateOf(value.toFloat()) }
+    SliderPreference(
+        label = label,
+        value = draft,
+        range = -50f..50f,
+        defaultValue = defaultValue.toFloat(),
+        decimal = true,
+        onValueChange = { draft = it },
+        onValueChangeFinished = { onSave(it.toDouble()) },
+    )
 }

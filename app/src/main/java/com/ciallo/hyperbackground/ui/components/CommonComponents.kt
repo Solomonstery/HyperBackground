@@ -10,9 +10,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -25,18 +25,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.ui.MainActivity
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Slider
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.window.WindowDialog
+import java.util.Locale
+import kotlin.math.roundToInt
 
 @Composable
 fun UiCard(activity: MainActivity, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
@@ -79,55 +87,38 @@ fun PageEntry(
     }
 }
 
+/**
+ * 统一滑块条目。传 [defaultValue]（页面级滑块）时数值右侧带 ArrowRight，点击条目任意空白区域
+ * 弹出数值输入弹窗（范围提示 + 恢复默认/取消/保存）；弹窗内部的滑块不传该参数，保持纯滑条。
+ * [decimal] 为小数模式：0.1 步进显示与量化，用于 -50..50 的柔光玻璃百分比刻度。
+ */
 @Composable
 fun SliderPreference(
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     suffix: String = "",
+    defaultValue: Float? = null,
+    decimal: Boolean = false,
     onValueChange: (Float) -> Unit,
     onValueChangeFinished: (Float) -> Unit,
 ) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(
-                text = label,
-                fontSize = MiuixTheme.textStyles.headline1.fontSize,
-                fontWeight = FontWeight.Medium,
-            )
-            Text(
-                text = "${value.toInt()}$suffix",
-                fontSize = MiuixTheme.textStyles.headline1.fontSize,
-                fontWeight = FontWeight.Medium,
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            onValueChangeFinished = { onValueChangeFinished(value) },
-            valueRange = range,
-            steps = (range.endInclusive - range.start).toInt().minus(1).coerceAtLeast(0),
-        )
+    var showInput by remember { mutableStateOf(false) }
+    val display = if (decimal) decimalDisplay(value) else value.toInt().toString()
+    val quantized: (Float) -> Float = if (decimal) {
+        { (it * 10).roundToInt() / 10f }
+    } else {
+        { it }
     }
-}
-
-/**
- * 滑块 + 数值输入框：右上角把纯数值文本换成可编辑输入框，支持精确输入；输入即校正到 range 内并同步滑块。
- * value/onValueChange/onValueChangeFinished 语义与 SliderPreference 一致（拖动实时回调、松手落库）。
- */
-@Composable
-fun SliderWithInputPreference(
-    label: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    suffix: String = "",
-    onValueChange: (Float) -> Unit,
-    onValueChangeFinished: (Float) -> Unit,
-) {
-    // 输入框内容独立于滑块：拖动滑块时同步显示，聚焦编辑时以用户输入为准。用 value 的整数串作初值。
-    var text by remember(value.toInt()) { mutableStateOf(value.toInt().toString()) }
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+    Column(
+        Modifier
+            .heightIn(min = 56.dp)
+            .fillMaxWidth()
+            // clickable 放在 padding 之前，点击/悬停反馈覆盖整块条目（与 BasicComponent 一致）。
+            .then(if (defaultValue != null) Modifier.clickable { showInput = true } else Modifier)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -139,40 +130,18 @@ fun SliderWithInputPreference(
                 fontWeight = FontWeight.Medium,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.width(52.dp).clip(RoundedCornerShape(10.dp))
-                        .background(MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f))
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                ) {
-                    BasicTextField(
-                        value = text,
-                        onValueChange = { input ->
-                            // 仅接受数字；空串允许（编辑中间态），有效值即校正并回调。
-                            val digits = input.filter { it.isDigit() }
-                            text = digits
-                            val v = digits.toIntOrNull()
-                            if (v != null) {
-                                val clamped = v.coerceIn(range.start.toInt(), range.endInclusive.toInt())
-                                onValueChange(clamped.toFloat())
-                                onValueChangeFinished(clamped.toFloat())
-                            }
-                        },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        textStyle = MiuixTheme.textStyles.headline1.copy(
-                            color = MiuixTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Medium,
-                            textAlign = TextAlign.End,
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                if (suffix.isNotEmpty()) {
-                    Text(
-                        text = suffix,
-                        fontSize = MiuixTheme.textStyles.headline1.fontSize,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(start = 2.dp),
+                Text(
+                    text = display + suffix,
+                    fontSize = MiuixTheme.textStyles.headline1.fontSize,
+                    fontWeight = FontWeight.Medium,
+                )
+                if (defaultValue != null) {
+                    Icon(
+                        imageVector = MiuixIcons.Basic.ArrowRight,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .padding(start = 4.dp)
+                            .size(13.dp),
                     )
                 }
             }
@@ -180,15 +149,135 @@ fun SliderWithInputPreference(
         Spacer(Modifier.height(8.dp))
         Slider(
             value = value,
-            onValueChange = {
-                onValueChange(it)
-                text = it.toInt().toString()
-            },
+            onValueChange = { onValueChange(quantized(it)) },
             onValueChangeFinished = { onValueChangeFinished(value) },
             valueRange = range,
-            steps = (range.endInclusive - range.start).toInt().minus(1).coerceAtLeast(0),
+            steps = if (decimal) 999 else (range.endInclusive - range.start).toInt().minus(1).coerceAtLeast(0),
         )
     }
+    if (defaultValue != null && showInput) {
+        SliderInputDialog(
+            title = label,
+            initial = value,
+            range = range,
+            suffix = suffix,
+            defaultValue = defaultValue,
+            decimal = decimal,
+            onDismiss = { showInput = false },
+            onConfirm = { next ->
+                showInput = false
+                onValueChange(next)
+                onValueChangeFinished(next)
+            },
+        )
+    }
+}
+
+/** 滑块数值输入弹窗：范围提示 + 输入框 + 恢复默认（整行）/ 取消 + 保存（强调色）。 */
+@Composable
+private fun SliderInputDialog(
+    title: String,
+    initial: Float,
+    range: ClosedFloatingPointRange<Float>,
+    suffix: String,
+    defaultValue: Float,
+    decimal: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (Float) -> Unit,
+) {
+    WindowDialog(title = title, show = true, onDismissRequest = onDismiss) {
+        var text by remember { mutableStateOf(formatSliderValue(initial, decimal)) }
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(
+                    text = stringResource(
+                        R.string.slider_range_hint,
+                        formatSliderValue(range.start, decimal),
+                        formatSliderValue(range.endInclusive, decimal),
+                    ) + if (suffix.isEmpty()) "" else " ($suffix)",
+                    color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                )
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f))
+                        .padding(horizontal = 12.dp, vertical = 11.dp),
+                ) {
+                    BasicTextField(
+                        value = text,
+                        onValueChange = { text = filterNumberInput(it, decimal) },
+                        singleLine = true,
+                        keyboardOptions = if (range.start >= 0f && !decimal) {
+                            KeyboardOptions(keyboardType = KeyboardType.Number)
+                        } else {
+                            KeyboardOptions.Default
+                        },
+                        textStyle = MiuixTheme.textStyles.headline1.copy(
+                            color = MiuixTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+            TextButton(
+                modifier = Modifier.fillMaxWidth(),
+                text = stringResource(R.string.restore_default),
+                onClick = { text = formatSliderValue(defaultValue, decimal) },
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    text = stringResource(R.string.cancel),
+                    onClick = onDismiss,
+                )
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    text = stringResource(R.string.save),
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    onClick = {
+                        val parsed = text.toFloatOrNull() ?: initial
+                        val clamped = if (decimal) {
+                            ((parsed * 10).roundToInt() / 10f).coerceIn(range.start, range.endInclusive)
+                        } else {
+                            parsed.roundToInt().toFloat().coerceIn(range.start, range.endInclusive)
+                        }
+                        onConfirm(clamped)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** 只保留数字、开头负号，小数模式额外允许一个小数点。 */
+private fun filterNumberInput(input: String, decimal: Boolean): String {
+    val builder = StringBuilder()
+    var dot = false
+    for (char in input) {
+        when {
+            char == '-' && builder.isEmpty() -> builder.append(char)
+            char.isDigit() -> builder.append(char)
+            char == '.' && decimal && !dot &&
+                builder.isNotEmpty() && builder.last() != '-' -> {
+                dot = true
+                builder.append(char)
+            }
+        }
+    }
+    return builder.toString()
+}
+
+private fun formatSliderValue(value: Float, decimal: Boolean): String =
+    if (decimal) String.format(Locale.ROOT, "%.1f", value) else value.roundToInt().toString()
+
+private fun decimalDisplay(value: Float): String {
+    val hundredths = String.format(Locale.ROOT, "%.2f", value)
+    return if (hundredths.endsWith("0")) String.format(Locale.ROOT, "%.1f", value) else hundredths
 }
 
 @Composable

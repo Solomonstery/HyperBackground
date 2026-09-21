@@ -31,6 +31,7 @@ import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_COLOR
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_FROST
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
+import com.ciallo.hyperbackground.appearance.DEFAULT_CARD_BLUR
 import com.ciallo.hyperbackground.ui.MainActivity
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -142,12 +143,18 @@ fun SettingsCardColors(activity: MainActivity, onOpenMaterial: () -> Unit) {
 }
 
 @Composable
-fun CardBlurPreference(label: String, radius: Int, onSave: (Int) -> Unit) {
+fun CardBlurPreference(
+    label: String,
+    radius: Int,
+    default: Int = DEFAULT_CARD_BLUR,
+    onSave: (Int) -> Unit,
+) {
     var value by remember(radius) { mutableFloatStateOf(radius.toFloat()) }
     SliderPreference(
         label = label,
         value = value,
         range = 0f..80f,
+        defaultValue = default.toFloat(),
         onValueChange = { value = it },
         onValueChangeFinished = { onSave(it.toInt()) },
     )

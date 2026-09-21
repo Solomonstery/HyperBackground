@@ -328,4 +328,5 @@
     <string name="settings_card_glass_background_brightness">Background brightness</string>
     <string name="settings_card_glass_highlight">Highlight</string>
     <string name="settings_card_material_restore">Restore material defaults</string>
+    <string name="slider_range_hint">Range: %1$s ~ %2$s</string>
 </resources>

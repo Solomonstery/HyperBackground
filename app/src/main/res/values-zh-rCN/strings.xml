@@ -91,4 +91,5 @@
     <string name="settings_card_glass_background_brightness">背景亮度</string>
     <string name="settings_card_glass_highlight">高光</string>
     <string name="settings_card_material_restore">恢复默认材质参数</string>
+    <string name="slider_range_hint">范围：%1$s ~ %2$s</string>
 </resources>

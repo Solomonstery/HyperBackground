@@ -207,6 +207,7 @@ private fun ModuleAppearanceCard(
                 value = cardOpacity,
                 range = 0f..100f,
                 suffix = "%",
+                defaultValue = 100f,
                 onValueChange = { cardOpacity = it },
                 onValueChangeFinished = { activity.updateCardOpacity(it / 100f) },
             )

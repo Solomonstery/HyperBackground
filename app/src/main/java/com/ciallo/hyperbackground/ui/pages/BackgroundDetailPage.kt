@@ -31,7 +31,6 @@ import com.ciallo.hyperbackground.ui.components.SectionTitle
 import com.ciallo.hyperbackground.ui.components.SettingsCardColors
 import com.ciallo.hyperbackground.ui.components.BackgroundPickerPreference
 import com.ciallo.hyperbackground.ui.components.SliderPreference
-import com.ciallo.hyperbackground.ui.components.SliderWithInputPreference
 import com.ciallo.hyperbackground.ui.components.UiCard
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -186,6 +185,7 @@ private fun TopBlurCard(activity: MainActivity) {
                         value = strength,
                         range = 0f..100f,
                         suffix = "%",
+                        defaultValue = 10f,
                         onValueChange = { strength = it },
                         onValueChangeFinished = {
                             config.edit()
@@ -198,6 +198,7 @@ private fun TopBlurCard(activity: MainActivity) {
                         value = opacity,
                         range = 0f..100f,
                         suffix = "%",
+                        defaultValue = 100f,
                         onValueChange = { opacity = it },
                         onValueChangeFinished = {
                             config.edit()
@@ -276,26 +277,29 @@ private fun HomeScaleCard(activity: MainActivity) {
                 range = BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN.toFloat()..
                     BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX.toFloat(),
                 suffix = "%",
+                defaultValue = BackgroundContract.CONTACTS_DIALPAD_ZOOM_DEFAULT.toFloat(),
                 onValueChange = { zoom = it },
                 onValueChangeFinished = {
                     config.edit().putInt(BackgroundContract.HOME_ZOOM, zoom.toInt()).apply()
                 },
             )
-            SliderWithInputPreference(
+            SliderPreference(
                 label = stringResource(R.string.home_focus_x),
                 value = focusX,
                 range = 0f..100f,
                 suffix = "%",
+                defaultValue = 50f,
                 onValueChange = { focusX = it },
                 onValueChangeFinished = {
                     config.edit().putInt(BackgroundContract.HOME_FOCUS_X, focusX.toInt()).apply()
                 },
             )
-            SliderWithInputPreference(
+            SliderPreference(
                 label = stringResource(R.string.home_focus_y),
                 value = focusY,
                 range = 0f..100f,
                 suffix = "%",
+                defaultValue = 50f,
                 onValueChange = { focusY = it },
                 onValueChangeFinished = {
                     config.edit().putInt(BackgroundContract.HOME_FOCUS_Y, focusY.toInt()).apply()
@@ -376,6 +380,7 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
                         value = opacity,
                         range = 0f..100f,
                         suffix = "%",
+                        defaultValue = 60f,
                         onValueChange = { opacity = it },
                         onValueChangeFinished = {
                             config.edit()
@@ -397,10 +402,11 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
                         enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(220)),
                         exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(180)),
                     ) {
-                        SliderWithInputPreference(
+                        SliderPreference(
                             label = stringResource(R.string.blur_strength),
                             value = blurRadius,
                             range = 0f..80f,
+                            defaultValue = 20f,
                             onValueChange = { blurRadius = it },
                             onValueChangeFinished = {
                                 config.edit().putInt(radiusKey, it.toInt()).apply()
@@ -439,24 +445,24 @@ private fun ContactsSurfaceCard(activity: MainActivity, revision: Int) {
                         range = BackgroundContract.CONTACTS_DIALPAD_ZOOM_MIN.toFloat()..
                             BackgroundContract.CONTACTS_DIALPAD_ZOOM_MAX.toFloat(),
                         suffix = "%",
+                        defaultValue = BackgroundContract.CONTACTS_DIALPAD_ZOOM_DEFAULT.toFloat(),
                         onValueChange = { zoom = it },
                         onValueChangeFinished = {
-                            config.edit()
-                                .putInt(BackgroundContract.CONTACTS_DIALPAD_ZOOM, zoom.toInt())
+                            config.edit().putInt(BackgroundContract.CONTACTS_DIALPAD_ZOOM, zoom.toInt())
                                 .apply()
                         },
                     )
                     // 纵向位置（屏幕坐标系）：0 图顶部对齐、50 居中、100 底部对齐，控制透过拨号盘看到图的哪一段。
                     // 横向恒居中铺满（以屏幕宽为基准），故不再提供横向位置。滑块 + 数值输入框可精确调节。
-                    SliderWithInputPreference(
+                    SliderPreference(
                         label = stringResource(R.string.contacts_dialpad_focus_y),
                         value = focusY,
                         range = 0f..100f,
                         suffix = "%",
+                        defaultValue = 50f,
                         onValueChange = { focusY = it },
                         onValueChangeFinished = {
-                            config.edit()
-                                .putInt(BackgroundContract.CONTACTS_DIALPAD_FOCUS_Y, focusY.toInt())
+                            config.edit().putInt(BackgroundContract.CONTACTS_DIALPAD_FOCUS_Y, focusY.toInt())
                                 .apply()
                         },
                     )

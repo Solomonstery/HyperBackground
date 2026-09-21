@@ -56,6 +56,9 @@ internal const val KEY_LIGHT_FROST_COLOR = "light_frost_color"
 internal const val KEY_DARK_FROST_COLOR = "dark_frost_color"
 internal const val KEY_LIGHT_CARD_BLUR = "light_card_blur"
 internal const val KEY_DARK_CARD_BLUR = "dark_card_blur"
+internal const val KEY_LIGHT_SOFT_GLASS = "light_soft_glass"
+internal const val KEY_DARK_SOFT_GLASS = "dark_soft_glass"
+internal const val KEY_CARD_DARK_FOLLOWS_LIGHT = "card_dark_follows_light"
 const val CARD_BACKGROUND_COLOR = 0
 const val CARD_BACKGROUND_FROST = 1
 const val CARD_BACKGROUND_SOFT_GLASS = 2
@@ -64,6 +67,86 @@ internal const val DEFAULT_DARK_CARD_COLOR = -14671580 // #FF202124
 internal const val DEFAULT_LIGHT_FROST_COLOR = 0x66FFFFFF
 internal const val DEFAULT_DARK_FROST_COLOR = 0x661C1C1E
 internal const val DEFAULT_CARD_BLUR = 24
+
+/**
+ * 柔光玻璃材质参数（42 参 shader 的自定义通道，语义见 docs/soft-glass-api.md），
+ * 默认值对齐 HyperIsland 灵动岛材质。浅色/深色各存一份，深色可整体跟随浅色。
+ */
+data class SoftGlassParams(
+    val blurRadiusDp: Int = 35,
+    val softLight: Double = -1.0,
+    val saturation: Double = 0.0,
+    val brightness: Double = 0.0,
+    val darker: Double = 0.0,
+    val transparency: Double = -0.57,
+    val burn: Double = 0.0,
+    val refraction: Double = 0.0,
+    val edgeThickness: Double = 0.8,
+    val reflection: Double = 0.0,
+    val directionalLightIntensity: Double = 1.0,
+    val backgroundSaturation: Double = 0.0,
+    val backgroundBrightness: Double = 0.04,
+    val highlight: Boolean = true,
+)
+
+/** SharedPreferences 不支持嵌套对象，管道符编码为单键字符串，字段顺序固定 14 段。 */
+internal fun SoftGlassParams.encodeSoftGlass(): String = StringBuilder().apply {
+    append(blurRadiusDp)
+    append('|').append(softLight)
+    append('|').append(saturation)
+    append('|').append(brightness)
+    append('|').append(darker)
+    append('|').append(transparency)
+    append('|').append(burn)
+    append('|').append(refraction)
+    append('|').append(edgeThickness)
+    append('|').append(reflection)
+    append('|').append(directionalLightIntensity)
+    append('|').append(backgroundSaturation)
+    append('|').append(backgroundBrightness)
+    append('|').append(if (highlight) 1 else 0)
+}.toString()
+
+internal fun decodeSoftGlass(raw: String?): SoftGlassParams {
+    val defaults = SoftGlassParams()
+    val parts = raw?.split('|') ?: return defaults
+    if (parts.size != 14) return defaults
+    fun decimal(index: Int, fallback: Double): Double =
+        parts[index].toDoubleOrNull()?.coerceIn(-50.0, 50.0) ?: fallback
+    return SoftGlassParams(
+        blurRadiusDp = parts[0].toIntOrNull()?.coerceIn(0, 80) ?: defaults.blurRadiusDp,
+        softLight = decimal(1, defaults.softLight),
+        saturation = decimal(2, defaults.saturation),
+        brightness = decimal(3, defaults.brightness),
+        darker = decimal(4, defaults.darker),
+        transparency = decimal(5, defaults.transparency),
+        burn = decimal(6, defaults.burn),
+        refraction = decimal(7, defaults.refraction),
+        edgeThickness = decimal(8, defaults.edgeThickness),
+        reflection = decimal(9, defaults.reflection),
+        directionalLightIntensity = decimal(10, defaults.directionalLightIntensity),
+        backgroundSaturation = decimal(11, defaults.backgroundSaturation),
+        backgroundBrightness = decimal(12, defaults.backgroundBrightness),
+        highlight = parts[13].toIntOrNull() == 1,
+    )
+}
+
+private fun SoftGlassParams.normalized() = copy(
+    blurRadiusDp = blurRadiusDp.coerceIn(0, 80),
+    softLight = softLight.coerceIn(-50.0, 50.0),
+    saturation = saturation.coerceIn(-50.0, 50.0),
+    brightness = brightness.coerceIn(-50.0, 50.0),
+    darker = darker.coerceIn(-50.0, 50.0),
+    transparency = transparency.coerceIn(-50.0, 50.0),
+    burn = burn.coerceIn(-50.0, 50.0),
+    refraction = refraction.coerceIn(-50.0, 50.0),
+    edgeThickness = edgeThickness.coerceIn(-50.0, 50.0),
+    reflection = reflection.coerceIn(-50.0, 50.0),
+    directionalLightIntensity = directionalLightIntensity.coerceIn(-50.0, 50.0),
+    backgroundSaturation = backgroundSaturation.coerceIn(-50.0, 50.0),
+    backgroundBrightness = backgroundBrightness.coerceIn(-50.0, 50.0),
+)
+
 private const val KEY_TUTORIAL_CARD_ENABLED = "tutorial_card_enabled"
 private const val KEY_TUTORIAL_CARD_TITLE = "tutorial_card_title"
 private const val KEY_TUTORIAL_CARD_SLOGAN = "tutorial_card_slogan"
@@ -158,6 +241,9 @@ data class SettingsAppearanceSettings(
     val darkFrostColor: Int = DEFAULT_DARK_FROST_COLOR,
     val lightCardBlur: Int = DEFAULT_CARD_BLUR,
     val darkCardBlur: Int = DEFAULT_CARD_BLUR,
+    val lightSoftGlass: SoftGlassParams = SoftGlassParams(),
+    val darkSoftGlass: SoftGlassParams = SoftGlassParams(),
+    val cardDarkFollowsLight: Boolean = false,
     val tutorialCardEnabled: Boolean = false,
     val tutorialCardTitle: String = "",
     val tutorialCardSlogan: String = "",
@@ -299,6 +385,9 @@ internal fun SharedPreferences.toSettingsAppearance() = SettingsAppearanceSettin
     darkFrostColor = getInt(KEY_DARK_FROST_COLOR, DEFAULT_DARK_FROST_COLOR),
     lightCardBlur = getInt(KEY_LIGHT_CARD_BLUR, DEFAULT_CARD_BLUR),
     darkCardBlur = getInt(KEY_DARK_CARD_BLUR, DEFAULT_CARD_BLUR),
+    lightSoftGlass = decodeSoftGlass(getString(KEY_LIGHT_SOFT_GLASS, null)),
+    darkSoftGlass = decodeSoftGlass(getString(KEY_DARK_SOFT_GLASS, null)),
+    cardDarkFollowsLight = getBoolean(KEY_CARD_DARK_FOLLOWS_LIGHT, false),
     tutorialCardEnabled = getBoolean(KEY_TUTORIAL_CARD_ENABLED, false),
     tutorialCardTitle = getString(KEY_TUTORIAL_CARD_TITLE, "").orEmpty(),
     tutorialCardSlogan = getString(KEY_TUTORIAL_CARD_SLOGAN, "").orEmpty(),
@@ -380,6 +469,8 @@ private fun SettingsAppearanceSettings.normalized() = copy(
     cardBackgroundMode = cardBackgroundMode.coerceIn(CARD_BACKGROUND_COLOR, CARD_BACKGROUND_SOFT_GLASS),
     lightCardBlur = lightCardBlur.coerceIn(0, 80),
     darkCardBlur = darkCardBlur.coerceIn(0, 80),
+    lightSoftGlass = lightSoftGlass.normalized(),
+    darkSoftGlass = darkSoftGlass.normalized(),
     tutorialCardImageScale = tutorialCardImageScale.coerceIn(40, 200),
     tutorialCardLogoVerticalOffset = tutorialCardLogoVerticalOffset.coerceIn(-120, 120),
     tutorialCardLogoScale = tutorialCardLogoScale.coerceIn(40, 200),
@@ -452,6 +543,9 @@ private fun SharedPreferences.writeSettingsAppearance(value: SettingsAppearanceS
         .putInt(KEY_DARK_FROST_COLOR, value.darkFrostColor)
         .putInt(KEY_LIGHT_CARD_BLUR, value.lightCardBlur)
         .putInt(KEY_DARK_CARD_BLUR, value.darkCardBlur)
+        .putString(KEY_LIGHT_SOFT_GLASS, value.lightSoftGlass.encodeSoftGlass())
+        .putString(KEY_DARK_SOFT_GLASS, value.darkSoftGlass.encodeSoftGlass())
+        .putBoolean(KEY_CARD_DARK_FOLLOWS_LIGHT, value.cardDarkFollowsLight)
         .putBoolean(KEY_TUTORIAL_CARD_ENABLED, value.tutorialCardEnabled)
         .putString(KEY_TUTORIAL_CARD_TITLE, value.tutorialCardTitle)
         .putString(KEY_TUTORIAL_CARD_SLOGAN, value.tutorialCardSlogan)

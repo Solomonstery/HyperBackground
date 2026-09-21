@@ -37,11 +37,15 @@ internal object SettingsCardBackgroundHook {
         val darkFrost: Int = DEFAULT_DARK_FROST_COLOR,
         val lightBlur: Int = DEFAULT_CARD_BLUR,
         val darkBlur: Int = DEFAULT_CARD_BLUR,
+        val lightGlass: SoftGlassParams = SoftGlassParams(),
+        val darkGlass: SoftGlassParams = SoftGlassParams(),
+        val darkFollowsLight: Boolean = false,
     )
     @Volatile private var palette = Palette()
     private val preferenceKeys = setOf(
         KEY_CUSTOM_CARD_ENABLED, KEY_LIGHT_CARD_COLOR, KEY_DARK_CARD_COLOR, KEY_CARD_BACKGROUND_MODE,
         KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR, KEY_LIGHT_CARD_BLUR, KEY_DARK_CARD_BLUR,
+        KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS, KEY_CARD_DARK_FOLLOWS_LIGHT,
     )
     private var groupClipAvailable = false
     private val states = WeakHashMap<Any, State>()
@@ -125,6 +129,9 @@ internal object SettingsCardBackgroundHook {
             values[KEY_DARK_FROST_COLOR] as? Int ?: DEFAULT_DARK_FROST_COLOR,
             (values[KEY_LIGHT_CARD_BLUR] as? Int ?: DEFAULT_CARD_BLUR).coerceIn(0, 80),
             (values[KEY_DARK_CARD_BLUR] as? Int ?: DEFAULT_CARD_BLUR).coerceIn(0, 80),
+            decodeSoftGlass(values[KEY_LIGHT_SOFT_GLASS] as? String),
+            decodeSoftGlass(values[KEY_DARK_SOFT_GLASS] as? String),
+            values[KEY_CARD_DARK_FOLLOWS_LIGHT] as? Boolean ?: false,
         )
     }
 
@@ -278,6 +285,8 @@ internal object SettingsCardBackgroundHook {
                 return
             }
             val night = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+            // 深色跟随浅色：开启后深色主题直接采用浅色侧的颜色/模糊/材质参数。
+            val dark = night && !colors.darkFollowsLight
             // 柔光玻璃依赖 OS4 的 Bionics 材质 API 与系统开关（材质风格=柔光玻璃）；不可用时降级为磨砂。
             val useGlass = colors.mode == CARD_BACKGROUND_SOFT_GLASS
                 && groupClipAvailable
@@ -286,11 +295,10 @@ internal object SettingsCardBackgroundHook {
             logMaterialBranch(access, context, useGlass, useFrost)
             val glassy = useGlass || useFrost
             val color = if (glassy) {
-                if (night) colors.darkFrost else colors.lightFrost
+                if (dark) colors.darkFrost else colors.lightFrost
             } else {
-                if (night) colors.dark else colors.light
+                if (dark) colors.dark else colors.light
             }
-            val blurDp = if (night) colors.darkBlur else colors.lightBlur
             val replacement: Drawable = when {
                 useGlass -> {
                     val glass = state.glass ?: SettingsSoftGlassDrawable(context) { error ->
@@ -299,7 +307,11 @@ internal object SettingsCardBackgroundHook {
                             module.log(Log.WARN, TAG, "Native soft glass unavailable; retaining the selected tint", error)
                         }
                     }.also { state.glass = it }
-                    glass.configure(color, SoftGlassConfig(blurRadiusDp = blurDp), context.resources.displayMetrics.density)
+                    glass.configure(
+                        color,
+                        if (dark) colors.darkGlass else colors.lightGlass,
+                        context.resources.displayMetrics.density,
+                    )
                     glass.bindHost(state.host?.get())
                     state.frost?.dispose()
                     state.frost = null
@@ -312,7 +324,11 @@ internal object SettingsCardBackgroundHook {
                             module.log(Log.WARN, TAG, "Native group blur unavailable; retaining the selected tint", error)
                         }
                     }.also { state.frost = it }
-                    frost.configure(color, blurDp, context.resources.displayMetrics.density)
+                    frost.configure(
+                        color,
+                        if (dark) colors.darkBlur else colors.lightBlur,
+                        context.resources.displayMetrics.density,
+                    )
                     frost.bindHost(state.host?.get())
                     state.glass?.dispose()
                     state.glass = null

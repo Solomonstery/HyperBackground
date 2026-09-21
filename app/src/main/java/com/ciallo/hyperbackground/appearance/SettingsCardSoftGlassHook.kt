@@ -34,28 +34,6 @@ internal interface SettingsGroupMaterial {
 }
 
 /**
- * Parameters understood by HyperOS 4's native Bionics soft-glass renderer.
- * Defaults mirror HyperIsland's DynamicIsland soft-glass material so cards match the island.
- */
-internal data class SoftGlassConfig(
-    val blurRadiusDp: Int = 35,
-    val softLight: Double = -1.0,
-    val saturation: Double = 0.0,
-    val brightness: Double = 0.0,
-    val darker: Double = 0.0,
-    val transparency: Double = -0.57,
-    val burn: Double = 0.0,
-    val refraction: Double = 0.0,
-    val edgeThickness: Double = 0.8,
-    val reflection: Double = 0.0,
-    val directionalLightIntensity: Double = 1.0,
-    val backgroundSaturation: Double = 0.0,
-    val backgroundBrightness: Double = 0.04,
-    val tintColor: Int = 0,
-    val highlight: Boolean = true,
-)
-
-/**
  * 柔光玻璃 card material. Reuses SettingsCardFrostDrawable's bridge-View RenderNode trick,
  * but the bridge carries HyperOS 4's Bionics material (setMiViewMaterialType + setMiGlass)
  * instead of the Gaussian blur setters. Each visible group owns one bridge; the bridge View
@@ -70,12 +48,16 @@ internal class SettingsSoftGlassDrawable(
     private val nodes = ArrayList<GlassNode>()
     private var host: WeakReference<View>? = null
     private var cursor = 0
-    private var config = SoftGlassConfig()
+    private var config = SoftGlassParams()
     private var density = 1f
     private var failed = false
 
-    fun configure(color: Int, value: SoftGlassConfig, density: Float) {
-        tint.color = color
+    fun configure(color: Int, value: SoftGlassParams, density: Float) {
+        // The reference maps transparency to shader channel 14 as a percentage scale of the
+        // tint alpha; here the tint is drawn by the display list, so scale the paint instead.
+        val alpha = (Color.alpha(color) / 255f * (1f + value.transparency.toFloat() / 100f))
+            .coerceIn(0f, 1f)
+        tint.color = (color and 0x00FFFFFF) or ((alpha * 255f).roundToInt() shl 24)
         config = value
         this.density = density
     }
@@ -154,10 +136,10 @@ internal class SettingsSoftGlassDrawable(
         private var height = 0
         private var color = 0
         private var radius = -1
-        private var material: SoftGlassConfig? = null
+        private var material: SoftGlassParams? = null
         private var active = false
 
-        fun draw(canvas: Canvas, rect: RectF, path: Path, config: SoftGlassConfig, density: Float, tintColor: Int) {
+        fun draw(canvas: Canvas, rect: RectF, path: Path, config: SoftGlassParams, density: Float, tintColor: Int) {
             val w = ceil(rect.width()).toInt().coerceAtLeast(1)
             val h = ceil(rect.height()).toInt().coerceAtLeast(1)
             try {
@@ -314,7 +296,7 @@ internal class SettingsSoftGlassDrawable(
             1.1764706f, 3f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
         )
 
-        private fun customizeParams(source: FloatArray, config: SoftGlassConfig): FloatArray {
+        private fun customizeParams(source: FloatArray, config: SoftGlassParams): FloatArray {
             val params = source.clone()
             fun scale(index: Int, configured: Double) {
                 val original = params[index]
@@ -338,22 +320,14 @@ internal class SettingsSoftGlassDrawable(
             }
             // Xiaomi's expanded token also mixes a fixed white inner layer through channels
             // 15/16. Keeping it after clearing the RGB tint is what makes the island look
-            // opaque gray, so zero it for cards.
+            // opaque gray, so zero it for cards. The palette tint is drawn by the node's
+            // own display list instead of shader channels 11-14.
+            params[11] = 0f
+            params[12] = 0f
+            params[13] = 0f
+            params[14] = 0f
             params[15] = 0f
             params[16] = 0f
-            val tintAlpha = Color.alpha(config.tintColor) / 255f
-            if (tintAlpha > 0f) {
-                params[11] = Color.red(config.tintColor) / 255f
-                params[12] = Color.green(config.tintColor) / 255f
-                params[13] = Color.blue(config.tintColor) / 255f
-                params[14] = (tintAlpha * (1f + config.transparency.toFloat() / 100f))
-                    .coerceIn(0f, 1f)
-            } else {
-                params[11] = 0f
-                params[12] = 0f
-                params[13] = 0f
-                params[14] = 0f
-            }
             return params
         }
     }

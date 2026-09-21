@@ -35,14 +35,20 @@ import com.ciallo.hyperbackground.ui.MainActivity
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.ColorPalette
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** Separate ARGB values follow Settings' actual light/dark theme, independently of the module UI. */
+/**
+ * Separate ARGB values follow Settings' actual light/dark theme, independently of the module UI.
+ * 柔光玻璃模式下参数全部移入「卡片材质」二级页，一级界面只保留入口。
+ */
 @Composable
-fun SettingsCardColors(activity: MainActivity) {
+fun SettingsCardColors(activity: MainActivity, onOpenMaterial: () -> Unit) {
     val settings = activity.appearance
     val frosted = settings.cardBackgroundMode == CARD_BACKGROUND_FROST
     val softGlass = settings.cardBackgroundMode == CARD_BACKGROUND_SOFT_GLASS
@@ -79,47 +85,52 @@ fun SettingsCardColors(activity: MainActivity) {
         )
         AnimatedVisibility(settings.customCardEnabled) {
             Column {
-                CardColorPreference(
-                    title = stringResource(if (glassy) R.string.settings_card_light_tint else R.string.settings_card_light),
-                    color = if (glassy) settings.lightFrostColor else settings.lightCardColor,
-                    onSave = { color ->
-                        activity.updateAppearance {
-                            if (glassy) it.copy(lightFrostColor = color) else it.copy(lightCardColor = color)
-                        }
-                    },
-                )
-                if (glassy) {
-                    CardBlurPreference(
-                        label = stringResource(R.string.settings_card_light_blur),
-                        radius = settings.lightCardBlur,
-                        onSave = { value -> activity.updateAppearance { it.copy(lightCardBlur = value) } },
+                if (softGlass) {
+                    BasicComponent(
+                        title = stringResource(R.string.settings_card_soft_glass_customize),
+                        summary = stringResource(R.string.settings_card_soft_glass_customize_summary),
+                        endActions = { Icon(MiuixIcons.Basic.ArrowRight, contentDescription = null) },
+                        onClick = onOpenMaterial,
                     )
-                }
-                CardColorPreference(
-                    title = stringResource(if (glassy) R.string.settings_card_dark_tint else R.string.settings_card_dark),
-                    color = if (glassy) settings.darkFrostColor else settings.darkCardColor,
-                    onSave = { color ->
-                        activity.updateAppearance {
-                            if (glassy) it.copy(darkFrostColor = color) else it.copy(darkCardColor = color)
-                        }
-                    },
-                )
-                if (glassy) {
-                    CardBlurPreference(
-                        label = stringResource(R.string.settings_card_dark_blur),
-                        radius = settings.darkCardBlur,
-                        onSave = { value -> activity.updateAppearance { it.copy(darkCardBlur = value) } },
+                } else {
+                    CardColorPreference(
+                        title = stringResource(if (glassy) R.string.settings_card_light_tint else R.string.settings_card_light),
+                        color = if (glassy) settings.lightFrostColor else settings.lightCardColor,
+                        onSave = { color ->
+                            activity.updateAppearance {
+                                if (glassy) it.copy(lightFrostColor = color) else it.copy(lightCardColor = color)
+                            }
+                        },
                     )
-                }
-                when {
-                    frosted -> BasicComponent(
-                        title = stringResource(R.string.settings_card_frost),
-                        summary = stringResource(R.string.settings_card_frost_summary),
+                    if (glassy) {
+                        CardBlurPreference(
+                            label = stringResource(R.string.settings_card_light_blur),
+                            radius = settings.lightCardBlur,
+                            onSave = { value -> activity.updateAppearance { it.copy(lightCardBlur = value) } },
+                        )
+                    }
+                    CardColorPreference(
+                        title = stringResource(if (glassy) R.string.settings_card_dark_tint else R.string.settings_card_dark),
+                        color = if (glassy) settings.darkFrostColor else settings.darkCardColor,
+                        onSave = { color ->
+                            activity.updateAppearance {
+                                if (glassy) it.copy(darkFrostColor = color) else it.copy(darkCardColor = color)
+                            }
+                        },
                     )
-                    softGlass -> BasicComponent(
-                        title = stringResource(R.string.settings_card_soft_glass),
-                        summary = stringResource(R.string.settings_card_soft_glass_summary),
-                    )
+                    if (glassy) {
+                        CardBlurPreference(
+                            label = stringResource(R.string.settings_card_dark_blur),
+                            radius = settings.darkCardBlur,
+                            onSave = { value -> activity.updateAppearance { it.copy(darkCardBlur = value) } },
+                        )
+                    }
+                    if (frosted) {
+                        BasicComponent(
+                            title = stringResource(R.string.settings_card_frost),
+                            summary = stringResource(R.string.settings_card_frost_summary),
+                        )
+                    }
                 }
                 BasicComponent(
                     title = stringResource(R.string.restore_default),
@@ -131,7 +142,7 @@ fun SettingsCardColors(activity: MainActivity) {
 }
 
 @Composable
-private fun CardBlurPreference(label: String, radius: Int, onSave: (Int) -> Unit) {
+fun CardBlurPreference(label: String, radius: Int, onSave: (Int) -> Unit) {
     var value by remember(radius) { mutableFloatStateOf(radius.toFloat()) }
     SliderPreference(
         label = label,
@@ -143,7 +154,7 @@ private fun CardBlurPreference(label: String, radius: Int, onSave: (Int) -> Unit
 }
 
 @Composable
-private fun CardColorPreference(title: String, color: Int, onSave: (Int) -> Unit) {
+fun CardColorPreference(title: String, color: Int, onSave: (Int) -> Unit) {
     var show by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(Color(color)) }
     BasicComponent(

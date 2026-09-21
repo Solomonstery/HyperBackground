@@ -47,6 +47,7 @@ fun BackgroundDetailPage(
     padding: PaddingValues = PaddingValues(0.dp),
     slot: String,
     revision: Int,
+    onOpenCardMaterial: () -> Unit = {},
 ) {
     val config = activity.config
     LazyColumn(
@@ -89,7 +90,7 @@ fun BackgroundDetailPage(
         }
         if (slot == BackgroundContract.HOME) {
             item { SectionTitle(stringResource(R.string.settings_card_background)) }
-            item { SettingsCardColors(activity) }
+            item { SettingsCardColors(activity, onOpenCardMaterial) }
             item { SectionTitle(stringResource(R.string.home_scale_title)) }
             item { HomeScaleCard(activity) }
             item { SectionTitle(stringResource(R.string.blur)) }

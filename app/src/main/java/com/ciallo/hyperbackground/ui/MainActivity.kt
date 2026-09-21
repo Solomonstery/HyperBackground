@@ -26,8 +26,10 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -62,6 +64,7 @@ import com.ciallo.hyperbackground.ui.pages.DeviceCardPage
 import com.ciallo.hyperbackground.ui.pages.DeviceInfoPage
 import com.ciallo.hyperbackground.ui.pages.HomePage
 import com.ciallo.hyperbackground.ui.pages.SettingsPage
+import com.ciallo.hyperbackground.ui.pages.SettingsCardMaterialPage
 import com.ciallo.hyperbackground.ui.pages.RandomBackgroundPage
 import com.ciallo.hyperbackground.ui.pages.RestartScopesDialog
 import com.ciallo.hyperbackground.ui.pages.UpdateAvailableDialog
@@ -75,6 +78,7 @@ import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.blur.layerBackdrop
@@ -418,7 +422,12 @@ class MainActivity : ComponentActivity() {
                     ROUTE_DEVICE_CARD -> DeviceCardScreen(onBack = { detailSlot = null })
                     ROUTE_DEVICE_INFO -> DeviceInfoScreen(onBack = { detailSlot = null })
                     ROUTE_RANDOM_BG -> RandomBackgroundScreen(onBack = { detailSlot = null })
-                    else -> BackgroundDetailScreen(slot = slot, onBack = { detailSlot = null })
+                    ROUTE_CARD_MATERIAL -> CardMaterialScreen(onBack = { detailSlot = null })
+                    else -> BackgroundDetailScreen(
+                        slot = slot,
+                        onBack = { detailSlot = null },
+                        onOpenCardMaterial = { detailSlot = ROUTE_CARD_MATERIAL },
+                    )
                 }
             }
         }
@@ -626,7 +635,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun BackgroundDetailScreen(slot: String, onBack: () -> Unit) {
+    private fun BackgroundDetailScreen(slot: String, onBack: () -> Unit, onOpenCardMaterial: () -> Unit) {
         val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
         val hasUiBackground = remember(revision) { currentUiBackgroundFile().isFile }
         val topBarColor = if (hasUiBackground) {
@@ -664,6 +673,58 @@ class MainActivity : ComponentActivity() {
                 padding = padding,
                 slot = slot,
                 revision = revision,
+                onOpenCardMaterial = onOpenCardMaterial,
+            )
+        }
+    }
+
+    /** 卡片材质二级页：顶栏下浅色/深色 TabRow，跟随 IslandMaterialPage 的布局。 */
+    @Composable
+    private fun CardMaterialScreen(onBack: () -> Unit) {
+        val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+        val hasUiBackground = remember(revision) { currentUiBackgroundFile().isFile }
+        val topBarColor = if (hasUiBackground) {
+            Color.Transparent
+        } else {
+            MiuixTheme.colorScheme.surface.copy(alpha = cardOpacity)
+        }
+        val title = getString(R.string.settings_card_material_title)
+        val pagerState = rememberPagerState(pageCount = { 2 })
+        val scope = rememberCoroutineScope()
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                Column {
+                    TopAppBar(
+                        color = topBarColor,
+                        title = title,
+                        largeTitle = title,
+                        scrollBehavior = scrollBehavior,
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(MiuixIcons.Back, contentDescription = getString(R.string.back))
+                            }
+                        },
+                    )
+                    TabRow(
+                        tabs = listOf(
+                            getString(R.string.settings_card_tab_light),
+                            getString(R.string.settings_card_tab_dark),
+                        ),
+                        selectedTabIndex = pagerState.currentPage,
+                        onTabSelected = { page ->
+                            scope.launch { pagerState.animateScrollToPage(page) }
+                        },
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                    )
+                }
+            },
+        ) { padding ->
+            SettingsCardMaterialPage(
+                activity = this@MainActivity,
+                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                padding = padding,
+                pagerState = pagerState,
             )
         }
     }
@@ -859,5 +920,6 @@ class MainActivity : ComponentActivity() {
         const val ROUTE_DEVICE_CARD = "__appearance_device_card__"
         const val ROUTE_DEVICE_INFO = "__appearance_device_info__"
         const val ROUTE_RANDOM_BG = "__random_bg__"
+        const val ROUTE_CARD_MATERIAL = "__card_material__"
     }
 }

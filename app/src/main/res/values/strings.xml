@@ -285,8 +285,16 @@
         <item>com.android.mms</item>
     </string-array>
     <string name="settings_card_background">Settings group cards</string>
-    <string name="settings_card_custom">Custom card background</string>
-    <string name="settings_card_custom_summary">Choose separate colors and opacity for light and dark Settings cards. Applies to home, search and supported subpages without requiring a background image. Turn off to restore the system style.</string>
+    <string name="settings_card_custom">Custom color</string>
+    <string name="settings_card_custom_summary">Customize light and dark cards separately. Applies to Settings home, search and supported subpages without requiring a background image.</string>
+    <string name="settings_card_style">Card background style</string>
+    <string name="settings_card_system">System default</string>
+    <string name="settings_card_frost">Frosted</string>
+    <string name="settings_card_light_tint">Light mode frost tint</string>
+    <string name="settings_card_dark_tint">Dark mode frost tint</string>
+    <string name="settings_card_light_blur">Light mode blur strength</string>
+    <string name="settings_card_dark_blur">Dark mode blur strength</string>
+    <string name="settings_card_frost_summary">Blurs the background behind each card. Lower tint opacity to reveal more of the blur; a plain background may look unchanged. Devices without compatible blur support use the selected tint.</string>
     <string name="settings_card_light">Light mode card color</string>
     <string name="settings_card_dark">Dark mode card color</string>
     <string name="settings_card_opacity">Card opacity</string>

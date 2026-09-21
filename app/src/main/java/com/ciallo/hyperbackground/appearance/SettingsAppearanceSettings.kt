@@ -51,8 +51,18 @@ private const val KEY_LIGHT_CARD_OPACITY = "light_card_opacity"
 internal const val KEY_CUSTOM_CARD_ENABLED = "custom_card_enabled"
 internal const val KEY_LIGHT_CARD_COLOR = "light_card_color"
 internal const val KEY_DARK_CARD_COLOR = "dark_card_color"
+internal const val KEY_CARD_BACKGROUND_MODE = "card_background_mode"
+internal const val KEY_LIGHT_FROST_COLOR = "light_frost_color"
+internal const val KEY_DARK_FROST_COLOR = "dark_frost_color"
+internal const val KEY_LIGHT_CARD_BLUR = "light_card_blur"
+internal const val KEY_DARK_CARD_BLUR = "dark_card_blur"
+const val CARD_BACKGROUND_COLOR = 0
+const val CARD_BACKGROUND_FROST = 1
 internal const val DEFAULT_LIGHT_CARD_COLOR = -1 // #FFFFFFFF
 internal const val DEFAULT_DARK_CARD_COLOR = -14671580 // #FF202124
+internal const val DEFAULT_LIGHT_FROST_COLOR = 0x66FFFFFF
+internal const val DEFAULT_DARK_FROST_COLOR = 0x661C1C1E
+internal const val DEFAULT_CARD_BLUR = 24
 private const val KEY_TUTORIAL_CARD_ENABLED = "tutorial_card_enabled"
 private const val KEY_TUTORIAL_CARD_TITLE = "tutorial_card_title"
 private const val KEY_TUTORIAL_CARD_SLOGAN = "tutorial_card_slogan"
@@ -142,6 +152,11 @@ data class SettingsAppearanceSettings(
     val customCardEnabled: Boolean = false,
     val lightCardColor: Int = DEFAULT_LIGHT_CARD_COLOR,
     val darkCardColor: Int = DEFAULT_DARK_CARD_COLOR,
+    val cardBackgroundMode: Int = CARD_BACKGROUND_COLOR,
+    val lightFrostColor: Int = DEFAULT_LIGHT_FROST_COLOR,
+    val darkFrostColor: Int = DEFAULT_DARK_FROST_COLOR,
+    val lightCardBlur: Int = DEFAULT_CARD_BLUR,
+    val darkCardBlur: Int = DEFAULT_CARD_BLUR,
     val tutorialCardEnabled: Boolean = false,
     val tutorialCardTitle: String = "",
     val tutorialCardSlogan: String = "",
@@ -278,6 +293,11 @@ internal fun SharedPreferences.toSettingsAppearance() = SettingsAppearanceSettin
     customCardEnabled = getBoolean(KEY_CUSTOM_CARD_ENABLED, false),
     lightCardColor = getInt(KEY_LIGHT_CARD_COLOR, DEFAULT_LIGHT_CARD_COLOR),
     darkCardColor = getInt(KEY_DARK_CARD_COLOR, DEFAULT_DARK_CARD_COLOR),
+    cardBackgroundMode = getInt(KEY_CARD_BACKGROUND_MODE, CARD_BACKGROUND_COLOR),
+    lightFrostColor = getInt(KEY_LIGHT_FROST_COLOR, DEFAULT_LIGHT_FROST_COLOR),
+    darkFrostColor = getInt(KEY_DARK_FROST_COLOR, DEFAULT_DARK_FROST_COLOR),
+    lightCardBlur = getInt(KEY_LIGHT_CARD_BLUR, DEFAULT_CARD_BLUR),
+    darkCardBlur = getInt(KEY_DARK_CARD_BLUR, DEFAULT_CARD_BLUR),
     tutorialCardEnabled = getBoolean(KEY_TUTORIAL_CARD_ENABLED, false),
     tutorialCardTitle = getString(KEY_TUTORIAL_CARD_TITLE, "").orEmpty(),
     tutorialCardSlogan = getString(KEY_TUTORIAL_CARD_SLOGAN, "").orEmpty(),
@@ -356,6 +376,9 @@ private fun SettingsAppearanceSettings.normalized() = copy(
     logoMode = logoMode.coerceIn(LOGO_MODE_SYSTEM, LOGO_MODE_KEEP_ADVANCED_MATERIAL),
     logoScale = logoScale.coerceIn(50, 200),
     lightCardOpacity = lightCardOpacity.coerceIn(0, 100),
+    cardBackgroundMode = cardBackgroundMode.coerceIn(CARD_BACKGROUND_COLOR, CARD_BACKGROUND_FROST),
+    lightCardBlur = lightCardBlur.coerceIn(0, 80),
+    darkCardBlur = darkCardBlur.coerceIn(0, 80),
     tutorialCardImageScale = tutorialCardImageScale.coerceIn(40, 200),
     tutorialCardLogoVerticalOffset = tutorialCardLogoVerticalOffset.coerceIn(-120, 120),
     tutorialCardLogoScale = tutorialCardLogoScale.coerceIn(40, 200),
@@ -423,6 +446,11 @@ private fun SharedPreferences.writeSettingsAppearance(value: SettingsAppearanceS
         .putBoolean(KEY_CUSTOM_CARD_ENABLED, value.customCardEnabled)
         .putInt(KEY_LIGHT_CARD_COLOR, value.lightCardColor)
         .putInt(KEY_DARK_CARD_COLOR, value.darkCardColor)
+        .putInt(KEY_CARD_BACKGROUND_MODE, value.cardBackgroundMode)
+        .putInt(KEY_LIGHT_FROST_COLOR, value.lightFrostColor)
+        .putInt(KEY_DARK_FROST_COLOR, value.darkFrostColor)
+        .putInt(KEY_LIGHT_CARD_BLUR, value.lightCardBlur)
+        .putInt(KEY_DARK_CARD_BLUR, value.darkCardBlur)
         .putBoolean(KEY_TUTORIAL_CARD_ENABLED, value.tutorialCardEnabled)
         .putString(KEY_TUTORIAL_CARD_TITLE, value.tutorialCardTitle)
         .putString(KEY_TUTORIAL_CARD_SLOGAN, value.tutorialCardSlogan)

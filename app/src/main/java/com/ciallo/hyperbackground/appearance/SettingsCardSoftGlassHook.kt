@@ -1,5 +1,8 @@
 package com.ciallo.hyperbackground.appearance
 
+import com.ciallo.hyperbackground.getAdditionalInstanceField
+import com.ciallo.hyperbackground.setAdditionalInstanceField
+
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -18,6 +21,7 @@ import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import kotlin.math.ceil
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -46,6 +50,7 @@ internal class SettingsSoftGlassDrawable(
     private val context = context.applicationContext
     private val tint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nodes = ArrayList<GlassNode>()
+    private val retiredNodes = ArrayList<GlassNode>()
     private var host: WeakReference<View>? = null
     private var cursor = 0
     private var config = SoftGlassParams()
@@ -68,23 +73,38 @@ internal class SettingsSoftGlassDrawable(
         releaseNodes()
         host = WeakReference(view)
         view.addOnAttachStateChangeListener(this)
+        activateHostBlurSurface(view)
     }
 
     override fun beginFrame() { cursor = 0 }
 
     override fun endFrame() {
-        // Clear render-thread material state for groups that scrolled out of view.
-        for (index in cursor until nodes.size) nodes[index].clear()
-        while (nodes.size > maxOf(cursor, 16)) nodes.removeAt(nodes.lastIndex).clear()
+        // Bionics material state is consumed asynchronously by RenderThread. Clearing nodes
+        // that were not visited in this pass can race the previous display list and produces
+        // the observed one-frame flashes on otherwise visible cards. Nodes are reset on host
+        // detach/dispose; their count is bounded by the number of card groups created here.
     }
 
     override fun drawGroup(canvas: Canvas, rect: RectF, path: Path) {
-        if (rect.isEmpty) return
+                if (rect.isEmpty) return
         val api = glassApi
         if (canvas.isHardwareAccelerated && api != null && !failed) {
             try {
-                val node = if (cursor < nodes.size) nodes[cursor]
-                else GlassNode(context, api).also(nodes::add)
+                val requestedHeight = ceil(rect.height()).toInt().coerceAtLeast(1)
+                val node = if (cursor < nodes.size && nodes[cursor].canReuse(rect, requestedHeight)) {
+                    nodes[cursor]
+                } else {
+                    val replacement = GlassNode(context, api)
+                    if (cursor < nodes.size) {
+                        val previous = nodes[cursor]
+                        replacement.seedFrom(previous)
+                        retiredNodes += previous
+                        nodes[cursor] = replacement
+                    } else {
+                        nodes += replacement
+                    }
+                    replacement
+                }
                 cursor++
                 node.draw(canvas, rect, path, config, density, tint.color)
                 return
@@ -122,7 +142,21 @@ internal class SettingsSoftGlassDrawable(
     private fun releaseNodes() {
         nodes.forEach(GlassNode::clear)
         nodes.clear()
+        retiredNodes.forEach(GlassNode::clear)
+        retiredNodes.clear()
         cursor = 0
+    }
+
+    private fun activateHostBlurSurface(view: View) {
+        if (view.getAdditionalInstanceField(HOST_SURFACE_ACTIVE) == true) return
+        runCatching {
+            val intType = Int::class.javaPrimitiveType!!
+            View::class.java.getMethod("setMiBackgroundBlurMode", intType).invoke(view, 1)
+            View::class.java.getMethod("setMiViewBlurMode", intType).invoke(view, 1)
+            View::class.java.getMethod("setMiBackgroundBlurEnhanceFlag", intType, intType)
+                .invoke(view, 8192, 12288)
+            view.setAdditionalInstanceField(HOST_SURFACE_ACTIVE, true)
+        }
     }
 
     private class GlassNode(context: Context, private val api: GlassApi) {
@@ -137,12 +171,46 @@ internal class SettingsSoftGlassDrawable(
         private var color = 0
         private var radius = -1
         private var material: SoftGlassParams? = null
+        private var outlineHeight = 0
+        private var outlineInitialized = false
+        private var outlineApplied = false
+        private var minimumWidth = 0
+        private var minimumHeight = 0
         private var active = false
 
+        private var lastTop = Float.NaN
+        private var lastBottom = Float.NaN
+
+        fun canReuse(rect: RectF, requestedHeight: Int): Boolean {
+            if (lastRequestedHeight == 0) return true
+            if (requestedHeight < lastRequestedHeight - 64) return false
+            if (lastTop.isNaN() || lastBottom.isNaN()) return true
+            // A normal scroll moves both edges by a small, similar amount. A slot that has
+            // shifted from one card to another jumps by roughly a whole card height.
+            val movementLimit = maxOf(96f, requestedHeight * 0.35f)
+            return abs(rect.top - lastTop) <= movementLimit &&
+                abs(rect.bottom - lastBottom) <= movementLimit
+        }
+
+        private var lastRequestedHeight = 0
+
+        fun seedFrom(previous: GlassNode) {
+            localPath.set(previous.localPath)
+            outlineHeight = previous.outlineHeight
+            outlineInitialized = previous.outlineInitialized
+            minimumWidth = previous.width
+            minimumHeight = previous.height
+        }
+
         fun draw(canvas: Canvas, rect: RectF, path: Path, config: SoftGlassParams, density: Float, tintColor: Int) {
-            val w = ceil(rect.width()).toInt().coerceAtLeast(1)
-            val h = ceil(rect.height()).toInt().coerceAtLeast(1)
+            val requestedWidth = ceil(rect.width()).toInt().coerceAtLeast(1)
+            val requestedHeight = ceil(rect.height()).toInt().coerceAtLeast(1)
+            lastRequestedHeight = requestedHeight
+            lastTop = rect.top
+            lastBottom = rect.bottom
             try {
+                val w = maxOf(width, requestedWidth, minimumWidth)
+                val h = maxOf(height, requestedHeight, minimumHeight)
                 if (width != w || height != h) {
                     // Keep both the bridge's View geometry and its native node in sync.
                     bridge.layout(0, 0, w, h)
@@ -161,6 +229,11 @@ internal class SettingsSoftGlassDrawable(
                     api.materialType.invoke(bridge, 1)
                     api.glassRadius.invoke(bridge, physicalRadius, physicalRadius)
                     api.setGlass.invoke(bridge, customizeParams(baseParams(), config))
+                    // Bionics samples the backdrop through this local clip.  The stock
+                    // Settings views always initialise it to a non-negative RenderNode-local
+                    // rectangle.  Leaving it at the default makes a scrolled card inherit the
+                    // RecyclerView's negative top and keeps the highlight while disabling the
+                    // refraction pass.
                     // GLASS_ENHANCE_FLAG/BLUR_ENHANCE_FLAG_MASK from SystemUI's MiBlurCompat:
                     // Bionics rounding needs flag 8192, Classic would use 4096.
                     api.enhanceFlag.invoke(bridge, 8192, 12288)
@@ -174,16 +247,32 @@ internal class SettingsSoftGlassDrawable(
                     height = h
                     color = tintColor
                 }
-                localPath.set(path)
-                localPath.offset(-rect.left, -rect.top)
-                outline.setPath(localPath)
-                outline.alpha = 1f
-                node.setOutline(outline)
-                node.setClipToOutline(true)
-                node.setClipToBounds(true)
+                // Always keep the complete card outline in node-local coordinates. When the
+                // card top is negative, only the Canvas placement is clamped; clipping or
+                // shortening this outline removes Bionics' full-shape refraction input.
+                // CardItemDecoration rebuilds the group path from the remaining visible rows.
+                // When the first row leaves the viewport, that path becomes shorter even though
+                // it is still the same card. Bionics uses the RenderNode outline for refraction;
+                // replacing it with the shortened path drops refraction while leaving the edge
+                // highlight. Keep the last complete outline whenever the supplied group shrinks.
+                val outlineChanged = !outlineInitialized || requestedHeight > outlineHeight
+                if (outlineChanged) {
+                    localPath.set(path)
+                    localPath.offset(-rect.left, -rect.top)
+                    outlineHeight = requestedHeight
+                    outlineInitialized = true
+                }
+                if (outlineChanged || !outlineApplied) {
+                    outline.setPath(localPath)
+                    outline.alpha = 1f
+                    node.setOutline(outline)
+                    node.setClipToOutline(true)
+                    node.setClipToBounds(true)
+                    outlineApplied = true
+                }
                 val checkpoint = canvas.save()
                 try {
-                    // No saveLayer: an offscreen layer would hide the real backdrop from Bionics.
+                    // Keep the same Canvas sequence as the working frost drawable.
                     canvas.clipPath(path)
                     canvas.translate(rect.left, rect.top)
                     canvas.drawRenderNode(node)
@@ -199,8 +288,11 @@ internal class SettingsSoftGlassDrawable(
         fun clear() {
             if (active) {
                 runCatching { api.materialType.invoke(bridge, 0) }
-                // SystemUI clears the material through an empty params array (MiuiBlurUtils.setGlass).
-                runCatching { api.setGlass.invoke(bridge, FloatArray(0)) }
+                // Do not call setMiGlass with an empty array here. The native JNI entry point
+                // accepts exactly 42 floats; any other length logs "setMiGlass jni fail" and
+                // returns failure. In particular, this used to happen while a recycled node
+                // was still referenced by the display list during a fling, disabling glass for
+                // the clipped (top) card. Clearing the material type/modes is sufficient.
                 runCatching { api.glassRadius.invoke(bridge, 0, 0) }
                 runCatching { api.enhanceFlag.invoke(bridge, 0, 12288) }
                 runCatching { api.clearBlend.invoke(bridge) }
@@ -210,6 +302,14 @@ internal class SettingsSoftGlassDrawable(
             active = false
             radius = -1
             material = null
+            outlineHeight = 0
+            outlineInitialized = false
+            outlineApplied = false
+            minimumWidth = 0
+            minimumHeight = 0
+            lastRequestedHeight = 0
+            lastTop = Float.NaN
+            lastBottom = Float.NaN
             node.discardDisplayList()
         }
     }
@@ -269,6 +369,7 @@ internal class SettingsSoftGlassDrawable(
         }.getOrDefault(false)
 
         private const val ACTIVE_CHECK_TTL_MS = 3000L
+        private const val HOST_SURFACE_ACTIVE = "hyperbackground_glass_host_surface_active"
         @Volatile private var bionicsActive = false
         @Volatile private var activeCheckedAt = 0L
 

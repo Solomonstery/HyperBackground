@@ -89,16 +89,16 @@ tasks.named("preBuild") {
 
 dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
-    implementation(platform("androidx.compose:compose-bom:2026.08.00"))
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.core:core-ktx:1.19.0")
 
-    implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.3")
-    implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.3")
-    implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.3")
-    implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.3")
+    implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")
 
     compileOnly("io.github.libxposed:api:102.0.0")
     implementation("io.github.libxposed:service:102.0.0")

@@ -76,14 +76,16 @@ view.setMiBackgroundBlurEnhanceFlag(8192, 12288) // 7. GLASS 圆角增强（Clas
 ```
 
 顺序有意义：mode flag → material type → 半径 → 参数 → 增强 flag。
-系统控制中心（`SecondaryPanelAnimatorBase.applySdfOptimize`）还会按控件实际尺寸调
-`setMiGlassSdfMaxSizeCompat(view, width, height)` 优化 SDF 精度，属可选优化。
+系统控制中心还会按真实挂载控件驱动 SDF 尺寸。对 RecyclerView decoration 或 detached
+RenderNode 不要主动调用 SDF setter；它会和 RenderThread 的形状更新不同步，导致闪帧或整块
+玻璃失效。
 
 ### 4.2 清除（对齐 `MiuiBlurUtils.clearBlurConfig`）
 
 ```kotlin
-view.setMiViewMaterialType(0)                 // 回 Classic
-view.setMiGlass(floatArrayOf())               // 空数组清 shader 参数（系统同款做法）
+view.setMiViewMaterialType(0)                 // 关闭 Bionics 材质
+// 不要传空数组：libhwui 的 JNI 入口要求长度严格为 42，其他长度会打印
+// “setMiGlass jni fail”。清理时只恢复 material/mode/radius/flag。
 view.setMiGlassBlurRadius(0, 0)
 view.setMiBackgroundBlurEnhanceFlag(0, 12288)
 view.clearMiBackgroundBlendColor()
@@ -94,40 +96,32 @@ view.setMiBackgroundBlurMode(0)
 ## 5. 42 参数数组语义
 
 来自 `MiBackgroundStyle.calculateGlassParams` 的逐索引赋值 + `BionicsToken` 的 getter 命名，
-默认值取 `DEFAULT_GLASS_TOKEN`（控制中心主面板默认观感）：
+默认值和索引必须以目标 ROM 的 `MiBackgroundStyle`/`BionicsToken` 为准。不同 HyperOS
+版本不能直接互换 token。当前项目使用的 42 个结构基线是：
 
-| 索引 | 名称 | 默认值 | 说明 |
+```text
+0, 2, 0.5, 0.8, 0.15, 2.4, 0.3, 0.2, 0, 0, 0,
+0.06, 0.06, 0.06, 0.6, 0.15, 0.4, 1.36, 1, 72, 3.8,
+80, 1000, 1.2, 0.6, -0.4, 0.6, -0.8, 1.8, 1.2, 1,
+1.1764706, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0
+```
+
+项目会按配置调整部分通道，并将 11–16 清零，避免控制中心专用的白色内层污染卡片。
+
+| 索引 | 名称/用途 | 当前项目基线 | 说明 |
 |---|---|---|---|
-| 0–3 | luminanceValue0..3 | 0.67 / 0.16 / 0.09 / 0.0 | 亮度分段曲线控制点 |
-| 4 | luminanceAmount | 0.24 | 亮度调整总量 |
-| 5 | saturation | 1.4 | 饱和度系数 |
-| 6 | brightness | -0.02 | 亮度偏移 |
-| 7 | darker | 0.3 | 压暗强度 |
-| 8–9 | darkerRange0/1 | 0.6 / 1.0 | 压暗作用区间 |
-| 10 | innerBottom | 0.03 | 内层底部 |
-| 11–13 | r / g / b | 1.0 / 1.0 / 1.0 | 染色 RGB（0..1） |
-| 14 | alpha | 0.1 | 染色 alpha |
-| 15 | innerColorWhite | 0.2 | 内层白色（岛上有灰感来源，卡片建议 0） |
-| 16 | innerColorMix | 0.3 | 内层混色（同上，卡片建议 0） |
-| 17 | colorPow | 1.0 | 染色幂次 |
-| 18 | overallAlpha | 1.0 | 整体 alpha |
-| 19 | shapeEdgePx | 72.0 | 形状边缘宽度（px） |
-| 20 | shapeEdgePow | 3.8 | 边缘衰减幂 |
-| 21 | shapeThicknessPx | 80.0 | 边缘厚度（px） |
-| 22 | shapeReflectOffsetPx | 800.0 | 反射偏移（px） |
-| 23 | reflectionLighten | 1.2 | 反射提亮 |
-| 24 | reflectionStrength | 1.0 | 反射强度 |
-| 25–27 | directionalLightDirX/Y/Z | -0.4 / 0.6 / -0.8 | 定向光方向向量 |
-| 28 | directionalLightIntensity | 1.4 | 定向光强度 |
-| 29 | directionalLightOppositeIntensity | 0.7 | 对侧光强度 |
-| 30 | directionalLightAngleRange | 0.8 | 定向光角度范围 |
-| 31 | directionalLightEdgePow | 1.15 | 定向光边缘幂 |
-| 32 | refractIOR | 4.0 | 折射率 |
-| 33 | bgColorSaturation | 2.0 | 背景采样饱和度 |
-| 34 | bgColorBrightness | 0.0 | 背景采样亮度 |
-| 35 | burn | 0.0 | 灼烧 |
-| 36 | unShade | 0.0 | 去阴影 |
-| 37–41 | lightCenterFall / CenterStrength / CenterPeak / RingStrength0 / RingStrength1 | 0.0 | 按压光效（默认 0；按压时 = 按压进度 × LightParams + 默认值） |
+| 0–3 | 亮度曲线 | 0 / 2 / 0.5 / 0.8 | ROM 相关，勿按旧表硬编码 |
+| 4 | softLight | 0.15 | 项目调参通道 |
+| 5 | saturation | 2.4 | 项目基线 |
+| 6–7 | brightness / darker | 0.3 / 0.2 | 项目基线 |
+| 8–10 | 内层辅助 | 0 / 0 / 0 | 项目基线 |
+| 11–16 | tint/inner layer | 0 | 卡片实现清零 |
+| 17–20 | color/shape | 1.36 / 1 / 72 / 3.8 | 形状和颜色基线 |
+| 21–24 | edge/reflection | 80 / 1000 / 1.2 / 0.6 | 边缘与反射 |
+| 25–31 | directional light | -0.4 / 0.6 / -0.8 / 1.8 / 1.2 / 1 / 1.1764706 | 定向光 |
+| 32 | refraction | 0 | 由配置调整；不是通用 IOR 定义 |
+| 33–35 | background/burn | 0 / 0 / 0 | 背景采样与灼烧 |
+| 36–41 | reserved/light | 0 | 预留，勿随意修改 |
 
 按压 LightParams 参考：主面板 `MAIN_PANEL_LIGHT_PARAMS = (1.3, 1.4, 0.08, 0.08, 0.08)`，
 编辑面板 `EDIT_PANEL_LIGHT_PARAMS = (0.4, 0.9, 0.01, 0.01, 0.01)`。
@@ -177,11 +171,14 @@ Bionics 模式下圆角（`MiBlurCompat.setBlurOutlineRoundRect`）自动用 819
    `saveLayerAlpha`（MIUIX `BaseDecoration.clipDrawableRoundRect` 就有），玻璃采不到真实
    背景。本项目 hook 该方法绕过离屏层，直接在原 Canvas 上按分组 path 裁剪绘制。
 5. **软件绘制不生效**：`canvas.isHardwareAccelerated == false` 时直接走 tint 兜底。
-6. **载体必须是真实 View**：材质状态挂在 View 的 RenderNode 上。不在视图树里的 View 也能
-   生效（本项目 "bridge View" 方案：每分组一个隐藏 bridge View，取其 `mRenderNode`
-   直接录制进分组 Canvas），但 bridge 的 layout 尺寸要与分组同步，且注意 4 的离屏问题。
-7. **清理要成对**：切回 Classic 前先 `setMiViewMaterialType(0)` + 空 `setMiGlass`，否则残留
-   材质状态可能让该 View 后续高斯模糊也异常。
+6. **detached bridge 不能激活窗口 surface**：桥接 View 可以承载 RenderNode 材质，但它不在
+   View 树中，不能让 VRI 注册模糊 surface。必须先对真实挂载的宿主 View 执行一次
+   `setMiBackgroundBlurMode(1)`、`setMiViewBlurMode(1)` 和 GLASS flag；本项目在
+   `bindHost()` 中完成。
+7. **不要把 `setMiGlassClip` 当作通用修复接口**：不同 ROM 的签名和坐标语义不同，系统日志
+   中的值通常是窗口坐标。只有确认目标 framework 的签名、坐标系和时序后才能调用。
+8. **清理要成对**：切回 Classic 前恢复 material type、glass radius、enhance flag、blend
+   color 和两个 mode。不要用错误长度的 `setMiGlass` 清理参数。
 
 ## 9. 本项目落地架构
 
@@ -190,7 +187,8 @@ SettingsCardBackgroundHook (路由)
   └─ mode == CARD_BACKGROUND_SOFT_GLASS(2) && groupClip 可用 && isBionicsActive
        → SettingsSoftGlassDrawable (SettingsGroupMaterial 实现)
             ├─ SoftGlassConfig：暴露 blurRadiusDp + 材质微调参数
-            ├─ GlassNode×N：bridge View(mRenderNode) + Bionics 序列 + tint display list
+            ├─ GlassNode×N：真实宿主先激活 surface；bridge View(mRenderNode) + Bionics 序列
+            │             + tint display list
             └─ 降级链：API 缺失/开关关闭 → 磨砂(Gaussian)；调用失败 → 纯 tint
 ```
 
@@ -198,8 +196,8 @@ SettingsCardBackgroundHook (路由)
   `BaseDecoration.clipDrawableRoundRect` 的 hook 分流到材质实现，绕过 `saveLayerAlpha`。
 - 玻璃模式复用磨砂色板（明/暗 frost 色 + 0..80dp 模糊滑条，×density 映射到
   `setMiGlassBlurRadius` 的物理像素）。
-- 42 参数基线取 HyperIsland 灵动岛展开态 token（`baseParams()`），`customizeParams()`
-  按 `SoftGlassConfig` 缩放，并将 15/16 通道（岛特有的白内层）清零、11–14 通道映射
-  调色板 tint。
+- 42 参数使用项目 `baseParams()` 基线，`customizeParams()` 按 `SoftGlassConfig` 缩放，并将
+  11–16 通道清零，避免控制中心专用内层和 tint 通道污染卡片；卡片颜色由 display list
+  自身绘制。
 - 诊断日志：`Card material branch: soft glass (api=? bionicProp=? blurEnable=? materialStyle=?)`，
   一次分支切换打一条，直接看出卡在哪个开关。

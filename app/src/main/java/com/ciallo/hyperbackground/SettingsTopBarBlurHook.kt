@@ -138,10 +138,10 @@ object SettingsTopBarBlurHook {
                     return@hookMethod
                 }
                 if (progress >= 0 || layout.top > 0) {
-                    clearGradientBlur(overlay)
-                    setBlurEnabled(thisObject, blurHelper, false)
-                    overlay.alpha = 0f
-                    overlay.visibility = View.INVISIBLE
+                    // 不彻底关闭 MIUI 模糊表面：卡片磨砂依赖同一套 compositor 模糊基础设施，
+                    // 顶栏静止时归零会导致卡片模糊也失效（只剩 tint 色）。
+                    // 保留 alpha=0、radius=1px 的不可见模糊维持表面激活。
+                    maintainBlurSurface(overlay)
                     return@hookMethod
                 }
 
@@ -327,6 +327,22 @@ object SettingsTopBarBlurHook {
         } catch (error: Throwable) {
             log("[HyperBackground] Could not mark settings home layout: $error")
         }
+    }
+
+    // 顶栏静止时保留不可见的最小模糊，维持 MIUI compositor 模糊表面激活，
+    // 使卡片磨砂（SettingsCardFrostDrawable）的 RenderNode 模糊在静止位置也能生效。
+    private fun maintainBlurSurface(overlay: View) {
+        try {
+            setBlurModeMethod?.invoke(overlay, 1)
+            setViewBlurModeMethod?.invoke(overlay, 1)
+            val h = maxOf(overlay.height, 1).toFloat()
+            setGradientParamsMethod?.invoke(overlay, floatArrayOf(0f, 0f, 1f, 0f, h, 0f), 1)
+        } catch (_: ReflectiveOperationException) {
+            // 硬件不支持时退回完全关闭
+            clearGradientBlur(overlay)
+        }
+        overlay.alpha = 0f
+        overlay.visibility = View.VISIBLE
     }
 
     private fun clearGradientBlur(overlay: View) {

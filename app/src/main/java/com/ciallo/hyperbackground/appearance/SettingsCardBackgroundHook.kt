@@ -43,7 +43,7 @@ internal object SettingsCardBackgroundHook {
         KEY_CUSTOM_CARD_ENABLED, KEY_LIGHT_CARD_COLOR, KEY_DARK_CARD_COLOR, KEY_CARD_BACKGROUND_MODE,
         KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR, KEY_LIGHT_CARD_BLUR, KEY_DARK_CARD_BLUR,
     )
-    private var frostClipAvailable = false
+    private var groupClipAvailable = false
     private val states = WeakHashMap<Any, State>()
     private val handler by lazy { Handler(Looper.getMainLooper()) }
     private var preferences: SharedPreferences? = null
@@ -58,6 +58,8 @@ internal object SettingsCardBackgroundHook {
     ) {
         var failureLogged = false
         var frostFailureLogged = false
+        var glassFailureLogged = false
+        var lastBranch = -1
     }
 
     private class State(val access: Access) {
@@ -67,6 +69,7 @@ internal object SettingsCardBackgroundHook {
         var originalPaintColor: Int? = null
         var fill: ColorDrawable? = null
         var frost: SettingsCardFrostDrawable? = null
+        var glass: SettingsSoftGlassDrawable? = null
         var replacement: Drawable? = null
         var applied = false
         var failed = false
@@ -99,9 +102,11 @@ internal object SettingsCardBackgroundHook {
         preferences = prefs
         palette = readPalette(prefs)
         prefs.registerOnSharedPreferenceChangeListener(preferenceListener)
-        frostClipAvailable = runCatching { installFrostClip(classLoader) }
-            .onFailure { module.log(Log.WARN, TAG, "Group frost clip unavailable; using the selected tint", it) }
+        groupClipAvailable = runCatching { installGroupClip(classLoader) }
+            .onFailure { module.log(Log.WARN, TAG, "Group material clip unavailable; using the selected tint", it) }
             .isSuccess
+        module.log(Log.INFO, TAG, "Card material runtime: clip=$groupClipAvailable " +
+            "bionicsApi=${SettingsSoftGlassDrawable.hasBionicsApi()}")
         // Isolate both paths: a missing MIUIX class must not disable the other one.
         runCatching { installRecycler(classLoader) }
             .onFailure { module.log(Log.WARN, TAG, "Recycler group color hook unavailable", it) }
@@ -123,20 +128,20 @@ internal object SettingsCardBackgroundHook {
         )
     }
 
-    private fun installFrostClip(classLoader: ClassLoader) {
+    private fun installGroupClip(classLoader: ClassLoader) {
         val type = classLoader.loadClass("miuix.recyclerview.card.base.BaseDecoration")
         val method = type.getDeclaredMethod(
             "clipDrawableRoundRect", Canvas::class.java, RectF::class.java, Path::class.java, Drawable::class.java,
         ).apply { isAccessible = true }
         module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
-            .setId("settings-cards:frost-clip").intercept { chain ->
-                val frost = chain.getArg(3) as? SettingsCardFrostDrawable
-                if (frost == null) {
+            .setId("settings-cards:material-clip").intercept { chain ->
+                val material = chain.getArg(3) as? SettingsGroupMaterial
+                if (material == null) {
                     chain.proceed()
                 } else {
                     // MIUIX's saveLayerAlpha would isolate the card from the actual backdrop.
-                    // Only our drawable bypasses that layer, keeping the exact native group path.
-                    frost.drawGroup(chain.getArg(0) as Canvas, chain.getArg(1) as RectF, chain.getArg(2) as Path)
+                    // Only our drawables bypass that layer, keeping the exact native group path.
+                    material.drawGroup(chain.getArg(0) as Canvas, chain.getArg(1) as RectF, chain.getArg(2) as Path)
                     null
                 }
             }
@@ -197,6 +202,7 @@ internal object SettingsCardBackgroundHook {
                 .setId("settings-cards:$id-draw-$index").intercept { chain ->
                     val owner = chain.thisObject
                     var frost: SettingsCardFrostDrawable? = null
+                    var glass: SettingsSoftGlassDrawable? = null
                     if (owner != null && type.isInstance(owner)) {
                         val state = state(owner, access)
                         val host = if (hostIndex >= 0) chain.getArg(hostIndex) as? View else null
@@ -204,16 +210,37 @@ internal object SettingsCardBackgroundHook {
                         val context = host?.context ?: state.context?.get() ?: fragmentContext(owner, access)
                         if (context != null) update(owner, state, context)
                         frost = state.frost
+                        glass = state.glass
                         frost?.bindHost(host)
+                        glass?.bindHost(host)
                         frost?.beginFrame()
+                        glass?.beginFrame()
                     }
-                    try { chain.proceed() } finally { frost?.endFrame() }
+                    try { chain.proceed() } finally {
+                        frost?.endFrame()
+                        glass?.endFrame()
+                    }
                 }
         }
     }
 
     private fun state(owner: Any, access: Access): State = synchronized(states) {
         states.getOrPut(owner) { State(access) }
+    }
+
+    private fun logMaterialBranch(access: Access, context: Context, glass: Boolean, frost: Boolean) {
+        val branch = when {
+            glass -> 2
+            frost -> 1
+            else -> 0
+        }
+        if (access.lastBranch == branch) return
+        access.lastBranch = branch
+        module.log(Log.INFO, TAG, when (branch) {
+            2 -> "Card material branch: soft glass (${SettingsSoftGlassDrawable.bionicsDiagnostics(context)})"
+            1 -> "Card material branch: frost (Gaussian path)"
+            else -> "Card material branch: flat color"
+        })
     }
 
     private fun update(owner: Any, state: State, context: Context, nativeResolved: Boolean = false) {
@@ -236,6 +263,8 @@ internal object SettingsCardBackgroundHook {
                     state.applied = false
                     state.frost?.dispose()
                     state.frost = null
+                    state.glass?.dispose()
+                    state.glass = null
                     if (current === state.replacement) {
                         access.drawable.set(owner, state.original)
                         state.originalPaintColor?.let { paint?.color = it }
@@ -249,28 +278,55 @@ internal object SettingsCardBackgroundHook {
                 return
             }
             val night = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-            val useFrost = colors.mode == CARD_BACKGROUND_FROST
-            val color = if (useFrost) {
+            // 柔光玻璃依赖 OS4 的 Bionics 材质 API 与系统开关（材质风格=柔光玻璃）；不可用时降级为磨砂。
+            val useGlass = colors.mode == CARD_BACKGROUND_SOFT_GLASS
+                && groupClipAvailable
+                && SettingsSoftGlassDrawable.isBionicsActive(context)
+            val useFrost = !useGlass && colors.mode != CARD_BACKGROUND_COLOR && groupClipAvailable
+            logMaterialBranch(access, context, useGlass, useFrost)
+            val glassy = useGlass || useFrost
+            val color = if (glassy) {
                 if (night) colors.darkFrost else colors.lightFrost
             } else {
                 if (night) colors.dark else colors.light
             }
-            val replacement = if (useFrost && frostClipAvailable) {
-                val frost = state.frost ?: SettingsCardFrostDrawable(context) { error ->
-                    if (!access.frostFailureLogged) {
-                        access.frostFailureLogged = true
-                        module.log(Log.WARN, TAG, "Native group blur unavailable; retaining the selected tint", error)
-                    }
-                }.also { state.frost = it }
-                frost.configure(color, if (night) colors.darkBlur else colors.lightBlur, context.resources.displayMetrics.density)
-                frost.bindHost(state.host?.get())
-                frost
-            } else {
-                state.frost?.dispose()
-                state.frost = null
-                val fill = state.fill ?: ColorDrawable(color).also { state.fill = it }
-                if (fill.color != color) fill.color = color
-                fill
+            val blurDp = if (night) colors.darkBlur else colors.lightBlur
+            val replacement: Drawable = when {
+                useGlass -> {
+                    val glass = state.glass ?: SettingsSoftGlassDrawable(context) { error ->
+                        if (!access.glassFailureLogged) {
+                            access.glassFailureLogged = true
+                            module.log(Log.WARN, TAG, "Native soft glass unavailable; retaining the selected tint", error)
+                        }
+                    }.also { state.glass = it }
+                    glass.configure(color, SoftGlassConfig(blurRadiusDp = blurDp), context.resources.displayMetrics.density)
+                    glass.bindHost(state.host?.get())
+                    state.frost?.dispose()
+                    state.frost = null
+                    glass
+                }
+                useFrost -> {
+                    val frost = state.frost ?: SettingsCardFrostDrawable(context) { error ->
+                        if (!access.frostFailureLogged) {
+                            access.frostFailureLogged = true
+                            module.log(Log.WARN, TAG, "Native group blur unavailable; retaining the selected tint", error)
+                        }
+                    }.also { state.frost = it }
+                    frost.configure(color, blurDp, context.resources.displayMetrics.density)
+                    frost.bindHost(state.host?.get())
+                    state.glass?.dispose()
+                    state.glass = null
+                    frost
+                }
+                else -> {
+                    state.frost?.dispose()
+                    state.frost = null
+                    state.glass?.dispose()
+                    state.glass = null
+                    val fill = state.fill ?: ColorDrawable(color).also { state.fill = it }
+                    if (fill.color != color) fill.color = color
+                    fill
+                }
             }
             state.replacement = replacement
             if (current !== replacement) access.drawable.set(owner, replacement)
@@ -281,11 +337,13 @@ internal object SettingsCardBackgroundHook {
             state.failed = true
             runCatching {
                 val current = access.drawable.get(owner)
-                if (current === state.fill || current === state.frost) access.drawable.set(owner, state.original)
+                if (current === state.fill || current === state.frost || current === state.glass) access.drawable.set(owner, state.original)
                 state.originalPaintColor?.let { color -> (access.paint?.get(owner) as? Paint)?.color = color }
             }
             state.frost?.dispose()
             state.frost = null
+            state.glass?.dispose()
+            state.glass = null
             state.replacement = null
             state.applied = false
             if (!access.failureLogged) {

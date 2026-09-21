@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_COLOR
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_FROST
+import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
 import com.ciallo.hyperbackground.ui.MainActivity
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -44,6 +45,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun SettingsCardColors(activity: MainActivity) {
     val settings = activity.appearance
     val frosted = settings.cardBackgroundMode == CARD_BACKGROUND_FROST
+    val softGlass = settings.cardBackgroundMode == CARD_BACKGROUND_SOFT_GLASS
+    val glassy = frosted || softGlass
     UiCard(activity, Modifier.fillMaxWidth()) {
         OverlayDropdownPreference(
             title = stringResource(R.string.settings_card_style),
@@ -52,8 +55,14 @@ fun SettingsCardColors(activity: MainActivity) {
                 stringResource(R.string.settings_card_system),
                 stringResource(R.string.settings_card_custom),
                 stringResource(R.string.settings_card_frost),
+                stringResource(R.string.settings_card_soft_glass),
             ),
-            selectedIndex = if (!settings.customCardEnabled) 0 else if (frosted) 2 else 1,
+            selectedIndex = when {
+                !settings.customCardEnabled -> 0
+                softGlass -> 3
+                frosted -> 2
+                else -> 1
+            },
             onSelectedIndexChange = { index ->
                 activity.updateAppearance {
                     it.copy(
@@ -61,6 +70,7 @@ fun SettingsCardColors(activity: MainActivity) {
                         cardBackgroundMode = when (index) {
                             1 -> CARD_BACKGROUND_COLOR
                             2 -> CARD_BACKGROUND_FROST
+                            3 -> CARD_BACKGROUND_SOFT_GLASS
                             else -> it.cardBackgroundMode
                         },
                     )
@@ -70,15 +80,15 @@ fun SettingsCardColors(activity: MainActivity) {
         AnimatedVisibility(settings.customCardEnabled) {
             Column {
                 CardColorPreference(
-                    title = stringResource(if (frosted) R.string.settings_card_light_tint else R.string.settings_card_light),
-                    color = if (frosted) settings.lightFrostColor else settings.lightCardColor,
+                    title = stringResource(if (glassy) R.string.settings_card_light_tint else R.string.settings_card_light),
+                    color = if (glassy) settings.lightFrostColor else settings.lightCardColor,
                     onSave = { color ->
                         activity.updateAppearance {
-                            if (frosted) it.copy(lightFrostColor = color) else it.copy(lightCardColor = color)
+                            if (glassy) it.copy(lightFrostColor = color) else it.copy(lightCardColor = color)
                         }
                     },
                 )
-                if (frosted) {
+                if (glassy) {
                     CardBlurPreference(
                         label = stringResource(R.string.settings_card_light_blur),
                         radius = settings.lightCardBlur,
@@ -86,23 +96,29 @@ fun SettingsCardColors(activity: MainActivity) {
                     )
                 }
                 CardColorPreference(
-                    title = stringResource(if (frosted) R.string.settings_card_dark_tint else R.string.settings_card_dark),
-                    color = if (frosted) settings.darkFrostColor else settings.darkCardColor,
+                    title = stringResource(if (glassy) R.string.settings_card_dark_tint else R.string.settings_card_dark),
+                    color = if (glassy) settings.darkFrostColor else settings.darkCardColor,
                     onSave = { color ->
                         activity.updateAppearance {
-                            if (frosted) it.copy(darkFrostColor = color) else it.copy(darkCardColor = color)
+                            if (glassy) it.copy(darkFrostColor = color) else it.copy(darkCardColor = color)
                         }
                     },
                 )
-                if (frosted) {
+                if (glassy) {
                     CardBlurPreference(
                         label = stringResource(R.string.settings_card_dark_blur),
                         radius = settings.darkCardBlur,
                         onSave = { value -> activity.updateAppearance { it.copy(darkCardBlur = value) } },
                     )
-                    BasicComponent(
+                }
+                when {
+                    frosted -> BasicComponent(
                         title = stringResource(R.string.settings_card_frost),
                         summary = stringResource(R.string.settings_card_frost_summary),
+                    )
+                    softGlass -> BasicComponent(
+                        title = stringResource(R.string.settings_card_soft_glass),
+                        summary = stringResource(R.string.settings_card_soft_glass_summary),
                     )
                 }
                 BasicComponent(

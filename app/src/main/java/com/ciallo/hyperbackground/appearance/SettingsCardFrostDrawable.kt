@@ -25,7 +25,7 @@ import kotlin.math.roundToInt
 internal class SettingsCardFrostDrawable(
     context: Context,
     private val onFailure: (Throwable) -> Unit,
-) : Drawable(), View.OnAttachStateChangeListener {
+) : Drawable(), View.OnAttachStateChangeListener, SettingsGroupMaterial {
     private val context = context.applicationContext
     private val tint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nodes = ArrayList<FrostNode>()
@@ -40,7 +40,7 @@ internal class SettingsCardFrostDrawable(
         blurRadius = (radiusDp.coerceIn(0, 80) * density).roundToInt().coerceIn(0, 400)
     }
 
-    fun bindHost(view: View?) {
+    override fun bindHost(view: View?) {
         if (view == null || host?.get() === view) return
         host?.get()?.removeOnAttachStateChangeListener(this)
         releaseNodes()
@@ -48,15 +48,15 @@ internal class SettingsCardFrostDrawable(
         view.addOnAttachStateChangeListener(this)
     }
 
-    fun beginFrame() { cursor = 0 }
+    override fun beginFrame() { cursor = 0 }
 
-    fun endFrame() {
+    override fun endFrame() {
         // Clear render-thread blur state for groups that scrolled out of view.
         for (index in cursor until nodes.size) nodes[index].clear()
         while (nodes.size > maxOf(cursor, 16)) nodes.removeAt(nodes.lastIndex).clear()
     }
 
-    fun drawGroup(canvas: Canvas, rect: RectF, path: Path) {
+    override fun drawGroup(canvas: Canvas, rect: RectF, path: Path) {
         if (rect.isEmpty) return
         if (canvas.isHardwareAccelerated && blurRadius > 0 && !failed) {
             try {
@@ -89,7 +89,7 @@ internal class SettingsCardFrostDrawable(
     override fun onViewAttachedToWindow(view: View) { view.invalidate() }
     override fun onViewDetachedFromWindow(view: View) { releaseNodes() }
 
-    fun dispose() {
+    override fun dispose() {
         host?.get()?.removeOnAttachStateChangeListener(this)
         host = null
         releaseNodes()

@@ -53,11 +53,13 @@
     <string name="settings_card_style">卡片背景样式</string>
     <string name="settings_card_system">系统默认</string>
     <string name="settings_card_frost">磨砂</string>
+    <string name="settings_card_soft_glass">柔光玻璃</string>
     <string name="settings_card_light_tint">浅色模式磨砂底色</string>
     <string name="settings_card_dark_tint">深色模式磨砂底色</string>
     <string name="settings_card_light_blur">浅色模式模糊强度</string>
     <string name="settings_card_dark_blur">深色模式模糊强度</string>
     <string name="settings_card_frost_summary">模糊卡片后方的背景。降低底色不透明度可让磨砂更明显；纯色背景下效果可能不明显。不支持模糊的设备保留所选底色。</string>
+    <string name="settings_card_soft_glass_summary">以系统原生柔光玻璃材质渲染卡片，参数默认对齐灵动岛效果。不支持的系统自动回退为磨砂。</string>
     <string name="settings_card_light">浅色模式卡片颜色</string>
     <string name="settings_card_dark">深色模式卡片颜色</string>
     <string name="settings_card_opacity">卡片不透明度</string>

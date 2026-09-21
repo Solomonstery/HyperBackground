@@ -41,6 +41,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -374,16 +375,29 @@ class MainActivity : ComponentActivity() {
         onMonet: (Boolean) -> Unit,
         onAccent: (Int) -> Unit,
     ) {
-        var detailSlot by rememberSaveable { mutableStateOf<String?>(null) }
-        BackHandler(enabled = detailSlot != null) { detailSlot = null }
+        // 导航栈：主页 → 背景详情 → 卡片材质等三级页面逐层压栈，返回逐层弹出。
+        var detailStack by rememberSaveable(
+            stateSaver = listSaver(
+                save = { stack: ArrayList<String> -> stack },
+                restore = { values -> ArrayList(values) },
+            ),
+        ) { mutableStateOf(ArrayList<String>()) }
+        val openRoute: (String) -> Unit = { route ->
+            detailStack = ArrayList(detailStack).apply { add(route) }
+        }
+        val popRoute: () -> Unit = {
+            if (detailStack.isNotEmpty()) detailStack = ArrayList(detailStack.dropLast(1))
+        }
+        BackHandler(enabled = detailStack.isNotEmpty()) { popRoute() }
         // 共享背景层放在 AnimatedContent 之外：页面切换时只有内容滑动，背景保持不动。
         Box(Modifier.fillMaxSize()) {
             ModuleBackground(revision)
             AnimatedContent(
-                targetState = detailSlot,
+                targetState = detailStack,
                 modifier = Modifier.fillMaxSize(),
                 transitionSpec = {
-                    if (targetState != null) {
+                    // 目标层级更深为 push（左滑进入），更浅为 pop（右滑返回）。
+                    if (targetState.size > initialState.size) {
                         (slideIntoContainer(
                             AnimatedContentTransitionScope.SlideDirection.Left,
                             animationSpec = tween(360, easing = EaseInOut),
@@ -404,8 +418,8 @@ class MainActivity : ComponentActivity() {
                     }.using(SizeTransform(clip = true))
                 },
                 label = "screen-navigation",
-            ) { slot ->
-                when (slot) {
+            ) { stack ->
+                when (val slot = stack.lastOrNull()) {
                     null -> MainTabs(
                     themeMode = themeMode,
                     themeColorEnabled = themeColorEnabled,
@@ -415,18 +429,18 @@ class MainActivity : ComponentActivity() {
                     onThemeColorEnabled = onThemeColorEnabled,
                     onMonet = onMonet,
                     onAccent = onAccent,
-                    onOpenBackground = { detailSlot = it },
-                    onOpenChangelog = { detailSlot = ROUTE_CHANGELOG },
+                    onOpenBackground = openRoute,
+                    onOpenChangelog = { openRoute(ROUTE_CHANGELOG) },
                 )
-                    ROUTE_CHANGELOG -> ChangelogScreen(onBack = { detailSlot = null })
-                    ROUTE_DEVICE_CARD -> DeviceCardScreen(onBack = { detailSlot = null })
-                    ROUTE_DEVICE_INFO -> DeviceInfoScreen(onBack = { detailSlot = null })
-                    ROUTE_RANDOM_BG -> RandomBackgroundScreen(onBack = { detailSlot = null })
-                    ROUTE_CARD_MATERIAL -> CardMaterialScreen(onBack = { detailSlot = null })
+                    ROUTE_CHANGELOG -> ChangelogScreen(onBack = popRoute)
+                    ROUTE_DEVICE_CARD -> DeviceCardScreen(onBack = popRoute)
+                    ROUTE_DEVICE_INFO -> DeviceInfoScreen(onBack = popRoute)
+                    ROUTE_RANDOM_BG -> RandomBackgroundScreen(onBack = popRoute)
+                    ROUTE_CARD_MATERIAL -> CardMaterialScreen(onBack = popRoute)
                     else -> BackgroundDetailScreen(
                         slot = slot,
-                        onBack = { detailSlot = null },
-                        onOpenCardMaterial = { detailSlot = ROUTE_CARD_MATERIAL },
+                        onBack = popRoute,
+                        onOpenCardMaterial = { openRoute(ROUTE_CARD_MATERIAL) },
                     )
                 }
             }

@@ -18,12 +18,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ciallo.hyperbackground.R
-import com.ciallo.hyperbackground.appearance.DEFAULT_CARD_BLUR
 import com.ciallo.hyperbackground.appearance.DEFAULT_DARK_FROST_COLOR
 import com.ciallo.hyperbackground.appearance.DEFAULT_LIGHT_FROST_COLOR
 import com.ciallo.hyperbackground.appearance.SoftGlassParams
 import com.ciallo.hyperbackground.ui.MainActivity
-import com.ciallo.hyperbackground.ui.components.CardBlurPreference
 import com.ciallo.hyperbackground.ui.components.CardColorPreference
 import com.ciallo.hyperbackground.ui.components.SectionTitle
 import com.ciallo.hyperbackground.ui.components.SliderPreference
@@ -34,7 +32,7 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 /**
  * 「卡片材质」二级页，结构对齐 HyperIsland 的 IslandMaterialPage：
  * 顶部浅色/深色标签切换（TabRow 由 MainActivity 的 Screen 持有），深色页放跟随浅色开关，
- * 开启后隐藏具体参数。磨砂（底色+模糊）与柔光玻璃全部参数集中在本页，浅色/深色各一套。
+ * 开启后隐藏具体参数。磨砂底色与柔光玻璃全部参数集中在本页，浅色/深色各一套。
  */
 @Composable
 fun SettingsCardMaterialPage(
@@ -92,17 +90,6 @@ private fun MaterialThemeTab(activity: MainActivity, dark: Boolean, padding: Pad
                             }
                         },
                     )
-                    CardBlurPreference(
-                        label = stringResource(
-                            if (dark) R.string.settings_card_dark_blur else R.string.settings_card_light_blur,
-                        ),
-                        radius = if (dark) appearance.darkCardBlur else appearance.lightCardBlur,
-                        onSave = { value ->
-                            activity.updateAppearance {
-                                if (dark) it.copy(darkCardBlur = value) else it.copy(lightCardBlur = value)
-                            }
-                        },
-                    )
                 }
             }
             item { SoftGlassSection(activity, dark) }
@@ -112,19 +99,17 @@ private fun MaterialThemeTab(activity: MainActivity, dark: Boolean, padding: Pad
                         title = stringResource(R.string.settings_card_material_restore),
                         onClick = {
                             activity.updateAppearance {
-                                if (dark) {
-                                    it.copy(
-                                        darkFrostColor = DEFAULT_DARK_FROST_COLOR,
-                                        darkCardBlur = DEFAULT_CARD_BLUR,
-                                        darkSoftGlass = SoftGlassParams(),
-                                    )
-                                } else {
-                                    it.copy(
-                                        lightFrostColor = DEFAULT_LIGHT_FROST_COLOR,
-                                        lightCardBlur = DEFAULT_CARD_BLUR,
-                                        lightSoftGlass = SoftGlassParams(),
-                                    )
-                                }
+                            if (dark) {
+                                it.copy(
+                                    darkFrostColor = DEFAULT_DARK_FROST_COLOR,
+                                    darkSoftGlass = SoftGlassParams(),
+                                )
+                            } else {
+                                it.copy(
+                                    lightFrostColor = DEFAULT_LIGHT_FROST_COLOR,
+                                    lightSoftGlass = SoftGlassParams(),
+                                )
+                            }
                             }
                         },
                     )

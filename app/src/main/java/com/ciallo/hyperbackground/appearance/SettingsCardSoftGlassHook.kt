@@ -60,9 +60,7 @@ internal class SettingsSoftGlassDrawable(
     fun configure(color: Int, value: SoftGlassParams, density: Float) {
         // The reference maps transparency to shader channel 14 as a percentage scale of the
         // tint alpha; here the tint is drawn by the display list, so scale the paint instead.
-        val alpha = (Color.alpha(color) / 255f * (1f + value.transparency.toFloat() / 100f))
-            .coerceIn(0f, 1f)
-        tint.color = (color and 0x00FFFFFF) or ((alpha * 255f).roundToInt() shl 24)
+        tint.color = adjustedTintColor(color, value)
         config = value
         this.density = density
     }
@@ -362,6 +360,29 @@ internal class SettingsSoftGlassDrawable(
                 "materialStyle=${Settings.Secure.getInt(resolver, "material_style", -1)}"
         }.getOrDefault("diagnostics unavailable")
 
+        /** Apply the same Bionics material directly to a real, attached widget. */
+        fun applyToView(view: View, color: Int, config: SoftGlassParams, density: Float): Boolean {
+            val api = glassApi ?: return false
+            if (!isBionicsActive(view.context)) return false
+            return runCatching {
+                val radius = (config.blurRadiusDp * density).roundToInt().coerceIn(0, 500)
+                api.backgroundMode.invoke(view, 1)
+                api.viewMode.invoke(view, 1)
+                api.clearBlend.invoke(view)
+                api.materialType.invoke(view, 1)
+                api.glassRadius.invoke(view, radius, radius)
+                api.setGlass.invoke(view, customizeViewParams(baseParams(), config, color))
+                api.enhanceFlag.invoke(view, 8192, 12288)
+
+                // Keep the drawable as the View outline source, but let the shader own the fill.
+                val background = view.background?.mutate()
+                background?.setTint(Color.TRANSPARENT)
+                if (background != null && background !== view.background) view.background = background
+                view.invalidate()
+                true
+            }.getOrDefault(false)
+        }
+
         private fun bionicMaterialSupported(): Boolean = runCatching {
             val get = Class.forName("android.os.SystemProperties")
                 .getMethod("get", String::class.java, String::class.java)
@@ -430,6 +451,24 @@ internal class SettingsSoftGlassDrawable(
             params[15] = 0f
             params[16] = 0f
             return params
+        }
+
+        private fun customizeViewParams(
+            source: FloatArray,
+            config: SoftGlassParams,
+            color: Int,
+        ): FloatArray = customizeParams(source, config).apply {
+            val tintColor = adjustedTintColor(color, config)
+            this[11] = Color.red(tintColor) / 255f
+            this[12] = Color.green(tintColor) / 255f
+            this[13] = Color.blue(tintColor) / 255f
+            this[14] = Color.alpha(tintColor) / 255f
+        }
+
+        private fun adjustedTintColor(color: Int, config: SoftGlassParams): Int {
+            val alpha = (Color.alpha(color) / 255f * (1f + config.transparency.toFloat() / 100f))
+                .coerceIn(0f, 1f)
+            return (color and 0x00FFFFFF) or ((alpha * 255f).roundToInt() shl 24)
         }
     }
 }

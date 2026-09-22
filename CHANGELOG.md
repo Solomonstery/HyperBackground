@@ -2,6 +2,27 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.4.4-beta8
+
+### 设置卡片
+
+- 新增：卡片背景模式增加「柔光玻璃」——在自定义颜色与磨砂之外，通过新的 `SettingsCardSoftGlassHook` 对分组卡片应用系统级柔光模糊，支持浅色/深色独立调节底色、模糊强度、不透明度和高光。
+- 新增：柔光参数二级页（卡片材质）——柔光玻璃模式下可分别配置浅色/深色的底色、模糊半径、高光色、强度与不透明度；磨砂模式可配置磨砂底色与模糊强度。
+- 新增：搜索框柔光材质——`SettingsSearchMaskOverride` 为设置主页搜索框独立应用柔光玻璃效果，与分组卡片的材质参数解耦。
+- 优化：卡片背景 Hook 改为三分支分发——自定义颜色走纯色绘制、磨砂走模糊绘制、柔光玻璃走系统柔光接口，三种模式互不干扰。
+- 修复：柔光玻璃切换时闪烁——统一复用已有绘制节点，参数变化时仅更新材质属性而非重建视图。
+- 修复：顶栏静止时模糊层拦截触摸导致搜索框无法点击——改为在滚动停止时保留最小模糊表面，但将触摸事件透传给下层搜索框。
+
+### UI
+
+- 优化：Slider 组件交互与视觉。
+- 删除：拨号盘缩放/焦点滑块入口（dialpad 背景尺寸已独立配置）。
+
+### 通用
+
+- 重构：`ConfigManager`、`InvalidatingCache`、`FirstFrameCallback`、`RootShell`、`XposedHooks`、`BackgroundDecodeSize` 统一迁入 `util` 包。
+- 依赖：AndroidX Compose BOM、Core KTX 及 Miuix UI/preference/blur/icon 升级到最新版本。
+
 ## 1.4.4-beta7
 
 ### 设置卡片

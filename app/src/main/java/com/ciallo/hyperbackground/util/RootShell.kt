@@ -1,4 +1,4 @@
-package com.ciallo.hyperbackground
+package com.ciallo.hyperbackground.util
 
 import kotlin.concurrent.thread
 

@@ -20,7 +20,7 @@ import android.util.Log
 import java.io.IOException
 import java.util.concurrent.Future
 import com.ciallo.hyperbackground.BackgroundImageLoader
-import com.ciallo.hyperbackground.FirstFrameCallback
+import com.ciallo.hyperbackground.util.FirstFrameCallback
 
 class SettingsBackgroundView(
     context: android.content.Context,

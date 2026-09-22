@@ -6,6 +6,13 @@ import android.content.ContextWrapper
 import android.graphics.Canvas
 import android.view.View
 import android.view.ViewGroup
+import com.ciallo.hyperbackground.util.callMethod
+import com.ciallo.hyperbackground.util.findField
+import com.ciallo.hyperbackground.util.getAdditionalInstanceField
+import com.ciallo.hyperbackground.util.getObjectField
+import com.ciallo.hyperbackground.util.hookMethod
+import com.ciallo.hyperbackground.util.log
+import com.ciallo.hyperbackground.util.setAdditionalInstanceField
 
 import java.lang.Boolean.TYPE as BOOL
 import java.lang.Integer.TYPE as INT
@@ -41,7 +48,11 @@ object SettingsTopBarBlurHook {
                 "setBackgroundGradientBlurParams", FloatArray::class.java, INT)
             clearBlendColorMethod = View::class.java.getMethod("clearMiBackgroundBlendColor")
 
-            hookMethod("miuix.nestedheader.widget.NestedHeaderLayout", classLoader, "onFinishInflate") {
+            hookMethod(
+                "miuix.nestedheader.widget.NestedHeaderLayout",
+                classLoader,
+                "onFinishInflate"
+            ) {
                 val layout = thisObject as? View ?: return@hookMethod
                 markManagedActivity(layout.context, true)
                 if (shouldApplyTopBlur(layout.context)) {
@@ -94,7 +105,7 @@ object SettingsTopBarBlurHook {
                 ) {
                     val bar = thisObject as? View ?: return@hookMethod
                     if (!isManagedSettingsPage(bar.context)) return@hookMethod
-                    if (shouldApplyTopBlur(bar.context) && args[0] == true) {
+                    if (shouldApplyTopBlur(bar.context)) {
                         updateInjectedActionBarBlur(thisObject)
                     } else {
                         clearInjectedActionBarBlur(thisObject)
@@ -138,19 +149,21 @@ object SettingsTopBarBlurHook {
                     return@hookMethod
                 }
                 if (progress >= 0 || layout.top > 0) {
-                    // 不彻底关闭 MIUI 模糊表面：卡片磨砂依赖同一套 compositor 模糊基础设施，
-                    // 顶栏静止时归零会导致卡片模糊也失效（只剩 tint 色）。
-                    // 保留 alpha=0、radius=1px 的不可见模糊维持表面激活。
-                    maintainBlurSurface(overlay)
+                    clearGradientBlur(overlay)
+                    setBlurEnabled(thisObject, blurHelper, false)
+                    overlay.alpha = 0f
+                    overlay.visibility = View.INVISIBLE
                     return@hookMethod
                 }
 
                 val scrollFraction = min(1f, -progress / headerHeight.toFloat())
                 val clearEnabled = SettingsTopBarClearHook.shouldClear(layout.context)
                 val strength = if (clearEnabled) 0 else HookRuntime.preferences().getInt(
-                    BackgroundContract.UI_TOP_BLUR_STRENGTH, 10)
+                    BackgroundContract.UI_TOP_BLUR_STRENGTH, 10
+                )
                 val opacity = if (clearEnabled) 0 else HookRuntime.preferences().getInt(
-                    BackgroundContract.UI_TOP_BLUR_OPACITY, 100)
+                    BackgroundContract.UI_TOP_BLUR_OPACITY, 100
+                )
                 if (strength <= 0 || opacity <= 0) {
                     clearGradientBlur(overlay)
                     setBlurEnabled(thisObject, blurHelper, false)
@@ -186,11 +199,15 @@ object SettingsTopBarBlurHook {
                     setGradientParamsMethod?.invoke(overlay, gradient, 1)
                     overlay.visibility = View.VISIBLE
                     overlay.alpha = blurAlpha
-                    logOnce(thisObject, LOG_READY,
-                        "System linear gradient blur active, radiusPx=$radius height=$height alpha=$blurAlpha")
+                    logOnce(
+                        thisObject, LOG_READY,
+                        "System linear gradient blur active, radiusPx=$radius height=$height alpha=$blurAlpha"
+                    )
                 } catch (error: ReflectiveOperationException) {
-                    logOnce(thisObject, LOG_READY,
-                        "System linear gradient blur invocation failed: $error")
+                    logOnce(
+                        thisObject, LOG_READY,
+                        "System linear gradient blur invocation failed: $error"
+                    )
                 }
             }
             // HyperOS 4's native black gradient is applied from applyBlur().
@@ -233,8 +250,10 @@ object SettingsTopBarBlurHook {
                             return@hookMethod
                         }
                         updateInjectedActionBarBlur(thisObject)
-                        logOnce(thisObject, LOG_BAR_MASK,
-                            "Action bar overlay mask skipped on Settings page")
+                        logOnce(
+                            thisObject, LOG_BAR_MASK,
+                            "Action bar overlay mask skipped on Settings page"
+                        )
                         setResult(null)
                     },
                 )
@@ -276,7 +295,8 @@ object SettingsTopBarBlurHook {
                         if (target is View
                             && isManagedSettingsPage(target.context)
                             && isManagedTopBlurView(target)
-                            && shouldApplyTopBlur(target.context)) {
+                            && shouldApplyTopBlur(target.context)
+                        ) {
                             clearMaterialMask(target)
                             setResult(null)
                         }
@@ -298,7 +318,8 @@ object SettingsTopBarBlurHook {
                         val stickyView = getField(thisObject, "mStickyView")
                         if (stickyView is View
                             && isManagedSettingsPage(stickyView.context)
-                            && shouldApplyTopBlur(stickyView.context)) {
+                            && shouldApplyTopBlur(stickyView.context)
+                        ) {
                             setResult(null)
                         }
                     },
@@ -329,25 +350,32 @@ object SettingsTopBarBlurHook {
         }
     }
 
-    // 顶栏静止时保留不可见的最小模糊，维持 MIUI compositor 模糊表面激活，
-    // 使卡片磨砂（SettingsCardFrostDrawable）的 RenderNode 模糊在静止位置也能生效。
-    private fun maintainBlurSurface(overlay: View) {
-        try {
-            setBlurModeMethod?.invoke(overlay, 1)
-            setViewBlurModeMethod?.invoke(overlay, 1)
-            val h = maxOf(overlay.height, 1).toFloat()
-            setGradientParamsMethod?.invoke(overlay, floatArrayOf(0f, 0f, 1f, 0f, h, 0f), 1)
-        } catch (_: ReflectiveOperationException) {
-            // 硬件不支持时退回完全关闭
-            clearGradientBlur(overlay)
+    // NestedHeaderLayout 的 overlay 高度会随 header/sticky 滚动变化，不能用于静止保活。
+    // 改用固定在 ActionBarContainer 内的自有 View 维持 compositor 模糊表面。
+    private fun maintainOwnedBlurSurface(view: View) {
+        val height = maxOf(view.height, 1)
+        val state = BlurState(1f, height)
+        if (view.getAdditionalInstanceField(OWNED_BLUR_STATE) == state) {
+            view.alpha = 0f
+            view.visibility = View.VISIBLE
+            return
         }
-        overlay.alpha = 0f
-        // alpha 不影响触摸命中，VISIBLE 的 view 会拦截点击（挡住搜索框）。
-        // 显式清除可点击属性使触摸事件穿透到下层视图。
-        overlay.isClickable = false
-        overlay.isLongClickable = false
-        overlay.isFocusable = false
-        overlay.visibility = View.VISIBLE
+        try {
+            setBlurModeMethod?.invoke(view, 1)
+            setViewBlurModeMethod?.invoke(view, 1)
+            setBlurTypeMethod.invoke(view, 2)
+            setGradientParamsMethod?.invoke(
+                view,
+                floatArrayOf(0f, 0f, 1f, 0f, height.toFloat(), 0f),
+                1,
+            )
+            view.setAdditionalInstanceField(OWNED_BLUR_STATE, state)
+        } catch (_: ReflectiveOperationException) {
+            clearGradientBlur(view)
+            view.setAdditionalInstanceField(OWNED_BLUR_STATE, BlurState(0f, 0))
+        }
+        view.alpha = 0f
+        view.visibility = View.VISIBLE
     }
 
     private fun clearGradientBlur(overlay: View) {
@@ -443,7 +471,7 @@ object SettingsTopBarBlurHook {
         if (blurView == null) return
 
         if (activity.getAdditionalInstanceField(NESTED_ACTIVITY) == true) {
-            hideOwnedBlur(blurView)
+            maintainOwnedBlurSurface(blurView)
             return
         }
 

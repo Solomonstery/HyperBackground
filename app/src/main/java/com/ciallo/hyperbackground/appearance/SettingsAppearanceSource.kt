@@ -7,7 +7,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import com.ciallo.hyperbackground.InvalidatingCache
+import com.ciallo.hyperbackground.util.InvalidatingCache
 import java.util.concurrent.atomic.AtomicBoolean
 
 data class SettingsAppearanceSource(

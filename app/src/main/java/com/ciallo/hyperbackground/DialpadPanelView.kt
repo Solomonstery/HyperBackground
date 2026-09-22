@@ -8,6 +8,7 @@ import android.graphics.RectF
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
+import com.ciallo.hyperbackground.util.setAdditionalInstanceField
 
 /** Shared final clipping for both custom images and the native backdrop/tint layers. */
 internal abstract class DialpadPanelView(context: Context) : FrameLayout(context) {

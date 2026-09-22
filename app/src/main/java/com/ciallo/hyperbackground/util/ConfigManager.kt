@@ -1,11 +1,14 @@
-package com.ciallo.hyperbackground
+package com.ciallo.hyperbackground.util
 
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import com.ciallo.hyperbackground.BackgroundContract
+import com.ciallo.hyperbackground.HyperBackgroundApp
 import io.github.libxposed.service.XposedService
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.collections.minus
 
 /** Central local storage that mirrors hook-facing state through libxposed. */
 class ConfigManager private constructor(private val context: Context) : SharedPreferences {
@@ -238,7 +241,9 @@ class ConfigManager private constructor(private val context: Context) : SharedPr
         listOf(BackgroundContract.HOME, BackgroundContract.DEVICE, BackgroundContract.GLOBAL, BackgroundContract.CONTACTS, BackgroundContract.CONTACTS_DIALPAD, BackgroundContract.MMS, BackgroundContract.MMS_CHAT).forEach { slot ->
             syncMedia(BackgroundContract.remoteMediaName(slot), backgroundFile(slot).takeIf(File::isFile), service)
             // random 背景独立同步到 background_<slot>.random.bin。
-            syncMedia(BackgroundContract.remoteMediaName(slot, random = true), randomBackgroundFile(slot).takeIf(File::isFile), service)
+            syncMedia(
+                BackgroundContract.remoteMediaName(slot, random = true), randomBackgroundFile(slot).takeIf(
+                    File::isFile), service)
         }
     }
 

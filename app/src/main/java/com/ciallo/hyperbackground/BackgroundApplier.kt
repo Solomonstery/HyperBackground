@@ -17,6 +17,11 @@ import android.view.Window
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.TextView
+import com.ciallo.hyperbackground.util.callMethod
+import com.ciallo.hyperbackground.util.getAdditionalInstanceField
+import com.ciallo.hyperbackground.util.getObjectField
+import com.ciallo.hyperbackground.util.removeAdditionalInstanceField
+import com.ciallo.hyperbackground.util.setAdditionalInstanceField
 import java.util.ArrayList
 import java.util.IdentityHashMap
 
@@ -1147,7 +1152,7 @@ object BackgroundApplier {
             val previous = activity.getAdditionalInstanceField(GLOBAL_DIAGNOSTIC)
             if (message == previous) return
             activity.setAdditionalInstanceField(GLOBAL_DIAGNOSTIC, message)
-            log("[HyperBackground] " + activity.packageName + " " + message)
+            com.ciallo.hyperbackground.util.log("[HyperBackground] " + activity.packageName + " " + message)
             BackgroundContract.reportDiagnostic(activity, message)
         } catch (_: Throwable) {
         }
@@ -1338,8 +1343,8 @@ object BackgroundApplier {
     }
 
     private fun log(stage: String, error: Throwable) {
-        log("[HyperBackground] " + stage + " failed: " + error)
-        log(error)
+        com.ciallo.hyperbackground.util.log("[HyperBackground] " + stage + " failed: " + error)
+        com.ciallo.hyperbackground.util.log(error)
     }
 
     private class LayerSession(val media: BackgroundMediaView) {

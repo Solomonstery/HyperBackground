@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
+import com.ciallo.hyperbackground.util.log
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -127,12 +128,14 @@ internal class DialpadLayerSession(
         if (!boundsLogged) {
             boundsLogged = true
             val mode = if (layer is DialpadImageView) "image" else "backdrop"
-            log("[HyperBackground] Dialpad layer=$mode panel=${panel.javaClass.name} " +
-                "bounds=($left,$top,$right,$bottom) host=${host.width}x${host.height} " +
-                "padding=(${panelPadding.left},${panelPadding.top}," +
-                "${panelPadding.right},${panelPadding.bottom}) " +
-                "native=${nativeBackground?.javaClass?.name}:" +
-                "${nativeBackground?.width}x${nativeBackground?.height}")
+            log(
+                "[HyperBackground] Dialpad layer=$mode panel=${panel.javaClass.name} " +
+                        "bounds=($left,$top,$right,$bottom) host=${host.width}x${host.height} " +
+                        "padding=(${panelPadding.left},${panelPadding.top}," +
+                        "${panelPadding.right},${panelPadding.bottom}) " +
+                        "native=${nativeBackground?.javaClass?.name}:" +
+                        "${nativeBackground?.width}x${nativeBackground?.height}"
+            )
         }
     }
 

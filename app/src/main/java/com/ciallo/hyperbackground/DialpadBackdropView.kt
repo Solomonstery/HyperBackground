@@ -8,6 +8,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
+import com.ciallo.hyperbackground.util.log
+import com.ciallo.hyperbackground.util.setAdditionalInstanceField
 import java.lang.reflect.Method
 
 /** The native backdrop and panel tint are separate layers, both below the dialpad keys. */

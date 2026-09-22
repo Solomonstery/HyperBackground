@@ -6,6 +6,7 @@ import android.graphics.ImageDecoder
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.util.LruCache
+import com.ciallo.hyperbackground.util.backgroundDecodeSize
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 

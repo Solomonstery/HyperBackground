@@ -1,7 +1,7 @@
 package com.ciallo.hyperbackground.appearance
 
-import com.ciallo.hyperbackground.getAdditionalInstanceField
-import com.ciallo.hyperbackground.setAdditionalInstanceField
+import com.ciallo.hyperbackground.util.getAdditionalInstanceField
+import com.ciallo.hyperbackground.util.setAdditionalInstanceField
 
 import android.content.Context
 import android.graphics.Canvas

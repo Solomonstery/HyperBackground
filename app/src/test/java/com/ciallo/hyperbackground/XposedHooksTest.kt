@@ -1,5 +1,7 @@
 package com.ciallo.hyperbackground
 
+import com.ciallo.hyperbackground.util.callMethod
+import com.ciallo.hyperbackground.util.findField
 import org.junit.Assert.*
 import org.junit.Test
 

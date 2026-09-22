@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.ciallo.hyperbackground.BackgroundContract
 import com.ciallo.hyperbackground.BuildConfig
 import com.ciallo.hyperbackground.R
-import com.ciallo.hyperbackground.RootShell
+import com.ciallo.hyperbackground.util.RootShell
 import com.ciallo.hyperbackground.ui.MainActivity
 import com.ciallo.hyperbackground.ui.components.SectionTitle
 import com.ciallo.hyperbackground.ui.components.BackgroundPickerPreference

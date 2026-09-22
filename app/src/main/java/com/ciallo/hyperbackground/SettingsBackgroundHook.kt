@@ -4,12 +4,16 @@ import android.app.Activity
 import android.app.Application
 import android.app.Instrumentation
 import android.content.Context
+import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.View
 import com.ciallo.hyperbackground.appearance.APPEARANCE_SLOT_DEVICE
 import com.ciallo.hyperbackground.appearance.SETTINGS_APPEARANCE_PREFERENCES
 import com.ciallo.hyperbackground.appearance.SettingsAppearanceSources
 import com.ciallo.hyperbackground.appearance.SettingsBackgroundView
+import com.ciallo.hyperbackground.util.callMethod
+import com.ciallo.hyperbackground.util.hookMethod
+import com.ciallo.hyperbackground.util.log
 import java.util.Collections
 import java.util.WeakHashMap
 
@@ -69,8 +73,13 @@ object SettingsBackgroundHook {
                 ) return@cb
                 BackgroundApplier.onViewBackgroundChanged(view)
             }
-            hookMethod(View::class.java, "setBackground", android.graphics.drawable.Drawable::class.java, after = callback)
-            hookMethod(View::class.java, "setBackgroundDrawable", android.graphics.drawable.Drawable::class.java, after = callback)
+            hookMethod(View::class.java, "setBackground", Drawable::class.java, after = callback)
+            hookMethod(
+                View::class.java,
+                "setBackgroundDrawable",
+                Drawable::class.java,
+                after = callback
+            )
         } catch (error: Throwable) {
             // View.setBackground 在所有进程都存在，但只在联系人进程调用 BackgroundApplier；
             // 其它进程走到 onViewBackgroundChanged 里会因 ctx 不匹配直接 return，无副作用。
@@ -79,7 +88,12 @@ object SettingsBackgroundHook {
 
     private fun hookInstrumentationLifecycle() {
         try {
-            hookMethod(Instrumentation::class.java, "callActivityOnCreate", Activity::class.java, Bundle::class.java) {
+            hookMethod(
+                Instrumentation::class.java,
+                "callActivityOnCreate",
+                Activity::class.java,
+                Bundle::class.java
+            ) {
                 val activity = args[0] as? Activity ?: return@hookMethod
                 scheduleGlobal(activity)
             }
@@ -315,8 +329,13 @@ object SettingsBackgroundHook {
                 ) return@cb
                 BackgroundApplier.onMmsViewBackgroundChanged(view)
             }
-            hookMethod(View::class.java, "setBackground", android.graphics.drawable.Drawable::class.java, after = callback)
-            hookMethod(View::class.java, "setBackgroundDrawable", android.graphics.drawable.Drawable::class.java, after = callback)
+            hookMethod(View::class.java, "setBackground", Drawable::class.java, after = callback)
+            hookMethod(
+                View::class.java,
+                "setBackgroundDrawable",
+                Drawable::class.java,
+                after = callback
+            )
         } catch (_: Throwable) {
         }
     }
@@ -348,7 +367,12 @@ object SettingsBackgroundHook {
 
     private fun hookHomeActivity(classLoader: ClassLoader) {
         try {
-            hookMethod("com.android.settings.MiuiSettings", classLoader, "onCreate", Bundle::class.java) {
+            hookMethod(
+                "com.android.settings.MiuiSettings",
+                classLoader,
+                "onCreate",
+                Bundle::class.java
+            ) {
                 val activity = thisObject as? Activity ?: return@hookMethod
                 BackgroundApplier.applyHome(activity)
             }
@@ -388,12 +412,19 @@ object SettingsBackgroundHook {
     private fun hookDeviceFragment(classLoader: ClassLoader) {
         val className = "com.android.settings.device.MiuiMyDeviceSettings"
         try {
-            hookMethod(className, classLoader, "startRuntimeShader", Boolean::class.javaPrimitiveType!!,
+            hookMethod(
+                className, classLoader, "startRuntimeShader", Boolean::class.javaPrimitiveType!!,
                 before = {
                     if (BackgroundApplier.shouldSuppressDeviceShader(thisObject)) setResult(null)
                 })
 
-            hookMethod(className, classLoader, "onViewCreated", View::class.java, Bundle::class.java) {
+            hookMethod(
+                className,
+                classLoader,
+                "onViewCreated",
+                View::class.java,
+                Bundle::class.java
+            ) {
                 val a = thisObject!!.callMethod("getActivity")
                 if (a is Activity) BackgroundApplier.enterDevice(a)
                 BackgroundApplier.applyDevice(thisObject)
@@ -436,11 +467,13 @@ object SettingsBackgroundHook {
             hookMethod(Application::class.java, "onCreate") {
                 val app = thisObject as? Application ?: return@hookMethod
                 val context = app as Context
-                val prefs = HookRuntime.remotePreferences(SETTINGS_APPEARANCE_PREFERENCES) ?: return@hookMethod
+                val prefs = HookRuntime.remotePreferences(SETTINGS_APPEARANCE_PREFERENCES)
+                    ?: return@hookMethod
                 if (!prefs.getBoolean("device_background_preload", false)) return@hookMethod
                 Thread {
                     runCatching {
-                        val source = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_DEVICE)
+                        val source =
+                            SettingsAppearanceSources.query(context, APPEARANCE_SLOT_DEVICE)
                         if (source.exists && !source.isVideo) {
                             SettingsBackgroundView.preload(context, source)
                         }

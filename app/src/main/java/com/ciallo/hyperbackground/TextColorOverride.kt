@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.widget.TextView
+import com.ciallo.hyperbackground.util.hookMethod
+import com.ciallo.hyperbackground.util.log
 
 /** Keeps the user-selected Settings text mode stable when MIUIX/Preference rebinds views. */
 internal object TextColorOverride {

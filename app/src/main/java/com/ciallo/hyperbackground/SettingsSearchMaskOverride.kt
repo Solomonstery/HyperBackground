@@ -2,8 +2,14 @@ package com.ciallo.hyperbackground
 
 import android.app.Activity
 import android.graphics.Color
+import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.view.Window
+import com.ciallo.hyperbackground.util.callMethod
+import com.ciallo.hyperbackground.util.hookMethod
+import com.ciallo.hyperbackground.util.log
 
 internal object SettingsSearchMaskOverride {
     private const val SETTINGS_FRAGMENT = "com.android.settings.SettingsFragment"
@@ -15,9 +21,9 @@ internal object SettingsSearchMaskOverride {
                 SETTINGS_FRAGMENT,
                 classLoader,
                 "onInflateView",
-                android.view.LayoutInflater::class.java,
-                android.view.ViewGroup::class.java,
-                android.os.Bundle::class.java,
+                LayoutInflater::class.java,
+                ViewGroup::class.java,
+                Bundle::class.java,
             ) {
                 val view = result as? View
                 if (view != null) clearLoadingMask(view)

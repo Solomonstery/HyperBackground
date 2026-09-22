@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.os.Bundle
+import com.ciallo.hyperbackground.util.hookMethod
+import com.ciallo.hyperbackground.util.log
 
 /**
  * 强制作用域进程界面的深浅色。

@@ -3,12 +3,13 @@ package com.ciallo.hyperbackground
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.ciallo.hyperbackground.util.ConfigManager
 
 /**
  * 开机完成后自动换一张随机背景。
  *
  * 仅在总开关开启、且触发模式为「仅开机」或「手动+开机」时工作。模块进程被系统拉起后
- * 在后台线程逐槽位下载；下载完 [ConfigManager.importRandomBackground] 会同步到 libxposed
+ * 在后台线程逐槽位下载；下载完 [com.ciallo.hyperbackground.util.ConfigManager.importRandomBackground] 会同步到 libxposed
  * remote（若 service 已绑定），否则由 [HyperBackgroundApp.onServiceBind] 的全量同步兜底。
  * 手动点「换一张」按钮不经过本接收器。
  */

@@ -1,6 +1,7 @@
 package com.ciallo.hyperbackground
 
 import android.content.Context
+import com.ciallo.hyperbackground.util.ConfigManager
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
@@ -35,7 +36,7 @@ object RandomBackgroundFetcher {
     }
 
     /**
-     * 阻塞式拉取一张随机图并写入 [ConfigManager] 的 random 槽位。
+     * 阻塞式拉取一张随机图并写入 [com.ciallo.hyperbackground.util.ConfigManager] 的 random 槽位。
      * 供开机广播 / 手动按钮的后台线程调用。成功返回 null，失败返回错误信息。
      */
     fun fetchForSlotBlocking(context: Context, slot: String): String? {

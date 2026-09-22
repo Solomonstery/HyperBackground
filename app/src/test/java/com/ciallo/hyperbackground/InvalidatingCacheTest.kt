@@ -1,5 +1,6 @@
 package com.ciallo.hyperbackground
 
+import com.ciallo.hyperbackground.util.InvalidatingCache
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit

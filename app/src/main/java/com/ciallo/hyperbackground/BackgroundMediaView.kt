@@ -23,6 +23,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
+import com.ciallo.hyperbackground.util.FirstFrameCallback
 import java.io.IOException
 import java.util.concurrent.Callable
 import java.util.concurrent.Future

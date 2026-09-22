@@ -35,7 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ciallo.hyperbackground.BackgroundContract
-import com.ciallo.hyperbackground.ConfigManager
+import com.ciallo.hyperbackground.util.ConfigManager
 import com.ciallo.hyperbackground.HyperBackgroundApp
 import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.ui.MainActivity

@@ -53,7 +53,7 @@ import androidx.compose.ui.zIndex
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.ciallo.hyperbackground.BackgroundContract
-import com.ciallo.hyperbackground.ConfigManager
+import com.ciallo.hyperbackground.util.ConfigManager
 import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.appearance.AppearanceUiController
 import com.ciallo.hyperbackground.appearance.DeviceProfileSettings

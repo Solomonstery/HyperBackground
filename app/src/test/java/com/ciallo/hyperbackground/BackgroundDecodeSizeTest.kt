@@ -1,5 +1,6 @@
 package com.ciallo.hyperbackground
 
+import com.ciallo.hyperbackground.util.backgroundDecodeSize
 import org.junit.Assert.*
 import org.junit.Test
 

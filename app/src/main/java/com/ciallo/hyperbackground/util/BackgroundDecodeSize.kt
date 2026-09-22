@@ -1,4 +1,4 @@
-package com.ciallo.hyperbackground
+package com.ciallo.hyperbackground.util
 
 import kotlin.math.floor
 import kotlin.math.sqrt

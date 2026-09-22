@@ -1,5 +1,6 @@
-package com.ciallo.hyperbackground
+package com.ciallo.hyperbackground.util
 
+import com.ciallo.hyperbackground.HookRuntime
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import java.util.Collections
@@ -153,7 +154,7 @@ private fun searchCompatibleMethod(type: Class<*>, name: String, args: Array<out
 private fun boxed(type: Class<*>): Class<*> = when (type) {
     java.lang.Boolean.TYPE -> Boolean::class.javaObjectType
     java.lang.Byte.TYPE -> Byte::class.javaObjectType
-    java.lang.Character.TYPE -> Char::class.javaObjectType
+    Character.TYPE -> Char::class.javaObjectType
     java.lang.Short.TYPE -> Short::class.javaObjectType
     Integer.TYPE -> Int::class.javaObjectType
     java.lang.Long.TYPE -> Long::class.javaObjectType

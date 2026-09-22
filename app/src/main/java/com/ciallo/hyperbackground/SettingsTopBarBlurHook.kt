@@ -32,7 +32,7 @@ object SettingsTopBarBlurHook {
     private const val LOG_BAR_BLUR = "hyperbackground_blur_logged_bar_view"
     private const val BAR_BLUR_SUPPRESSED = "hyperbackground_bar_blur_suppressed"
     private const val OWNED_BLUR_STATE = "hyperbackground_owned_blur_state"
-    private data class BlurState(val radius: Float, val height: Int)
+    private data class BlurState(val radius: Float, val height: Int, val startY: Float = 0f)
     private lateinit var setBlurTypeMethod: Method
     private var setBlurModeMethod: Method? = null
     private var setViewBlurModeMethod: Method? = null
@@ -105,7 +105,13 @@ object SettingsTopBarBlurHook {
                 ) {
                     val bar = thisObject as? View ?: return@hookMethod
                     if (!isManagedSettingsPage(bar.context)) return@hookMethod
-                    if (shouldApplyTopBlur(bar.context)) {
+                    val activity = findActivity(bar.context)
+                    if (activity?.getAdditionalInstanceField(NESTED_ACTIVITY) == true) {
+                        // OS4 drives the overlay mask and applyBlur state separately.
+                        // The draw hook owns our replacement so applyBlur(false) must not clear it.
+                        return@hookMethod
+                    }
+                    if (shouldApplyTopBlur(bar.context) && args[0] == true) {
                         updateInjectedActionBarBlur(thisObject)
                     } else {
                         clearInjectedActionBarBlur(thisObject)
@@ -141,6 +147,13 @@ object SettingsTopBarBlurHook {
 
                 val overlay: View = overBg
                 markManagedActivity(layout.context, true)
+                if (findActivity(layout.context)
+                        ?.getAdditionalInstanceField(NESTED_ACTIVITY) == true) {
+                    clearGradientBlur(overlay)
+                    overlay.alpha = 0f
+                    overlay.visibility = View.INVISIBLE
+                    return@hookMethod
+                }
                 if (!shouldApplyTopBlur(layout.context)) {
                     clearGradientBlur(overlay)
                     setBlurEnabled(thisObject, blurHelper, false)
@@ -159,11 +172,9 @@ object SettingsTopBarBlurHook {
                 val scrollFraction = min(1f, -progress / headerHeight.toFloat())
                 val clearEnabled = SettingsTopBarClearHook.shouldClear(layout.context)
                 val strength = if (clearEnabled) 0 else HookRuntime.preferences().getInt(
-                    BackgroundContract.UI_TOP_BLUR_STRENGTH, 10
-                )
+                    BackgroundContract.UI_TOP_BLUR_STRENGTH, 10)
                 val opacity = if (clearEnabled) 0 else HookRuntime.preferences().getInt(
-                    BackgroundContract.UI_TOP_BLUR_OPACITY, 100
-                )
+                    BackgroundContract.UI_TOP_BLUR_OPACITY, 100)
                 if (strength <= 0 || opacity <= 0) {
                     clearGradientBlur(overlay)
                     setBlurEnabled(thisObject, blurHelper, false)
@@ -182,32 +193,22 @@ object SettingsTopBarBlurHook {
                 }
 
                 val density = overlay.resources.displayMetrics.density
-                // 开启"清除顶栏"时复用模糊管线但透明度与强度归零，
-                // 视觉上顶栏完全透明，且不产生无意义的模糊渲染开销。
                 val blurAlpha = scrollFraction * opacity.coerceIn(0, 100) / 100f
                 val peakRadius = min(strength.coerceIn(0, 100) * density, height * 0.5f)
                 val radius = peakRadius * scrollFraction
-                // HyperOS setBgCommonLinearGradientBlur vertical protocol:
-                // startX, startY, startRadius, endX, endY, endRadius.
                 val gradient = floatArrayOf(0f, 0f, radius, 0f, height.toFloat(), 0f)
                 try {
-                    // OS4's gradient API only supplies the parameters. The
-                    // background and view blur modes must be enabled separately.
                     setBlurModeMethod?.invoke(overlay, 1)
                     setViewBlurModeMethod?.invoke(overlay, 1)
                     setBlurTypeMethod?.invoke(overlay, 2)
                     setGradientParamsMethod?.invoke(overlay, gradient, 1)
                     overlay.visibility = View.VISIBLE
                     overlay.alpha = blurAlpha
-                    logOnce(
-                        thisObject, LOG_READY,
-                        "System linear gradient blur active, radiusPx=$radius height=$height alpha=$blurAlpha"
-                    )
+                    logOnce(thisObject, LOG_READY,
+                        "System linear gradient blur active, radiusPx=$radius height=$height alpha=$blurAlpha")
                 } catch (error: ReflectiveOperationException) {
-                    logOnce(
-                        thisObject, LOG_READY,
-                        "System linear gradient blur invocation failed: $error"
-                    )
+                    logOnce(thisObject, LOG_READY,
+                        "System linear gradient blur invocation failed: $error")
                 }
             }
             // HyperOS 4's native black gradient is applied from applyBlur().
@@ -350,29 +351,24 @@ object SettingsTopBarBlurHook {
         }
     }
 
-    // NestedHeaderLayout 的 overlay 高度会随 header/sticky 滚动变化，不能用于静止保活。
-    // 改用固定在 ActionBarContainer 内的自有 View 维持 compositor 模糊表面。
     private fun maintainOwnedBlurSurface(view: View) {
         val height = maxOf(view.height, 1)
         val state = BlurState(1f, height)
-        if (view.getAdditionalInstanceField(OWNED_BLUR_STATE) == state) {
-            view.alpha = 0f
-            view.visibility = View.VISIBLE
-            return
-        }
-        try {
-            setBlurModeMethod?.invoke(view, 1)
-            setViewBlurModeMethod?.invoke(view, 1)
-            setBlurTypeMethod.invoke(view, 2)
-            setGradientParamsMethod?.invoke(
-                view,
-                floatArrayOf(0f, 0f, 1f, 0f, height.toFloat(), 0f),
-                1,
-            )
-            view.setAdditionalInstanceField(OWNED_BLUR_STATE, state)
-        } catch (_: ReflectiveOperationException) {
-            clearGradientBlur(view)
-            view.setAdditionalInstanceField(OWNED_BLUR_STATE, BlurState(0f, 0))
+        if (view.getAdditionalInstanceField(OWNED_BLUR_STATE) != state) {
+            try {
+                setBlurModeMethod?.invoke(view, 1)
+                setViewBlurModeMethod?.invoke(view, 1)
+                setBlurTypeMethod.invoke(view, 2)
+                setGradientParamsMethod?.invoke(
+                    view,
+                    floatArrayOf(0f, 0f, 1f, 0f, height.toFloat(), 0f),
+                    1,
+                )
+                view.setAdditionalInstanceField(OWNED_BLUR_STATE, state)
+            } catch (_: ReflectiveOperationException) {
+                clearGradientBlur(view)
+                view.setAdditionalInstanceField(OWNED_BLUR_STATE, BlurState(0f, 0))
+            }
         }
         view.alpha = 0f
         view.visibility = View.VISIBLE
@@ -470,19 +466,15 @@ object SettingsTopBarBlurHook {
         }
         if (blurView == null) return
 
-        if (activity.getAdditionalInstanceField(NESTED_ACTIVITY) == true) {
-            maintainOwnedBlurSurface(blurView)
-            return
-        }
-
         val height = bar.height
         if (height <= 0) return
-        var maskAlpha = getFloatField(bar, "mMaskAlpha").coerceIn(0f, 1f)
-        if (maskAlpha <= 0f && getBooleanField(bar, "mInternalApplyBgBlur")) {
-            maskAlpha = 1f
-        }
+        val maskAlpha = getFloatField(bar, "mMaskAlpha").coerceIn(0f, 1f)
         if (maskAlpha <= 0f) {
-            hideOwnedBlur(blurView)
+            if (activity.getAdditionalInstanceField(NESTED_ACTIVITY) == true) {
+                maintainOwnedBlurSurface(blurView)
+            } else {
+                hideOwnedBlur(blurView)
+            }
             return
         }
 
@@ -509,7 +501,10 @@ object SettingsTopBarBlurHook {
                 setBlurTypeMethod?.invoke(blurView, 2)
             }
             if (old != state) {
-                val gradient = floatArrayOf(0f, 0f, radius, 0f, height.toFloat(), 0f)
+                val gradient = floatArrayOf(
+                    0f, 0f, radius,
+                    0f, height.toFloat(), 0f,
+                )
                 setGradientParamsMethod?.invoke(blurView, gradient, 1)
                 blurView.setAdditionalInstanceField(OWNED_BLUR_STATE, state)
             }

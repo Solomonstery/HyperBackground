@@ -140,12 +140,19 @@ internal object SettingsCardBackgroundHook {
         classLoader: ClassLoader,
         prefs: SharedPreferences,
         standalone: Boolean = true,
+        groupHooks: Boolean = true,
     ) {
         module = value
         preferences?.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         preferences = prefs
         palette = readPalette(prefs)
         prefs.registerOnSharedPreferenceChangeListener(preferenceListener)
+        if (!groupHooks) {
+            // 只做自绘卡片（applyCustomCardMaterial）的进程：调色板 + 刷新监听足够。
+            // 分组 hook 是每帧绘制路径，接管范围之外的进程一律不装，避免拖慢整页加载。
+            module.log(Log.INFO, TAG, "Card material runtime: palette only, group hooks skipped")
+            return
+        }
         groupClipAvailable = runCatching { installGroupClip(classLoader) }
             .onFailure { module.log(Log.WARN, TAG, "Group material clip unavailable; using the selected tint", it) }
             .isSuccess

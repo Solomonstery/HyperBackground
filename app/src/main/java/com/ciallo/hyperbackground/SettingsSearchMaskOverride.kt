@@ -145,11 +145,16 @@ internal object SettingsSearchMaskOverride {
     }
 
     private fun applySoftGlass(view: View, config: SearchGlassConfig) {
-        val tintColor = SettingsSoftGlassDrawable.materialTintColor(config.color, config.params)
-        val background = view.background?.mutate()
-        background?.setTint(tintColor)
-        if (background != null && background !== view.background) view.background = background
-        SettingsSoftGlassDrawable.applyToView(view, config.params, config.density)
+        // The search bar's native background is not ours to repaint. It is a Miuix selector of
+        // SmoothContainerDrawable2 (drawable/miuix_appcompat_search_mode_edit_text_bg_*), and the
+        // system's own SearchViewMaterialImpl keys its BackgroundAlphaTarget on that very drawable
+        // for `search_mode_stub`'s children: alpha is forced to 0 while its glass is on and animated
+        // back to 1 when it is off. A palette color painted into it is therefore either invisible or
+        // left as a flat film that replaces the native material - which is what made the initial
+        // (collapsed) search box lose its soft glass while the opened input state stayed correct.
+        // Keep the drawable as the shape/outline source and let the material own the fill: the tint
+        // travels in the shader channels through the color-aware overload.
+        SettingsSoftGlassDrawable.applyToView(view, config.color, config.params, config.density)
     }
 
     private fun clearLoadingMask(root: View) {

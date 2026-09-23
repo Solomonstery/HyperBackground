@@ -5,6 +5,7 @@ import com.ciallo.hyperbackground.util.setAdditionalInstanceField
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.ColorFilter
 import android.graphics.Outline
 import android.graphics.Paint
@@ -365,7 +366,92 @@ internal class SettingsSoftGlassDrawable(
          * matching the display-list tint used by [GlassNode] instead of using shader tint
          * channels 11-14, which compose color and alpha differently.
          */
-        fun applyToView(view: View, config: SoftGlassParams, density: Float): Boolean {
+        fun applyToView(view: View, config: SoftGlassParams, density: Float): Boolean =
+            applyMaterial(view, config, density, params = { customizeParams(baseParams(), it) })
+
+        /**
+         * Same material, but the palette color travels in the shader tint channels (11-14) and the
+         * widget's own fill is muted instead of repainted.
+         *
+         * Use this for hosts whose background belongs to the system's own material implementation:
+         * MIUIX's `SearchViewMaterialImpl` keys its `BackgroundAlphaTarget` on exactly these child
+         * backgrounds, animating them to alpha 0 while its glass is on and back to 1 when it is off.
+         * Painting a palette color into such a drawable is therefore either swallowed by the zero
+         * alpha or left behind as a flat film that replaces the native look - the settings search
+         * box lost its soft glass that way (initial state flat, opened input state still fine).
+         * Channel semantics: docs/soft-glass-api.md §5 (11-14 = tint/inner layer).
+         *
+         * This deliberately does NOT go through [applyMaterial]. That shared path carries beta9's
+         * extra constraints - `isAttachedToWindow`/`isHardwareAccelerated` as a hard gate, and
+         * [requireAccepted] throwing on any setter that answers `false` before [clearFromView]
+         * tears the whole material down again. MIUI's `setMi*` family is not consistent about that
+         * return value, and the Settings fragment inflates its search stub before the window is
+         * attached, so both constraints turn a healthy apply into a silent no-op or an immediate
+         * rollback. beta8 had neither and rendered correctly; the call order below is that version.
+         */
+        fun applyToView(view: View, color: Int, config: SoftGlassParams, density: Float): Boolean {
+            val api = glassApi ?: return false
+            if (!isBionicsActive(view.context)) return false
+            if (!view.isAttachedToWindow || !view.isHardwareAccelerated) {
+                // beta9 added this gate; beta8 had none. Keep the safety check but never let it
+                // swallow the apply - queue it for the moment the host actually becomes drawable.
+                applyWhenReady(view, color, config, density, READY_RETRIES)
+                return false
+            }
+            return runCatching {
+                val radius = (config.blurRadiusDp * density).roundToInt().coerceIn(0, 500)
+                api.backgroundMode.invoke(view, 1)
+                api.viewMode.invoke(view, 1)
+                api.clearBlend.invoke(view)
+                api.materialType.invoke(view, 1)
+                api.glassRadius.invoke(view, radius, radius)
+                api.setGlass.invoke(view, tintedParams(baseParams(), config, color))
+                api.enhanceFlag.invoke(view, 8192, 12288)
+
+                // Keep the drawable as the View outline source, but let the shader own the fill.
+                clearBackgroundFill(view)
+                view.invalidate()
+                true
+            }.getOrDefault(false)
+        }
+
+        /**
+         * Deferred variant of [applyToView] for hosts that are still being inflated. Waits for the
+         * window attach and hardware acceleration separately, then hands over to [applyToView],
+         * which will take the real path because both preconditions now hold - no recursion.
+         */
+        private fun applyWhenReady(
+            view: View,
+            color: Int,
+            config: SoftGlassParams,
+            density: Float,
+            attemptsLeft: Int,
+        ) {
+            if (attemptsLeft <= 0) return
+            runCatching {
+                if (!view.isAttachedToWindow) {
+                    view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                        override fun onViewAttachedToWindow(v: View) {
+                            v.removeOnAttachStateChangeListener(this)
+                            v.post { applyWhenReady(v, color, config, density, attemptsLeft - 1) }
+                        }
+
+                        override fun onViewDetachedFromWindow(v: View) = Unit
+                    })
+                } else if (!view.isHardwareAccelerated) {
+                    view.post { applyWhenReady(view, color, config, density, attemptsLeft - 1) }
+                } else {
+                    applyToView(view, color, config, density)
+                }
+            }
+        }
+
+        private fun applyMaterial(
+            view: View,
+            config: SoftGlassParams,
+            density: Float,
+            params: (SoftGlassParams) -> FloatArray,
+        ): Boolean {
             val api = glassApi ?: return false
             if (!view.isAttachedToWindow || !view.isHardwareAccelerated || !isBionicsActive(view.context)) return false
             return runCatching {
@@ -375,7 +461,7 @@ internal class SettingsSoftGlassDrawable(
                 requireAccepted(api.clearBlend, view)
                 requireAccepted(api.materialType, view, 1)
                 requireAccepted(api.glassRadius, view, radius, radius)
-                requireAccepted(api.setGlass, view, customizeParams(baseParams(), config))
+                requireAccepted(api.setGlass, view, params(config))
                 requireAccepted(api.enhanceFlag, view, 8192, 12288)
                 view.invalidate()
                 true
@@ -384,6 +470,17 @@ internal class SettingsSoftGlassDrawable(
                 // before the caller swaps in its transparent fallback.
                 clearFromView(view)
             }.getOrDefault(false)
+        }
+
+        /**
+         * Keep the drawable as the View outline source, but let the shader own the fill. Only the
+         * shader-tinted overload uses this: carriers of the card path deliberately paint their own
+         * fill (display list or native rounded background) and must keep it.
+         */
+        private fun clearBackgroundFill(view: View) {
+            val background = view.background?.mutate() ?: return
+            background.setTint(Color.TRANSPARENT)
+            if (background !== view.background) view.background = background
         }
 
         /** Clear only the native material state; the caller owns/restores the background. */
@@ -409,6 +506,12 @@ internal class SettingsSoftGlassDrawable(
         }.getOrDefault(false)
 
         private const val ACTIVE_CHECK_TTL_MS = 3000L
+
+        /**
+         * Frames/attaches [applyWhenReady] may spend waiting for a host to become drawable before
+         * giving up. 8 covers "inflated but not attached yet" plus a few dropped frames.
+         */
+        private const val READY_RETRIES = 8
         private const val HOST_SURFACE_ACTIVE = "hyperbackground_glass_host_surface_active"
         @Volatile private var bionicsActive = false
         @Volatile private var activeCheckedAt = 0L
@@ -472,6 +575,20 @@ internal class SettingsSoftGlassDrawable(
             params[16] = 0f
             return params
         }
+
+        /**
+         * Channels 11-14 carry the palette tint (RGB + alpha, 0..1) for hosts that must keep their
+         * native background - the shader owns the fill there instead of a drawable. 15/16 stay
+         * cleared so Xiaomi's fixed white inner layer cannot wash the tint out.
+         */
+        private fun tintedParams(source: FloatArray, config: SoftGlassParams, color: Int): FloatArray =
+            customizeParams(source, config).apply {
+                val tint = materialTintColor(color, config)
+                this[11] = (tint ushr 16 and 0xFF) / 255f
+                this[12] = (tint ushr 8 and 0xFF) / 255f
+                this[13] = (tint and 0xFF) / 255f
+                this[14] = (tint ushr 24 and 0xFF) / 255f
+            }
 
         fun materialTintColor(color: Int, config: SoftGlassParams): Int {
             val sourceAlpha = color ushr 24 and 0xFF

@@ -145,7 +145,11 @@ internal object SettingsSearchMaskOverride {
     }
 
     private fun applySoftGlass(view: View, config: SearchGlassConfig) {
-        SettingsSoftGlassDrawable.applyToView(view, config.color, config.params, config.density)
+        val tintColor = SettingsSoftGlassDrawable.materialTintColor(config.color, config.params)
+        val background = view.background?.mutate()
+        background?.setTint(tintColor)
+        if (background != null && background !== view.background) view.background = background
+        SettingsSoftGlassDrawable.applyToView(view, config.params, config.density)
     }
 
     private fun clearLoadingMask(root: View) {

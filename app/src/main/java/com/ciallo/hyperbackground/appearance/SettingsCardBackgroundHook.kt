@@ -99,6 +99,10 @@ internal object SettingsCardBackgroundHook {
         var signature: StandaloneSignature? = null
         var material = STANDALONE_MATERIAL_NONE
         var failureLogged = false
+        // view_high_light_root 子容器自绘的高亮表面（浅色白/深色半透明）会盖在 CardView
+        // 填充之上，接管卡面时必须一并清掉，恢复原生时还原。
+        var childSurface: Drawable? = null
+        var childCleared = false
     }
 
     private data class StandaloneSignature(
@@ -420,13 +424,18 @@ internal object SettingsCardBackgroundHook {
                 if (standaloneWrite.get() == true) return@intercept chain.proceed()
                 val view = chain.thisObject as? View
                 val result = chain.proceed()
-                if (view != null && standaloneTarget(view) != null) {
-                    val state = standaloneState(view)
-                    state.original = view.background
-                    state.applied = null
-                    state.signature = null
-                    if (palette.enabled && view.isAttachedToWindow) {
-                        view.post { applyStandalone(view) }
+                if (view != null) {
+                    if (standaloneTarget(view) != null) {
+                        val state = standaloneState(view)
+                        state.original = view.background
+                        state.applied = null
+                        state.signature = null
+                        if (palette.enabled && view.isAttachedToWindow) {
+                            view.post { applyStandalone(view) }
+                        }
+                    } else if (view.javaClass.name.contains("CardView")) {
+                        // 未纳管的 CardView（如 WiFi 连接卡）：记录真实 id 供白名单接入。
+                        logUnmanagedCardColor(view)
                     }
                 }
                 result
@@ -453,19 +462,38 @@ internal object SettingsCardBackgroundHook {
                     if (standaloneWrite.get() == true) return@intercept chain.proceed()
                     val view = chain.thisObject as? View
                     val result = chain.proceed()
-                    if (view != null && standaloneTarget(view) == BLUETOOTH_CARD_ID) {
-                        val state = standaloneState(view)
-                        state.original = view.background
-                        state.originalCardColor = cardBackgroundColor(view)
-                        state.applied = null
-                        state.signature = null
-                        if (palette.enabled && view.isAttachedToWindow) {
-                            view.post { applyStandalone(view) }
+                    if (view != null) {
+                        if (standaloneTarget(view) == BLUETOOTH_CARD_ID) {
+                            val state = standaloneState(view)
+                            state.original = view.background
+                            state.originalCardColor = cardBackgroundColor(view)
+                            state.applied = null
+                            state.signature = null
+                            if (palette.enabled && view.isAttachedToWindow) {
+                                view.post { applyStandalone(view) }
+                            }
+                        } else {
+                            // 无侵入诊断：WiFi 等未纳管卡片走这里，记录真实 id 以便后续白名单接入。
+                            logUnmanagedCardColor(view)
                         }
                     }
                     result
                 }
         }
+    }
+
+    private val unmanagedCardIdsLogged = Collections.synchronizedSet(HashSet<String>())
+
+    private fun logUnmanagedCardColor(view: View) {
+        val idName = runCatching {
+            if (view.id == View.NO_ID) return
+            view.resources.getResourceEntryName(view.id)
+        }.getOrNull() ?: return
+        if (!unmanagedCardIdsLogged.add(idName)) return
+        module.log(
+            Log.INFO, TAG,
+            "CardView color write on unmanaged id=$idName class=${view.javaClass.name}",
+        )
     }
 
     private fun applyStandalone(view: View) {
@@ -557,6 +585,7 @@ internal object SettingsCardBackgroundHook {
             restoreCardBackgroundColor(view, state.originalCardColor)
             view.clipToOutline = state.originalClipToOutline
         }
+        restoreHighlightSurface(view, state)
         state.applied = null
         state.signature = null
         state.failureLogged = false
@@ -610,7 +639,10 @@ internal object SettingsCardBackgroundHook {
     ): Boolean {
         if (standaloneTarget(view) == BLUETOOTH_CARD_ID) {
             val updated = withStandaloneWrite { setCardBackgroundColor(view, color) }
-            if (updated) view.clipToOutline = clipToOutline
+            if (updated) {
+                view.clipToOutline = clipToOutline
+                enforceHighlightSurface(view, state)
+            }
             return updated
         }
         val drawable = cloneAndTint(view, state.original, color) ?: return false
@@ -621,6 +653,33 @@ internal object SettingsCardBackgroundHook {
     private fun cardBackgroundColor(view: View): ColorStateList? = runCatching {
         view.javaClass.getMethod("getCardBackgroundColor").invoke(view) as? ColorStateList
     }.getOrNull()
+
+    private fun highlightChild(view: View): View? {
+        val contentId = view.resources.getIdentifier(BLUETOOTH_CARD_CONTENT_ID, "id", SETTINGS_PACKAGE)
+        return if (contentId != 0) (view as? ViewGroup)?.findViewById(contentId) else null
+    }
+
+    /**
+     * 清掉 view_high_light_root 子容器的自绘高亮表面：浅色主题该表面近白色不透明，
+     * 会完全盖住 CardView 内部填充与背景模糊（深色主题为半透明所以"看似正常"）。
+     * 子容器可能被 RecyclerView 重建（背景重新出现），每次应用时都重新检查。
+     */
+    private fun enforceHighlightSurface(view: View, state: StandaloneState) {
+        val child = highlightChild(view) ?: return
+        val background = child.background ?: return
+        if (!state.childCleared) {
+            state.childSurface = background
+            state.childCleared = true
+        }
+        withStandaloneWrite { child.background = null }
+    }
+
+    private fun restoreHighlightSurface(view: View, state: StandaloneState) {
+        if (!state.childCleared) return
+        highlightChild(view)?.let { child -> withStandaloneWrite { child.background = state.childSurface } }
+        state.childSurface = null
+        state.childCleared = false
+    }
 
     private fun setCardBackgroundColor(view: View, color: Int): Boolean = runCatching {
         // A previously applied drawable tint would override CardView's internal base color.

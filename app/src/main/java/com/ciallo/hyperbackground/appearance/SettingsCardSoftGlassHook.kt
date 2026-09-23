@@ -363,16 +363,16 @@ internal class SettingsSoftGlassDrawable(
         /** Apply the same Bionics material directly to a real, attached widget. */
         fun applyToView(view: View, color: Int, config: SoftGlassParams, density: Float): Boolean {
             val api = glassApi ?: return false
-            if (!isBionicsActive(view.context)) return false
+            if (!view.isAttachedToWindow || !view.isHardwareAccelerated || !isBionicsActive(view.context)) return false
             return runCatching {
                 val radius = (config.blurRadiusDp * density).roundToInt().coerceIn(0, 500)
-                api.backgroundMode.invoke(view, 1)
-                api.viewMode.invoke(view, 1)
-                api.clearBlend.invoke(view)
-                api.materialType.invoke(view, 1)
-                api.glassRadius.invoke(view, radius, radius)
-                api.setGlass.invoke(view, customizeViewParams(baseParams(), config, color))
-                api.enhanceFlag.invoke(view, 8192, 12288)
+                requireAccepted(api.backgroundMode, view, 1)
+                requireAccepted(api.viewMode, view, 1)
+                requireAccepted(api.clearBlend, view)
+                requireAccepted(api.materialType, view, 1)
+                requireAccepted(api.glassRadius, view, radius, radius)
+                requireAccepted(api.setGlass, view, customizeViewParams(baseParams(), config, color))
+                requireAccepted(api.enhanceFlag, view, 8192, 12288)
 
                 // Keep the drawable as the View outline source, but let the shader own the fill.
                 val background = view.background?.mutate()
@@ -380,7 +380,27 @@ internal class SettingsSoftGlassDrawable(
                 if (background != null && background !== view.background) view.background = background
                 view.invalidate()
                 true
+            }.onFailure {
+                // A setter can fail after earlier calls succeeded. Always undo the partial state
+                // before the caller swaps in its transparent fallback.
+                clearFromView(view)
             }.getOrDefault(false)
+        }
+
+        /** Clear only the native material state; the caller owns/restores the background. */
+        fun clearFromView(view: View) {
+            val api = glassApi ?: return
+            runCatching { api.materialType.invoke(view, 0) }
+            runCatching { api.glassRadius.invoke(view, 0, 0) }
+            runCatching { api.enhanceFlag.invoke(view, 0, 12288) }
+            runCatching { api.clearBlend.invoke(view) }
+            runCatching { api.viewMode.invoke(view, 0) }
+            runCatching { api.backgroundMode.invoke(view, 0) }
+            view.invalidate()
+        }
+
+        private fun requireAccepted(method: Method, target: View, vararg args: Any) {
+            check(method.invoke(target, *args) != false) { "${method.name} rejected the material" }
         }
 
         private fun bionicMaterialSupported(): Boolean = runCatching {

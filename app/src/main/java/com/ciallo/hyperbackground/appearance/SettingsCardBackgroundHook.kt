@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -13,12 +14,14 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import io.github.libxposed.api.XposedInterface.ExceptionMode
 import io.github.libxposed.api.XposedModule
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
+import java.util.Collections
 import java.util.WeakHashMap
 
 /**
@@ -49,6 +52,8 @@ internal object SettingsCardBackgroundHook {
     )
     private var groupClipAvailable = false
     private val states = WeakHashMap<Any, State>()
+    private val standaloneStates = Collections.synchronizedMap(WeakHashMap<View, StandaloneState>())
+    private val standaloneWrite = ThreadLocal<Boolean>()
     private val handler by lazy { Handler(Looper.getMainLooper()) }
     private var preferences: SharedPreferences? = null
     private lateinit var module: XposedModule
@@ -79,6 +84,22 @@ internal object SettingsCardBackgroundHook {
         var failed = false
     }
 
+    private class StandaloneState(
+        var original: Drawable?,
+        val originalClipToOutline: Boolean,
+    ) {
+        var applied: Drawable? = null
+        var signature: StandaloneSignature? = null
+        var material = STANDALONE_MATERIAL_NONE
+        var failureLogged = false
+    }
+
+    private data class StandaloneSignature(
+        val paletteHash: Int,
+        val night: Boolean,
+        val originalIdentity: Int,
+    )
+
     private val refresh = Runnable {
         val tracked = synchronized(states) { states.entries.map { it.key to it.value } }
         for ((owner, state) in tracked) {
@@ -86,6 +107,8 @@ internal object SettingsCardBackgroundHook {
             update(owner, state, context)
             state.host?.get()?.invalidate()
         }
+        val standalone = synchronized(standaloneStates) { standaloneStates.keys.toList() }
+        standalone.forEach(::applyStandalone)
     }
 
     // Keep a strong reference: SharedPreferences holds its listeners weakly.
@@ -116,7 +139,12 @@ internal object SettingsCardBackgroundHook {
             .onFailure { module.log(Log.WARN, TAG, "Recycler group color hook unavailable", it) }
         runCatching { installPreference(classLoader) }
             .onFailure { module.log(Log.WARN, TAG, "Preference group color hook unavailable", it) }
+        runCatching { installStandaloneCards() }
+            .onFailure { module.log(Log.WARN, TAG, "Standalone Settings card hook unavailable", it) }
     }
+
+    /** True when the exact custom card is owned by the new material router. */
+    fun managesStandalone(view: View): Boolean = palette.enabled && standaloneTarget(view) != null
 
     private fun readPalette(prefs: SharedPreferences): Palette {
         val values = prefs.all
@@ -194,6 +222,220 @@ internal object SettingsCardBackgroundHook {
                 result
             }
         module.log(Log.INFO, TAG, "Installed Preference group colors for light and dark themes")
+    }
+
+    /**
+     * A few Settings 17 pages use ordinary LinearLayouts/CardViews instead of MIUIX group
+     * decorations. Route only the verified resource ids through the same palette. Hooking the
+     * framework attach dispatch also covers RecyclerView rows without scanning every screen.
+     */
+    private fun installStandaloneCards() {
+        val attach = View::class.java.declaredMethods.firstOrNull {
+            it.name == "dispatchAttachedToWindow" && it.parameterCount == 2
+        } ?: error("View.dispatchAttachedToWindow not found")
+        attach.isAccessible = true
+        module.hook(attach).setExceptionMode(ExceptionMode.PROTECTIVE)
+            .setId("settings-cards:standalone-attach").intercept { chain ->
+                val result = chain.proceed()
+                (chain.thisObject as? View)?.let(::applyStandalone)
+                result
+            }
+
+        View::class.java.declaredMethods.firstOrNull {
+            it.name == "dispatchDetachedFromWindow" && it.parameterCount == 0
+        }?.apply { isAccessible = true }?.let { detach ->
+            module.hook(detach).setExceptionMode(ExceptionMode.PROTECTIVE)
+                .setId("settings-cards:standalone-detach").intercept { chain ->
+                    val view = chain.thisObject as? View
+                    val state = view?.let { synchronized(standaloneStates) { standaloneStates[it] } }
+                    if (view != null && state != null) {
+                        clearStandaloneMaterial(view, state)
+                        state.signature = null
+                    }
+                    chain.proceed()
+                }
+        }
+
+        // Some feature sessions replace their card drawable after inflation. Treat that new
+        // drawable as the native original, then re-apply the selected mode on the next frame.
+        val setBackground = View::class.java.getMethod("setBackground", Drawable::class.java)
+        module.hook(setBackground).setExceptionMode(ExceptionMode.PROTECTIVE)
+            .setId("settings-cards:standalone-background").intercept { chain ->
+                if (standaloneWrite.get() == true) return@intercept chain.proceed()
+                val view = chain.thisObject as? View
+                val result = chain.proceed()
+                if (view != null && standaloneTarget(view) != null) {
+                    val state = standaloneState(view)
+                    state.original = view.background
+                    state.applied = null
+                    state.signature = null
+                    if (palette.enabled && view.isAttachedToWindow) {
+                        view.post { applyStandalone(view) }
+                    }
+                }
+                result
+            }
+        module.log(Log.INFO, TAG, "Installed standalone card material routing")
+    }
+
+    private fun applyStandalone(view: View) {
+        val target = standaloneTarget(view) ?: return
+        val state = standaloneState(view)
+        val colors = palette
+        if (!colors.enabled) {
+            restoreStandalone(view, state)
+            return
+        }
+        if (!view.isAttachedToWindow) return
+
+        val night = view.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
+        val signature = StandaloneSignature(
+            colors.hashCode(),
+            night,
+            System.identityHashCode(state.original),
+        )
+        if (state.signature == signature && state.applied === view.background) return
+
+        clearStandaloneMaterial(view, state)
+        val dark = night && !colors.darkFollowsLight
+        val density = view.resources.displayMetrics.density
+        val applied = when (colors.mode) {
+            CARD_BACKGROUND_COLOR -> {
+                val color = if (dark) colors.dark else colors.light
+                val drawable = cloneAndTint(view, state.original, color)
+                if (drawable == null) false else {
+                    setStandaloneBackground(view, drawable, state.originalClipToOutline)
+                    true
+                }
+            }
+            CARD_BACKGROUND_FROST -> {
+                val color = if (dark) colors.darkFrost else colors.lightFrost
+                val drawable = cloneAndTint(view, state.original, color)
+                if (drawable == null) false else {
+                    setStandaloneBackground(view, drawable, true)
+                    val ready = withStandaloneWrite {
+                        SettingsCardFrostDrawable.applyToView(
+                            view,
+                            if (dark) colors.darkBlur else colors.lightBlur,
+                            density,
+                        )
+                    }
+                    if (ready) state.material = STANDALONE_MATERIAL_FROST
+                    ready
+                }
+            }
+            CARD_BACKGROUND_SOFT_GLASS -> {
+                val color = if (dark) colors.darkFrost else colors.lightFrost
+                val drawable = cloneDrawable(view, state.original)
+                if (drawable == null) false else {
+                    setStandaloneBackground(view, drawable, true)
+                    val ready = withStandaloneWrite {
+                        SettingsSoftGlassDrawable.applyToView(
+                            view,
+                            color,
+                            if (dark) colors.darkGlass else colors.lightGlass,
+                            density,
+                        )
+                    }
+                    if (ready) state.material = STANDALONE_MATERIAL_GLASS
+                    ready
+                }
+            }
+            else -> false
+        }
+
+        if (!applied) {
+            clearStandaloneMaterial(view, state)
+            val transparent = cloneAndTint(view, state.original, Color.TRANSPARENT)
+                ?: ColorDrawable(Color.TRANSPARENT)
+            setStandaloneBackground(view, transparent, state.originalClipToOutline)
+            if (!state.failureLogged) {
+                state.failureLogged = true
+                module.log(
+                    Log.WARN,
+                    TAG,
+                    "Standalone card $target cannot use mode=${colors.mode}; using transparent fallback",
+                )
+            }
+        } else {
+            state.failureLogged = false
+        }
+        state.applied = view.background
+        state.signature = signature
+        view.invalidate()
+    }
+
+    private fun restoreStandalone(view: View, state: StandaloneState) {
+        if (state.applied == null && state.material == STANDALONE_MATERIAL_NONE) return
+        clearStandaloneMaterial(view, state)
+        withStandaloneWrite {
+            view.background = state.original
+            view.clipToOutline = state.originalClipToOutline
+        }
+        state.applied = null
+        state.signature = null
+        state.failureLogged = false
+        view.invalidate()
+    }
+
+    private fun clearStandaloneMaterial(view: View, state: StandaloneState) {
+        when (state.material) {
+            STANDALONE_MATERIAL_FROST -> SettingsCardFrostDrawable.clearFromView(view)
+            STANDALONE_MATERIAL_GLASS -> SettingsSoftGlassDrawable.clearFromView(view)
+        }
+        state.material = STANDALONE_MATERIAL_NONE
+    }
+
+    private fun standaloneState(view: View): StandaloneState = synchronized(standaloneStates) {
+        standaloneStates.getOrPut(view) { StandaloneState(view.background, view.clipToOutline) }
+    }
+
+    private fun standaloneTarget(view: View): String? {
+        if (view.context.packageName != SETTINGS_PACKAGE || view.id == View.NO_ID || view.id == 0) return null
+        val name = runCatching { view.resources.getResourceEntryName(view.id) }.getOrNull() ?: return null
+        if (name !in STANDALONE_CARD_IDS) return null
+        if (name != BLUETOOTH_CARD_ID) return name
+
+        // view_corner is generic; the Bluetooth row is the CardView that owns
+        // view_high_light_root in preference_bt_icon_corner.
+        if (!view.javaClass.name.contains("CardView")) return null
+        val contentId = view.resources.getIdentifier(BLUETOOTH_CARD_CONTENT_ID, "id", SETTINGS_PACKAGE)
+        return if (contentId != 0 && (view as? ViewGroup)?.findViewById<View>(contentId) != null) name else null
+    }
+
+    private fun cloneAndTint(view: View, source: Drawable?, color: Int): Drawable? =
+        cloneDrawable(view, source)?.let { drawable ->
+            runCatching {
+                // The legacy light-card hook may already have lowered the source alpha.
+                // A selected card style owns its complete ARGB value, so do not multiply
+                // that value by a stale drawable alpha when cloning the native shape.
+                drawable.alpha = 255
+                drawable.setTint(color)
+                drawable
+            }.getOrNull()
+        }
+
+    private fun cloneDrawable(view: View, source: Drawable?): Drawable? = runCatching {
+        source?.constantState?.newDrawable(view.resources, view.context.theme)?.mutate()
+            ?: source?.constantState?.newDrawable()?.mutate()
+    }.getOrNull()
+
+    private fun setStandaloneBackground(view: View, drawable: Drawable, clipToOutline: Boolean) {
+        withStandaloneWrite {
+            view.background = drawable
+            view.clipToOutline = clipToOutline
+        }
+    }
+
+    private inline fun <T> withStandaloneWrite(block: () -> T): T {
+        val previous = standaloneWrite.get()
+        standaloneWrite.set(true)
+        return try {
+            block()
+        } finally {
+            if (previous == true) standaloneWrite.set(true) else standaloneWrite.remove()
+        }
     }
 
     private fun installDrawHooks(type: Class<*>, access: Access, name: String, id: String) {
@@ -385,4 +627,18 @@ internal object SettingsCardBackgroundHook {
         }
         return null
     }
+
+    private const val SETTINGS_PACKAGE = "com.android.settings"
+    private const val BLUETOOTH_CARD_ID = "view_corner"
+    private const val BLUETOOTH_CARD_CONTENT_ID = "view_high_light_root"
+    private const val STANDALONE_MATERIAL_NONE = 0
+    private const val STANDALONE_MATERIAL_FROST = 1
+    private const val STANDALONE_MATERIAL_GLASS = 2
+    private val STANDALONE_CARD_IDS = setOf(
+        "lock_screen_notification_card",
+        "float_notification_card",
+        "show_app_badge_card",
+        "device_params",
+        BLUETOOTH_CARD_ID,
+    )
 }

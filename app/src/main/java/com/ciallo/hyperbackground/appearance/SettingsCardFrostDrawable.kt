@@ -10,6 +10,7 @@ import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.graphics.RenderNode
 import android.graphics.drawable.Drawable
+import android.provider.Settings
 import android.view.View
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
@@ -175,7 +176,50 @@ internal class SettingsCardFrostDrawable(
 
     private class BlurApi(val renderNode: Field, val backgroundMode: Method, val viewMode: Method, val radius: Method)
 
+    private class DirectBlurApi(
+        val backgroundMode: Method,
+        val viewMode: Method,
+        val radius: Method,
+        val clearBlend: Method,
+        val enhanceFlag: Method,
+    )
+
     companion object {
+        /** Apply the classic blur branch to a real attached card View. */
+        fun applyToView(view: View, radiusDp: Int, density: Float): Boolean {
+            val api = directBlurApi ?: return false
+            if (!view.isAttachedToWindow || !view.isHardwareAccelerated) return false
+            val enabled = runCatching {
+                Settings.Secure.getInt(view.context.contentResolver, "background_blur_enable", 0) == 1
+            }.getOrDefault(false)
+            if (!enabled) return false
+            return runCatching {
+                val radius = (radiusDp.coerceIn(0, 80) * density).roundToInt().coerceIn(0, 400)
+                requireAccepted(api.backgroundMode, view, 1)
+                requireAccepted(api.viewMode, view, 1)
+                requireAccepted(api.clearBlend, view)
+                requireAccepted(api.radius, view, radius)
+                requireAccepted(api.enhanceFlag, view, 4096, 12288)
+                view.invalidate()
+                true
+            }.onFailure { clearFromView(view) }.getOrDefault(false)
+        }
+
+        /** Clear only the classic native blur state; the caller restores the drawable. */
+        fun clearFromView(view: View) {
+            val api = directBlurApi ?: return
+            runCatching { api.radius.invoke(view, 0) }
+            runCatching { api.enhanceFlag.invoke(view, 0, 12288) }
+            runCatching { api.clearBlend.invoke(view) }
+            runCatching { api.viewMode.invoke(view, 0) }
+            runCatching { api.backgroundMode.invoke(view, 0) }
+            view.invalidate()
+        }
+
+        private fun requireAccepted(method: Method, target: View, vararg args: Any) {
+            check(method.invoke(target, *args) != false) { "${method.name} rejected the material" }
+        }
+
         private val blurApi: BlurApi by lazy {
             val intType = Int::class.javaPrimitiveType!!
             BlurApi(
@@ -184,6 +228,19 @@ internal class SettingsCardFrostDrawable(
                 View::class.java.getMethod("setMiViewBlurMode", intType),
                 View::class.java.getMethod("setMiBackgroundBlurRadius", intType),
             )
+        }
+
+        private val directBlurApi: DirectBlurApi? by lazy {
+            val intType = Int::class.javaPrimitiveType!!
+            runCatching {
+                DirectBlurApi(
+                    View::class.java.getMethod("setMiBackgroundBlurMode", intType),
+                    View::class.java.getMethod("setMiViewBlurMode", intType),
+                    View::class.java.getMethod("setMiBackgroundBlurRadius", intType),
+                    View::class.java.getMethod("clearMiBackgroundBlendColor"),
+                    View::class.java.getMethod("setMiBackgroundBlurEnhanceFlag", intType, intType),
+                )
+            }.getOrNull()
         }
     }
 }

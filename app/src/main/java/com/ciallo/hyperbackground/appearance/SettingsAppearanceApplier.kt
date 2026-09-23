@@ -527,6 +527,7 @@ object SettingsAppearanceApplier {
 
     fun cardFinalColorReplacement(view: View, original: Int): Int? {
         if (view.context.packageName != "com.android.settings" || !isLightMode(view)) return null
+        if (SettingsCardBackgroundHook.managesStandalone(view)) return null
         if (!isCardLike(view)) return null
         val opacity = lightCardOpacity(view.context)
         if (opacity >= 100) return null
@@ -539,6 +540,7 @@ object SettingsAppearanceApplier {
 
     fun cardFinalDrawableReplacement(view: View, drawable: Drawable) {
         if (view.context.packageName != "com.android.settings" || !isLightMode(view)) return
+        if (SettingsCardBackgroundHook.managesStandalone(view)) return
         if (!isCardLike(view)) return
         val opacity = lightCardOpacity(view.context)
         if (opacity >= 100) return
@@ -606,6 +608,7 @@ object SettingsAppearanceApplier {
 
     fun cardBlurAlpha(view: View): Float? {
         if (view.context.packageName != "com.android.settings") return null
+        if (SettingsCardBackgroundHook.managesStandalone(view)) return null
         if (!isLightMode(view) || !isCardLike(view)) return null
         val source = SettingsAppearanceSources.query(view.context, APPEARANCE_SLOT_DEVICE)
         if (source.lightCardOpacity >= 100) return null
@@ -1236,6 +1239,7 @@ object SettingsAppearanceApplier {
 
         private fun isCard(view: View): Boolean {
             if (view.width <= 0 || view.height <= 0) return false
+            if (SettingsCardBackgroundHook.managesStandalone(view)) return false
             val name = runCatching {
                 if (view.id == View.NO_ID || view.id == 0) ""
                 else activity.resources.getResourceEntryName(view.id).lowercase()

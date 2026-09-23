@@ -327,6 +327,14 @@
     <string name="settings_card_glass_background_saturation">Background saturation</string>
     <string name="settings_card_glass_background_brightness">Background brightness</string>
     <string name="settings_card_glass_highlight">Highlight</string>
-    <string name="settings_card_material_restore">Restore material defaults</string>
+    <string name="settings_card_menu_actions">More actions</string>
+    <string name="settings_card_export">Export config</string>
+    <string name="settings_card_import">Import config</string>
+    <string name="settings_card_reset">Restore default</string>
+    <string name="settings_card_reset_confirm">Restore the default card configuration? The current card settings will be overwritten.</string>
+    <string name="settings_card_export_done">Card configuration copied to clipboard</string>
+    <string name="settings_card_import_empty">Clipboard is empty</string>
+    <string name="settings_card_import_done">Card configuration imported</string>
+    <string name="settings_card_import_failed">Import failed: not a valid card configuration</string>
     <string name="slider_range_hint">Range: %1$s ~ %2$s</string>
 </resources>

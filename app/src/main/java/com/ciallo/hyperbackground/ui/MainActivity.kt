@@ -1,5 +1,8 @@
 package com.ciallo.hyperbackground.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.ImageDecoder
 import android.graphics.RenderEffect
@@ -25,10 +28,13 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.pager.HorizontalPager
@@ -56,6 +62,7 @@ import com.ciallo.hyperbackground.BackgroundContract
 import com.ciallo.hyperbackground.util.ConfigManager
 import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.appearance.AppearanceUiController
+import com.ciallo.hyperbackground.appearance.CardConfigCodec
 import com.ciallo.hyperbackground.appearance.DeviceProfileSettings
 import com.ciallo.hyperbackground.appearance.SettingsAppearanceSettings
 import com.ciallo.hyperbackground.ui.pages.BackgroundDetailPage
@@ -71,6 +78,10 @@ import com.ciallo.hyperbackground.ui.pages.RestartScopesDialog
 import com.ciallo.hyperbackground.ui.pages.UpdateAvailableDialog
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.DropdownEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
@@ -80,6 +91,8 @@ import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.blur.layerBackdrop
@@ -89,11 +102,14 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Home
 import top.yukonga.miuix.kmp.icon.extended.Info
+import top.yukonga.miuix.kmp.icon.extended.More
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.Refresh
+import top.yukonga.miuix.kmp.menu.OverlayIconDropdownMenu
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
+import top.yukonga.miuix.kmp.window.WindowDialog
 
 class MainActivity : ComponentActivity() {
     lateinit var config: ConfigManager
@@ -225,6 +241,35 @@ class MainActivity : ComponentActivity() {
         }.onFailure {
             toast(getString(R.string.save_failed, it.message ?: "Unknown error"))
         }
+    }
+
+    /** 导出当前卡片配置到剪贴板；JSON 结构（version/type/card）见 CardConfigCodec。 */
+    private fun exportCardConfig(clipboard: ClipboardManager) {
+        runCatching {
+            val json = CardConfigCodec.encode(appearance)
+            clipboard.setPrimaryClip(
+                ClipData.newPlainText(getString(R.string.settings_card_material_title), json),
+            )
+        }.onSuccess {
+            toast(R.string.settings_card_export_done)
+        }.onFailure {
+            toast(getString(R.string.save_failed, it.message ?: "Unknown error"))
+        }
+    }
+
+    /** 从剪贴板导入卡片配置：version/type 校验通过后只覆盖卡片字段，其余外观配置保持不动。 */
+    private fun importCardConfig(clipboard: ClipboardManager) {
+        val raw = clipboard.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()?.trim().orEmpty()
+        if (raw.isBlank()) {
+            toast(R.string.settings_card_import_empty)
+            return
+        }
+        runCatching { CardConfigCodec.decode(raw) }
+            .onSuccess { incoming ->
+                updateAppearance { CardConfigCodec.mergeCard(it, incoming) }
+                toast(R.string.settings_card_import_done)
+            }
+            .onFailure { toast(R.string.settings_card_import_failed) }
     }
 
     /**
@@ -692,7 +737,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** 卡片材质二级页：顶栏下浅色/深色 TabRow，跟随 IslandMaterialPage 的布局。 */
+    /**
+     * 卡片材质二级页：顶栏下浅色/深色 TabRow，右上角菜单提供「导出配置 / 导入配置 / 恢复默认」，
+     * 布局与交互对齐 IslandMaterialPage；配置导出到剪贴板、导入前校验 version/type 标识。
+     */
     @Composable
     private fun CardMaterialScreen(onBack: () -> Unit) {
         val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
@@ -705,6 +753,24 @@ class MainActivity : ComponentActivity() {
         val title = getString(R.string.settings_card_material_title)
         val pagerState = rememberPagerState(pageCount = { 2 })
         val scope = rememberCoroutineScope()
+        val clipboard = remember { this@MainActivity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager }
+        var resetDialog by remember { mutableStateOf(false) }
+        val menuEntry = DropdownEntry(
+            items = listOf(
+                DropdownItem(
+                    text = getString(R.string.settings_card_export),
+                    onClick = { exportCardConfig(clipboard) },
+                ),
+                DropdownItem(
+                    text = getString(R.string.settings_card_import),
+                    onClick = { importCardConfig(clipboard) },
+                ),
+                DropdownItem(
+                    text = getString(R.string.settings_card_reset),
+                    onClick = { resetDialog = true },
+                ),
+            ),
+        )
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
@@ -717,6 +783,14 @@ class MainActivity : ComponentActivity() {
                         navigationIcon = {
                             IconButton(onClick = onBack) {
                                 Icon(MiuixIcons.Back, contentDescription = getString(R.string.back))
+                            }
+                        },
+                        actions = {
+                            OverlayIconDropdownMenu(entry = menuEntry) {
+                                Icon(
+                                    MiuixIcons.More,
+                                    contentDescription = getString(R.string.settings_card_menu_actions),
+                                )
                             }
                         },
                     )
@@ -740,6 +814,37 @@ class MainActivity : ComponentActivity() {
                 padding = padding,
                 pagerState = pagerState,
             )
+        }
+        WindowDialog(
+            show = resetDialog,
+            title = getString(R.string.settings_card_reset),
+            onDismissRequest = { resetDialog = false },
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    text = getString(R.string.settings_card_reset_confirm),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    TextButton(
+                        text = getString(R.string.cancel),
+                        onClick = { resetDialog = false },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Button(
+                        onClick = {
+                            updateAppearance { CardConfigCodec.reset(it) }
+                            resetDialog = false
+                            toast(R.string.restore_default)
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColorsPrimary(),
+                    ) { Text(getString(R.string.confirm)) }
+                }
+            }
         }
     }
 

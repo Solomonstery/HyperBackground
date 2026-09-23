@@ -18,15 +18,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ciallo.hyperbackground.R
-import com.ciallo.hyperbackground.appearance.DEFAULT_DARK_FROST_COLOR
-import com.ciallo.hyperbackground.appearance.DEFAULT_LIGHT_FROST_COLOR
 import com.ciallo.hyperbackground.appearance.SoftGlassParams
 import com.ciallo.hyperbackground.ui.MainActivity
 import com.ciallo.hyperbackground.ui.components.CardColorPreference
 import com.ciallo.hyperbackground.ui.components.SectionTitle
 import com.ciallo.hyperbackground.ui.components.SliderPreference
 import com.ciallo.hyperbackground.ui.components.UiCard
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 
 /**
@@ -93,28 +90,6 @@ private fun MaterialThemeTab(activity: MainActivity, dark: Boolean, padding: Pad
                 }
             }
             item { SoftGlassSection(activity, dark) }
-            item {
-                UiCard(activity, Modifier.fillMaxWidth()) {
-                    BasicComponent(
-                        title = stringResource(R.string.settings_card_material_restore),
-                        onClick = {
-                            activity.updateAppearance {
-                            if (dark) {
-                                it.copy(
-                                    darkFrostColor = DEFAULT_DARK_FROST_COLOR,
-                                    darkSoftGlass = SoftGlassParams(),
-                                )
-                            } else {
-                                it.copy(
-                                    lightFrostColor = DEFAULT_LIGHT_FROST_COLOR,
-                                    lightSoftGlass = SoftGlassParams(),
-                                )
-                            }
-                            }
-                        },
-                    )
-                }
-            }
         }
     }
 }

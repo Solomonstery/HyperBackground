@@ -90,6 +90,14 @@
     <string name="settings_card_glass_background_saturation">背景饱和度</string>
     <string name="settings_card_glass_background_brightness">背景亮度</string>
     <string name="settings_card_glass_highlight">高光</string>
-    <string name="settings_card_material_restore">恢复默认材质参数</string>
+    <string name="settings_card_menu_actions">更多操作</string>
+    <string name="settings_card_export">导出配置</string>
+    <string name="settings_card_import">导入配置</string>
+    <string name="settings_card_reset">恢复默认</string>
+    <string name="settings_card_reset_confirm">确定恢复默认卡片配置？当前卡片设置将被覆盖。</string>
+    <string name="settings_card_export_done">配置已复制到剪贴板</string>
+    <string name="settings_card_import_empty">剪贴板为空</string>
+    <string name="settings_card_import_done">配置导入成功</string>
+    <string name="settings_card_import_failed">导入失败：不是有效的卡片配置</string>
     <string name="slider_range_hint">范围：%1$s ~ %2$s</string>
 </resources>

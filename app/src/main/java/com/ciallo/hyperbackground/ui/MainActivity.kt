@@ -68,6 +68,7 @@ import com.ciallo.hyperbackground.appearance.SettingsAppearanceSettings
 import com.ciallo.hyperbackground.ui.pages.BackgroundDetailPage
 import com.ciallo.hyperbackground.ui.pages.AboutPage
 import com.ciallo.hyperbackground.ui.pages.ChangelogPage
+import com.ciallo.hyperbackground.ui.pages.DonatePage
 import com.ciallo.hyperbackground.ui.pages.DeviceCardPage
 import com.ciallo.hyperbackground.ui.pages.DeviceInfoPage
 import com.ciallo.hyperbackground.ui.pages.HomePage
@@ -476,8 +477,10 @@ class MainActivity : ComponentActivity() {
                     onAccent = onAccent,
                     onOpenBackground = openRoute,
                     onOpenChangelog = { openRoute(ROUTE_CHANGELOG) },
+                    onOpenDonate = { openRoute(ROUTE_DONATE) },
                 )
                     ROUTE_CHANGELOG -> ChangelogScreen(onBack = popRoute)
+                    ROUTE_DONATE -> DonateScreen(onBack = popRoute)
                     ROUTE_DEVICE_CARD -> DeviceCardScreen(onBack = popRoute)
                     ROUTE_DEVICE_INFO -> DeviceInfoScreen(onBack = popRoute)
                     ROUTE_RANDOM_BG -> RandomBackgroundScreen(onBack = popRoute)
@@ -504,6 +507,7 @@ class MainActivity : ComponentActivity() {
         onAccent: (Int) -> Unit,
         onOpenBackground: (String) -> Unit,
         onOpenChangelog: () -> Unit,
+        onOpenDonate: () -> Unit,
     ) {
         val pagerState = rememberPagerState(pageCount = { 3 })
         val scope = rememberCoroutineScope()
@@ -644,6 +648,7 @@ class MainActivity : ComponentActivity() {
                                 modifier = scrollModifier,
                                 padding = padding,
                                 onOpenChangelog = onOpenChangelog,
+                                onOpenDonate = onOpenDonate,
                             )
                         }
                     }
@@ -883,6 +888,40 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
+    private fun DonateScreen(onBack: () -> Unit) {
+        val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+        val hasUiBackground = remember(revision) { currentUiBackgroundFile().isFile }
+        val topBarColor = if (hasUiBackground) {
+            Color.Transparent
+        } else {
+            MiuixTheme.colorScheme.surface.copy(alpha = cardOpacity)
+        }
+        val title = getString(R.string.donate)
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    color = topBarColor,
+                    title = title,
+                    largeTitle = title,
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(MiuixIcons.Back, contentDescription = getString(R.string.back))
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            DonatePage(
+                activity = this@MainActivity,
+                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                padding = padding,
+            )
+        }
+    }
+
+    @Composable
     private fun DeviceCardScreen(onBack: () -> Unit) {
         val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
         val hasUiBackground = remember(revision) { currentUiBackgroundFile().isFile }
@@ -1036,6 +1075,7 @@ class MainActivity : ComponentActivity() {
         // 二级页导航哨兵：复用 detailSlot 的 AnimatedContent/返回动画承载更新日志与外观页，
         // 取一个不会与背景 slot（home/device/global）冲突的值。
         const val ROUTE_CHANGELOG = "__changelog__"
+        const val ROUTE_DONATE = "__donate__"
         const val ROUTE_DEVICE_CARD = "__appearance_device_card__"
         const val ROUTE_DEVICE_INFO = "__appearance_device_info__"
         const val ROUTE_RANDOM_BG = "__random_bg__"

@@ -277,6 +277,21 @@
     <string name="export_background_summary">Save to gallery (%1$s)</string>
     <string name="export_no_file">No background to export</string>
     <string name="export_done">Exported: %1$s</string>
+    <string name="config">Configuration</string>
+    <string name="settings_entry">Module entry in Settings</string>
+    <string name="settings_entry_summary">Add an entry that opens this module to the HyperOS Settings home screen</string>
+    <string name="settings_entry_same_group">Share the group above</string>
+    <string name="settings_entry_same_group_summary">Place the entry inside the same card as the item above it</string>
+    <string name="settings_entry_position">Entry position</string>
+    <string name="settings_entry_position_top">Top</string>
+    <string name="settings_entry_position_middle">Middle</string>
+    <string name="settings_entry_position_bottom">Bottom</string>
+    <string name="settings_entry_hint">Saved. Restart Settings to apply.</string>
+    <string name="hide_desktop_icon">Hide desktop icon</string>
+    <string name="hide_desktop_icon_summary">Hide the app icon from the launcher; open the module from LSPosed Manager afterwards</string>
+    <string name="hide_desktop_icon_done">Desktop icon hidden. Open the module from LSPosed Manager.</string>
+    <string name="hide_desktop_icon_visible">Desktop icon restored</string>
+    <string name="hide_desktop_icon_failed">Could not change the desktop icon</string>
     <string-array name="xposed_scope">
         <item>com.android.settings</item><item>com.milink.service</item><item>com.android.phone</item>
         <item>com.xiaomi.account</item><item>com.android.thememanager</item><item>com.miui.home</item>

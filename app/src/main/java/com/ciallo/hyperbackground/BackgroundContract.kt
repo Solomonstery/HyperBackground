@@ -94,6 +94,19 @@ object BackgroundContract {
     // 清除设置主页顶栏遮罩。只作用于 MiuiSettings 首页；开启时首页清除优先，
     // 其它设置二级页仍可继续使用全局顶栏模糊。
     const val UI_TOP_CLEAR_ENABLED = "ui_top_clear_enabled"
+    // 「配置」栏目 - 设置页软件入口：hook HyperOS 设置首页（MiuiSettings.updateHeaderList）插入一条
+    // 指向模块 MainActivity 的 Header。位置决定锚点条目，同组决定是否继承相邻条目的 groupId（同一张卡片）。
+    const val UI_SETTINGS_ENTRY_ENABLED = "ui_settings_entry_enabled"
+    const val UI_SETTINGS_ENTRY_POSITION = "ui_settings_entry_position"
+    const val UI_SETTINGS_ENTRY_SAME_GROUP = "ui_settings_entry_same_group"
+    const val SETTINGS_ENTRY_POSITION_TOP = "top"
+    const val SETTINGS_ENTRY_POSITION_MIDDLE = "middle"
+    const val SETTINGS_ENTRY_POSITION_BOTTOM = "bottom"
+    // 「配置」栏目 - 隐藏桌面图标：桌面图标由 MainActivityAlias 这个 activity-alias 承载，
+    // 禁用别名即隐藏图标（MainActivity 仍保留 LSPosed 管理器入口）。仅记录用户选择，实际状态以组件为准。
+    const val UI_HIDE_DESKTOP_ICON = "ui_hide_desktop_icon"
+    /** 承载 LAUNCHER 入口的 activity-alias 组件名后缀，与 AndroidManifest 保持一致。 */
+    const val ACTIVITY_ALIAS_SUFFIX = ".ui.MainActivityAlias"
     const val UI_SAYING_ENABLED = "ui_saying_enabled"
     const val UI_SAYING_API = "ui_saying_api"
     const val UI_SAYING_KEY = "ui_saying_key"

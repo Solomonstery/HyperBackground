@@ -64,6 +64,15 @@ fun hookMethod(
     }
 }
 
+/** 直接按已解析出的 [Method] 挂载：用于 Resources.getDrawable 这类同名同参数量、无法按签名唯一确定的重载。 */
+fun hookMethod(
+    method: Method,
+    before: (HookRuntime.LegacyHookParam.() -> Unit)? = null,
+    after: (HookRuntime.LegacyHookParam.() -> Unit)? = null,
+) {
+    HookRuntime.hook(method, wrap(before, after))
+}
+
 fun Any.callMethod(name: String, vararg args: Any?): Any? {
     val method = findCompatibleMethod(javaClass, name, args)
     return try {
@@ -77,6 +86,32 @@ fun Any.getObjectField(name: String): Any? = try {
     findField(javaClass, name).get(this)
 } catch (error: ReflectiveOperationException) {
     throw IllegalStateException(error)
+}
+
+/** 读取不可见字段（如厂商 Header 的 id/groupId），字段不存在或类型不符时返回 null 而不抛异常。 */
+fun Any.getLongFieldOrNull(name: String): Long? = try {
+    findField(javaClass, name).getLong(this)
+} catch (_: Throwable) {
+    null
+}
+
+/** 读取不可见 int 字段，失败返回 null。 */
+fun Any.getIntFieldOrNull(name: String): Int? = try {
+    findField(javaClass, name).getInt(this)
+} catch (_: Throwable) {
+    null
+}
+
+fun Any.setLongField(name: String, value: Long) {
+    findField(javaClass, name).setLong(this, value)
+}
+
+fun Any.setIntField(name: String, value: Int) {
+    findField(javaClass, name).setInt(this, value)
+}
+
+fun Any.setObjectField(name: String, value: Any?) {
+    findField(javaClass, name).set(this, value)
 }
 
 fun Any.setAdditionalInstanceField(key: String, value: Any?) {

@@ -39,6 +39,8 @@ object SettingsBackgroundHook {
         if (settings) {
             SettingsSearchMaskOverride.install(classLoader)
             SettingsTopBarBlurHook.install(classLoader)
+            // 「配置」栏目 - 设置页软件入口：往设置首页 Header 列表插入模块条目。
+            SettingsHomeEntryHook.install(classLoader)
             // 清除顶栏不再独立 hook，由 SettingsTopBarBlurHook 复用模糊管线（透明度归零）实现。
             hookHomeActivity(classLoader)
             hookHomeFragment(classLoader)

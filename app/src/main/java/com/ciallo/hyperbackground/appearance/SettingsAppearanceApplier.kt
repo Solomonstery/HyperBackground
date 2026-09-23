@@ -343,7 +343,7 @@ object SettingsAppearanceApplier {
             ViewGroup.LayoutParams.MATCH_PARENT,
             tutorialDp(context, 130),
         ))
-        val session = CosQuickCardsSession(context, root, parent, name, storage, row)
+        val session = CosQuickCardsSession(parent, name, storage, row)
         session.enforce()
         cosQuickCards[fragment] = session
     }
@@ -983,8 +983,6 @@ object SettingsAppearanceApplier {
     }
 
     private class CosQuickCardsSession(
-        context: android.content.Context,
-        root: View,
         private val parent: LinearLayout,
         private val name: View,
         private val storage: View,
@@ -994,12 +992,8 @@ object SettingsAppearanceApplier {
         private val originalChildVisibility = List(parent.childCount) { index ->
             parent.getChildAt(index)
         }.filter { child -> child !== view }.map { child -> child to child.visibility }
-        // COS 同时把参数大卡玻璃化（id device_params，圆角16），随会话一起恢复原状。
-        private val paramCard: View? = run {
-            val id = context.resources.getIdentifier("device_params", "id", context.packageName)
-            if (id != 0) root.findViewById(id) else null
-        }
-        private val originalParamBackground = paramCard?.background
+        // 参数大卡（device_params）由 SettingsCardBackgroundHook 的 standalone 路由接管，
+        // 与页面内其它原生卡片一致走「卡片样式」三种材质，这里不再写死玻璃色。
 
         fun matches(parent: LinearLayout, name: View, storage: View): Boolean =
             this.parent === parent && this.name === name && this.storage === storage && view.parent === parent
@@ -1008,13 +1002,6 @@ object SettingsAppearanceApplier {
             parent.background = null
             originalChildVisibility.forEach { (child, _) -> child.visibility = View.GONE }
             view.attach()
-            paramCard?.let { card ->
-                val radius = 16f * card.resources.displayMetrics.density
-                card.background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(CosTopCardView.GLASS)
-                    cornerRadius = radius
-                }
-            }
         }
 
         fun remove() {
@@ -1022,7 +1009,6 @@ object SettingsAppearanceApplier {
             (view.parent as? ViewGroup)?.removeView(view)
             parent.background = originalBackground
             originalChildVisibility.forEach { (child, visibility) -> child.visibility = visibility }
-            paramCard?.background = originalParamBackground
         }
     }
 

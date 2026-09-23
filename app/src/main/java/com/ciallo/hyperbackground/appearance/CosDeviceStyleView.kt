@@ -136,7 +136,8 @@ class CosTopCardView(
         subtitleView.setTextColor(if (night) 0xd9f5f5f7.toInt() else 0xcc17171a.toInt())
         signatureView.text = source.cosCardSignature.ifBlank { COS_CARD_DEFAULT_SIGNATURE }
         signatureView.setTextColor(if (night) 0x99f5f5f7.toInt() else 0x9917171a.toInt())
-        wash.setBackgroundColor(GLASS)
+        // 卡面材质：柔光玻璃 → 磨砂 → 纯色 → 透明（不支持时直接透明）。
+        SettingsCardBackgroundHook.applyCustomCardMaterial(wash, dp(20).toFloat())
     }
 
     private fun buildText(sp: Int, bold: Boolean) = TextView(context).apply {
@@ -173,8 +174,6 @@ class CosTopCardView(
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
 
     companion object {
-        const val GLASS = 0x24ffffff
-
         internal fun monetAccent(context: Context): Int = runCatching {
             context.getColor(android.R.color.system_accent1_500)
         }.getOrDefault(0xff7183aa.toInt())
@@ -300,8 +299,9 @@ class CosQuickCardsView(
     /** 背景、颜色、字号：构造时一次性设置。 */
     private fun applyStaticStyle() {
         val night = isNight()
-        deviceCard.background = glassDrawable(19)
-        storageCard.background = glassDrawable(19)
+        // 两张快卡的卡面同样交给卡片样式材质（不支持时透明）。
+        SettingsCardBackgroundHook.applyCustomCardMaterial(deviceCard, dp(19).toFloat())
+        SettingsCardBackgroundHook.applyCustomCardMaterial(storageCard, dp(19).toFloat())
         val primary = if (night) 0xfff5f5f7.toInt() else 0xff111114.toInt()
         val secondary = if (night) 0xffaaaab2.toInt() else 0xff777780.toInt()
         listOf(nameTitle, storageTitle).forEach {
@@ -329,11 +329,6 @@ class CosQuickCardsView(
         val stockStorage = sourceText(storageSource, "summary")
         storageValue.text = if (stockStorage.contains("GB")) stockStorage else computeStorageText()
         storageBar.ratio = computeStorageRatio()
-    }
-
-    private fun glassDrawable(radiusDp: Int) = GradientDrawable().apply {
-        setColor(CosTopCardView.GLASS)
-        cornerRadius = dp(radiusDp).toFloat()
     }
 
     private fun resolveDeviceName(): String {

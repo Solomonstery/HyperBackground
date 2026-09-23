@@ -1,13 +1,10 @@
 package com.ciallo.hyperbackground.appearance
 
 import android.content.Context
-import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.RippleDrawable
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -30,6 +27,8 @@ class DeviceInfoCardsView(
     private val storageTitle = TextView(context)
     private val storageSummary = TextView(context)
     private val storageProgress = StorageProgressView(context)
+    private lateinit var nameCard: View
+    private lateinit var storageCard: View
     private val updateListener = ViewTreeObserver.OnPreDrawListener {
         refresh()
         true
@@ -42,8 +41,8 @@ class DeviceInfoCardsView(
         clipToPadding = false
         gravity = Gravity.TOP
 
-        addView(deviceCard(context), LayoutParams(0, dp(148), 1f).apply { rightMargin = dp(4) })
-        addView(storageCard(context), LayoutParams(0, dp(148), 1f).apply { leftMargin = dp(4) })
+        addView(buildDeviceCard(context).also { nameCard = it }, LayoutParams(0, dp(148), 1f).apply { rightMargin = dp(4) })
+        addView(buildStorageCard(context).also { storageCard = it }, LayoutParams(0, dp(148), 1f).apply { leftMargin = dp(4) })
         isClickable = false
         refresh()
     }
@@ -61,7 +60,7 @@ class DeviceInfoCardsView(
         }
     }
 
-    private fun deviceCard(context: Context): View {
+    private fun buildDeviceCard(context: Context): View {
         val card = column(context).apply {
             setOnClickListener { nameSource.performClick() }
             isEnabled = nameSource.isEnabled
@@ -75,7 +74,7 @@ class DeviceInfoCardsView(
         return card
     }
 
-    private fun storageCard(context: Context): View {
+    private fun buildStorageCard(context: Context): View {
         val card = column(context).apply {
             setOnClickListener { storageSource.performClick() }
             isEnabled = storageSource.isEnabled
@@ -95,7 +94,6 @@ class DeviceInfoCardsView(
         orientation = VERTICAL
         gravity = Gravity.START
         setPadding(dp(16), 0, dp(16), dp(16))
-        background = rippleBackground(context)
         isClickable = true
         isFocusable = true
     }
@@ -115,6 +113,10 @@ class DeviceInfoCardsView(
         val secondary = themedColor(android.R.attr.textColorSecondary, if (isNight()) 0xB3FFFFFF.toInt() else 0x991B1B1B.toInt())
         listOf(nameTitle, storageTitle).forEach { configureText(it, primary, 16f) }
         listOf(nameSummary, storageSummary).forEach { configureText(it, secondary, 14f) }
+        // 两张小卡卡面走卡片样式材质（柔光玻璃 → 磨砂 → 纯色 → 透明），ripple 色保留点击反馈。
+        val ripple = themedColor(android.R.attr.colorControlHighlight, 0x22000000)
+        SettingsCardBackgroundHook.applyCustomCardMaterial(nameCard, dp(19).toFloat(), ripple)
+        SettingsCardBackgroundHook.applyCustomCardMaterial(storageCard, dp(19).toFloat(), ripple)
     }
 
     private fun configureText(view: TextView, color: Int, size: Float) {
@@ -145,21 +147,6 @@ class DeviceInfoCardsView(
         if (values.size < 2 || values[1] <= 0f) return 0
         return (values[0] / values[1] * 1000f).roundToInt().coerceIn(0, 1000)
     }
-
-    private fun rippleBackground(context: Context): RippleDrawable {
-        val card = GradientDrawable().apply {
-            setColor(tutorialCardBackground())
-            cornerRadius = dp(19).toFloat()
-        }
-        return RippleDrawable(ColorStateList.valueOf(themedColor(android.R.attr.colorControlHighlight, 0x22000000)), card, null)
-    }
-
-    private fun tutorialCardBackground(): Int {
-        val id = resources.getIdentifier("my_device_info_item_background_color", "color", context.packageName)
-        return if (id != 0) runCatching { context.getColor(id) }.getOrDefault(fallbackCardBackground()) else fallbackCardBackground()
-    }
-
-    private fun fallbackCardBackground() = if (isNight()) 0x33FFFFFF else 0xFFFFFFFF.toInt()
 
     private fun accentColor(): Int {
         val id = resources.getIdentifier("system_accent1_200", "color", "android")

@@ -23,7 +23,6 @@ class TutorialDeviceCardView(
     private val backgroundSource: SettingsAppearanceSource,
     private val updateSource: View?,
 ) : FrameLayout(context) {
-    private val surface = View(context)
     private val bottomSurface = View(context)
     private val backgroundImage = ImageView(context)
     private val phone = ImageView(context)
@@ -40,10 +39,7 @@ class TutorialDeviceCardView(
         clipToPadding = true
         outlineProvider = ViewOutlineProvider.BACKGROUND
         clipToOutline = true
-        // Keep a real opaque card surface when no custom top image is imported.
-        // The host card background is cleared by TutorialCardSession, so this
-        // child must own the fallback fill itself.
-        addView(surface, LayoutParams(-1, -1))
+        // 卡面交给卡片样式材质（柔光玻璃/磨砂/纯色），不支持或开关关闭时直接透明。
         backgroundImage.scaleType = ImageView.ScaleType.CENTER_CROP
         addView(backgroundImage, LayoutParams(-1, -1))
         addView(bottomSurface.apply {
@@ -81,9 +77,8 @@ class TutorialDeviceCardView(
 
     fun refresh(context: Context, imageScale: Int, cardAuthor: String, logoScale: Int, logoVerticalOffset: Int, imageLogoSpacing: Int, logoTextSpacing: Int, backgroundBlur: Float, backgroundHorizontalOffset: Int, backgroundVerticalOffset: Int, backgroundScale: Int) {
         val night = isNight()
-        val surfaceColor = if (night) 0x5E313131.toInt() else 0x47545454.toInt()
-        surface.background = rounded(surfaceColor)
-        background = rounded(surfaceColor)
+        // 卡面材质：柔光玻璃 → 磨砂 → 纯色 → 透明（不支持时直接透明）。
+        SettingsCardBackgroundHook.applyCustomCardMaterial(this, dp(20f).toFloat())
         bottomSurface.background = GradientDrawable().apply {
             setColor(if (night) 0x33000000 else 0xB0FAFAFA.toInt())
             val radius = dp(20f).toFloat()
@@ -128,7 +123,6 @@ class TutorialDeviceCardView(
     private fun sourceText(source: View?, idName: String): String { val id = resources.getIdentifier(idName, "id", context.packageName); val target = source?.findViewById<View>(id) ?: source; return (target as? TextView)?.text?.toString().orEmpty() }
     private fun loadBuiltInLogo(): Drawable? = listOf("xiaomi_os_logo", "xiaomi_os_logo_new", "provision_os_logo", "provision_os_logo_big").asSequence().mapNotNull { name -> resources.getIdentifier(name, "drawable", context.packageName).takeIf { it != 0 }?.let { runCatching { context.getDrawable(it) }.getOrNull() } }.firstOrNull()
     private fun decode(context: Context, source: SettingsAppearanceSource): Drawable? = runCatching { if (!source.exists) return@runCatching null; ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.contentResolver, source.uri)) }.getOrNull()
-    private fun rounded(color: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(20f).toFloat() }
     private fun isNight() = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
     private fun dp(value: Float): Int = (value * resources.displayMetrics.density).toInt()
 }

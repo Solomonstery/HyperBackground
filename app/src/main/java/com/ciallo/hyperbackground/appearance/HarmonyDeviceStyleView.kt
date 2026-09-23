@@ -74,7 +74,8 @@ class HarmonyUpdateCardView(
     fun refresh(style: SettingsAppearanceSource) {
         val night = isNight()
         if (backgroundSource.exists) {
-            background = ColorDrawable(Color.TRANSPARENT)
+            // 自定义图盖满卡面：清掉材质状态，卡面保持透明让图直接可见。
+            SettingsCardBackgroundHook.clearCustomCardMaterial(this)
             backgroundImage.setImageDrawable(runCatching {
                 ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.contentResolver, backgroundSource.uri))
             }.getOrNull())
@@ -96,7 +97,8 @@ class HarmonyUpdateCardView(
             backgroundImage.setImageDrawable(null)
             backgroundImage.visibility = View.GONE
             backgroundImage.setRenderEffect(null)
-            background = cardSurface(night)
+            // 卡面材质：柔光玻璃 → 磨砂 → 纯色 → 透明（不支持时直接透明）。
+            SettingsCardBackgroundHook.applyCustomCardMaterial(this, dp(28).toFloat())
         }
         val secondary = if (night) 0xB8E9ECF5.toInt() else 0x991B1D23.toInt()
         version.setTextColor(textColor(style.style2VersionColorMode, secondary))
@@ -198,23 +200,6 @@ class HarmonyUpdateCardView(
         return (target as? TextView)?.text?.toString().orEmpty()
     }
 
-    private fun surfaceDrawable(night: Boolean, radius: Int) = GradientDrawable().apply {
-        setColor(if (night) 0xFF242932.toInt() else 0xFFF1F4FA.toInt())
-        cornerRadius = dp(radius).toFloat()
-    }
-
-    private fun cardSurface(night: Boolean) = GradientDrawable().apply {
-        setColor(cardBackground())
-        cornerRadius = dp(28).toFloat()
-    }
-
-    private fun cardBackground(): Int {
-        val id = resources.getIdentifier("my_device_info_item_background_color", "color", context.packageName)
-        return if (id != 0) runCatching { context.getColor(id) }.getOrDefault(fallbackCardBackground()) else fallbackCardBackground()
-    }
-
-    private fun fallbackCardBackground() = if (isNight()) 0x33FFFFFF else 0xFFFFFFFF.toInt()
-
     private fun loadBuiltInLogo(): Drawable? {
         val names = listOf("xiaomi_os_logo", "xiaomi_os_logo_new", "provision_os_logo", "provision_os_logo_big")
         return names.asSequence()
@@ -244,6 +229,8 @@ class HarmonyInfoCardsView(
     private val ring = StorageRingView(context)
     private var decodedImageKey = ""
     private var currentScale = 100
+    private lateinit var nameCard: View
+    private lateinit var storageCard: View
     private val updateListener = android.view.ViewTreeObserver.OnPreDrawListener {
         refresh(currentScale)
         true
@@ -257,8 +244,8 @@ class HarmonyInfoCardsView(
         gravity = Gravity.TOP
         clipChildren = false
         clipToPadding = false
-        addView(nameCard(), LayoutParams(0, dp(182), 1f).apply { rightMargin = dp(6) })
-        addView(storageCard(), LayoutParams(0, dp(182), 1f).apply { leftMargin = dp(6) })
+        addView(buildNameCard().also { nameCard = it }, LayoutParams(0, dp(182), 1f).apply { rightMargin = dp(6) })
+        addView(buildStorageCard().also { storageCard = it }, LayoutParams(0, dp(182), 1f).apply { leftMargin = dp(6) })
         refresh(currentScale)
     }
 
@@ -287,8 +274,9 @@ class HarmonyInfoCardsView(
             setColor(if (night) 0x223E7FEA else 0x154D83E8)
             shape = GradientDrawable.OVAL
         }
-        (nameTitle.parent?.parent as? View)?.background = cardBackground()
-        (storageTitle.parent?.parent as? View)?.background = cardBackground()
+        // 两张小卡卡面走卡片样式材质（柔光玻璃 → 磨砂 → 纯色 → 透明）。
+        SettingsCardBackgroundHook.applyCustomCardMaterial(nameCard, dp(28).toFloat())
+        SettingsCardBackgroundHook.applyCustomCardMaterial(storageCard, dp(28).toFloat())
     }
 
     fun attach() {
@@ -303,7 +291,7 @@ class HarmonyInfoCardsView(
         listenerAttached = false
     }
 
-    private fun nameCard(): View {
+    private fun buildNameCard(): View {
         val card = column().apply { setOnClickListener { nameSource.performClick() } }
         card.addView(labelBlock(nameTitle, nameSummary), LinearLayout.LayoutParams(-1, dp(70)))
         val imageHost = FrameLayout(context).apply {
@@ -318,7 +306,7 @@ class HarmonyInfoCardsView(
         return card
     }
 
-    private fun storageCard(): View {
+    private fun buildStorageCard(): View {
         val card = column().apply { setOnClickListener { storageSource.performClick() } }
         card.addView(labelBlock(storageTitle, storageSummary), LinearLayout.LayoutParams(-1, dp(70)))
         // Center the enlarged ring in the same 78dp footprint as the device
@@ -381,18 +369,6 @@ class HarmonyInfoCardsView(
     private fun decode(source: SettingsAppearanceSource): Drawable? = runCatching {
         ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.contentResolver, source.uri))
     }.getOrNull()
-
-    private fun cardBackground() = GradientDrawable().apply {
-        setColor(tutorialCardBackground())
-        cornerRadius = dp(28).toFloat()
-    }
-
-    private fun tutorialCardBackground(): Int {
-        val id = resources.getIdentifier("my_device_info_item_background_color", "color", context.packageName)
-        return if (id != 0) runCatching { context.getColor(id) }.getOrDefault(fallbackCardBackground()) else fallbackCardBackground()
-    }
-
-    private fun fallbackCardBackground() = if (isNight()) 0x33FFFFFF else 0xFFFFFFFF.toInt()
 
     private fun isNight() = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()

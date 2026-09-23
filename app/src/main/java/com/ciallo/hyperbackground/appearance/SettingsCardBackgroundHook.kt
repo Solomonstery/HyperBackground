@@ -11,6 +11,8 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -52,6 +54,9 @@ internal object SettingsCardBackgroundHook {
         KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS, KEY_CARD_DARK_FOLLOWS_LIGHT,
     )
     private var groupClipAvailable = false
+    /** 分组路由是否在该进程成功接管（Miuix 分组工厂 hook 至少一个成功）。 */
+    var routingAvailable: Boolean = false
+        private set
     private val states = WeakHashMap<Any, State>()
     private val standaloneStates = Collections.synchronizedMap(WeakHashMap<View, StandaloneState>())
     private val standaloneWrite = ThreadLocal<Boolean>()
@@ -111,6 +116,10 @@ internal object SettingsCardBackgroundHook {
         }
         val standalone = synchronized(standaloneStates) { standaloneStates.keys.toList() }
         standalone.forEach(::applyStandalone)
+        val custom = synchronized(customCards) { customCards.entries.map { it.key to it.value } }
+        for ((view, spec) in custom) {
+            applyCustomCardMaterial(view, spec.cornerRadiusPx, spec.rippleColor)
+        }
     }
 
     // Keep a strong reference: SharedPreferences holds its listeners weakly.
@@ -125,7 +134,12 @@ internal object SettingsCardBackgroundHook {
         }
     }
 
-    fun install(value: XposedModule, classLoader: ClassLoader, prefs: SharedPreferences) {
+    fun install(
+        value: XposedModule,
+        classLoader: ClassLoader,
+        prefs: SharedPreferences,
+        standalone: Boolean = true,
+    ) {
         module = value
         preferences?.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         preferences = prefs
@@ -137,16 +151,156 @@ internal object SettingsCardBackgroundHook {
         module.log(Log.INFO, TAG, "Card material runtime: clip=$groupClipAvailable " +
             "bionicsApi=${SettingsSoftGlassDrawable.hasBionicsApi()}")
         // Isolate both paths: a missing MIUIX class must not disable the other one.
-        runCatching { installRecycler(classLoader) }
+        var recycler = false
+        var preference = false
+        runCatching { installRecycler(classLoader) }.onSuccess { recycler = true }
             .onFailure { module.log(Log.WARN, TAG, "Recycler group color hook unavailable", it) }
-        runCatching { installPreference(classLoader) }
+        runCatching { installPreference(classLoader) }.onSuccess { preference = true }
             .onFailure { module.log(Log.WARN, TAG, "Preference group color hook unavailable", it) }
-        runCatching { installStandaloneCards(classLoader) }
-            .onFailure { module.log(Log.WARN, TAG, "Standalone Settings card hook unavailable", it) }
+        if (standalone) {
+            runCatching { installStandaloneCards(classLoader) }
+                .onFailure { module.log(Log.WARN, TAG, "Standalone Settings card hook unavailable", it) }
+        }
+        // 任一分组工厂 hook 成功即认为该进程存在 Miuix 分组卡片结构，三种样式可接管；
+        // 外部进程（如主题商店）据此决定是否豁免暴力透明，路由不可用时保持透明回退。
+        routingAvailable = recycler || preference
+        module.log(Log.INFO, TAG, "Card material routing available: $routingAvailable")
     }
 
     /** True when the exact custom card is owned by the new material router. */
     fun managesStandalone(view: View): Boolean = palette.enabled && standaloneTarget(view) != null
+
+    private const val CUSTOM_MATERIAL_NONE = 0
+    private const val CUSTOM_MATERIAL_FLAT = 1
+    private const val CUSTOM_MATERIAL_FROST = 2
+    private const val CUSTOM_MATERIAL_GLASS = 3
+    private const val CUSTOM_MATERIAL_TRANSPARENT = 4
+
+    private class CustomCardSpec(
+        var cornerRadiusPx: Float,
+        var rippleColor: Int?,
+    ) {
+        var material = CUSTOM_MATERIAL_NONE
+        var signature = -1
+        var attachPending = false
+    }
+
+    private val customCards = Collections.synchronizedMap(WeakHashMap<View, CustomCardSpec>())
+
+    /**
+     * 自绘「我的设备」卡片（样式 1/2/3，无资源 id，走不了 standalone 路由）的材质接管。
+     * 回退链：柔光玻璃 → 磨砂 → 纯色 → 透明；开关关闭或材质全部不可用时卡面直接透明，
+     * 不保留任何写死兜底色。可在构造/refresh（含 PreDraw 每帧）中反复调用，签名一致时短路。
+     */
+    fun applyCustomCardMaterial(view: View, cornerRadiusPx: Float, rippleColor: Int? = null) {
+        val colors = palette
+        val night = view.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
+        val spec = synchronized(customCards) {
+            customCards.getOrPut(view) { CustomCardSpec(cornerRadiusPx, rippleColor) }.apply {
+                this.cornerRadiusPx = cornerRadiusPx
+                this.rippleColor = rippleColor
+            }
+        }
+        if (!colors.enabled) {
+            clearCustomCardMaterial(view)
+            return
+        }
+        if (!view.isAttachedToWindow) {
+            // enforce/addView 先于挂载：先保持透明，attach 后重新走一遍。
+            if (!spec.attachPending) {
+                spec.attachPending = true
+                spec.material = CUSTOM_MATERIAL_TRANSPARENT
+                spec.signature = -1
+                setCustomCardBackground(view, null)
+                view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                    override fun onViewAttachedToWindow(v: View) {
+                        v.removeOnAttachStateChangeListener(this)
+                        spec.attachPending = false
+                        applyCustomCardMaterial(v, spec.cornerRadiusPx, spec.rippleColor)
+                    }
+
+                    override fun onViewDetachedFromWindow(v: View) {}
+                })
+            }
+            return
+        }
+        val signature = colors.hashCode() * 2 + if (night) 1 else 0
+        if (spec.signature == signature && spec.material != CUSTOM_MATERIAL_NONE &&
+            spec.material != CUSTOM_MATERIAL_TRANSPARENT
+        ) {
+            return
+        }
+        spec.signature = signature
+        val dark = night && !colors.darkFollowsLight
+        val density = view.resources.displayMetrics.density
+        val frostColor = if (dark) colors.darkFrost else colors.lightFrost
+        // 1) 柔光玻璃（Bionics API + 系统开关齐备才尝试）
+        if (colors.mode == CARD_BACKGROUND_SOFT_GLASS &&
+            SettingsSoftGlassDrawable.isBionicsActive(view.context)
+        ) {
+            val config = if (dark) colors.darkGlass else colors.lightGlass
+            setCustomCardBackground(
+                view,
+                roundedCardFill(
+                    SettingsSoftGlassDrawable.materialTintColor(frostColor, config),
+                    cornerRadiusPx,
+                    rippleColor,
+                ),
+            )
+            if (withStandaloneWrite { SettingsSoftGlassDrawable.applyToView(view, config, density) }) {
+                spec.material = CUSTOM_MATERIAL_GLASS
+                return
+            }
+            SettingsSoftGlassDrawable.clearFromView(view)
+        }
+        // 2) 磨砂（Gaussian blur）
+        if (colors.mode != CARD_BACKGROUND_COLOR) {
+            setCustomCardBackground(view, roundedCardFill(frostColor, cornerRadiusPx, rippleColor))
+            if (withStandaloneWrite {
+                    SettingsCardFrostDrawable.applyToView(
+                        view,
+                        if (dark) colors.darkBlur else colors.lightBlur,
+                        density,
+                    )
+                }
+            ) {
+                spec.material = CUSTOM_MATERIAL_FROST
+                return
+            }
+            SettingsCardFrostDrawable.clearFromView(view)
+        }
+        // 3) 纯色
+        setCustomCardBackground(
+            view,
+            roundedCardFill(if (dark) colors.dark else colors.light, cornerRadiusPx, rippleColor),
+        )
+        spec.material = CUSTOM_MATERIAL_FLAT
+    }
+
+    /** 清掉模糊状态并把卡面置透明（开关关闭、切回自定义图、或材质不可用时）。幂等。 */
+    fun clearCustomCardMaterial(view: View) {
+        val spec = synchronized(customCards) { customCards[view] } ?: return
+        if (spec.material == CUSTOM_MATERIAL_TRANSPARENT) return
+        spec.material = CUSTOM_MATERIAL_TRANSPARENT
+        spec.signature = -1
+        SettingsSoftGlassDrawable.clearFromView(view)
+        SettingsCardFrostDrawable.clearFromView(view)
+        setCustomCardBackground(view, null)
+    }
+
+    private fun roundedCardFill(color: Int, cornerRadiusPx: Float, rippleColor: Int?): Drawable {
+        val fill = GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = cornerRadiusPx
+        }
+        if (rippleColor == null) return fill
+        return RippleDrawable(ColorStateList.valueOf(rippleColor), fill, null)
+    }
+
+    private fun setCustomCardBackground(view: View, drawable: Drawable?) {
+        withStandaloneWrite { view.background = drawable }
+    }
 
     private fun readPalette(prefs: SharedPreferences): Palette {
         val values = prefs.all

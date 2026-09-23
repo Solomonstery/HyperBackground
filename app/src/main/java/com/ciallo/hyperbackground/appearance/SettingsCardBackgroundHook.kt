@@ -476,6 +476,10 @@ internal object SettingsCardBackgroundHook {
      * 蓝牙已保存设备的白底不是 CardView 的初始颜色，而是 ConnectPreferenceHelper
      * 在 onBindViewHolder 中后写入 view_high_light_root 的 bgDrawableParent。
      * attach 阶段接管会被这次绑定覆盖，因此在整行绑定完成后强制重新应用材质。
+     *
+     * 同一个回调也是「这一行到底是不是独立卡片」的唯一权威判定点：系统刚写完高亮层，
+     * 只有卡片行会把它保留下来，可用设备行等列表行被就地清空。每轮绑定据此刷新高亮层记录，
+     * 让 [standaloneTarget] 不会把列表行误判成卡片，并让失去卡片身份的旧行撤回我们的材质。
      */
     private fun installBluetoothCardBindHook(classLoader: ClassLoader) {
         val preferenceType = classLoader.loadClass(
@@ -497,9 +501,14 @@ internal object SettingsCardBackgroundHook {
                     SETTINGS_PACKAGE,
                 )
                 val card = if (cardId != 0) itemView.findViewById<View>(cardId) else null
-                if (card != null && standaloneTarget(card) == BLUETOOTH_CARD_ID) {
-                    val state = standaloneState(card)
-                    state.signature = null
+                if (card != null) {
+                    // Discard a stale record when the system itself cleared the layer this bind:
+                    // the row is a list entry again and must not be mistaken for a card.
+                    val content = bluetoothSurface(card)
+                    if (content != null && content.background == null) {
+                        synchronized(bluetoothSurfaces) { bluetoothSurfaces.remove(content) }
+                    }
+                    synchronized(standaloneStates) { standaloneStates[card] }?.signature = null
                     if (card.isAttachedToWindow) applyStandalone(card)
                 }
                 result
@@ -507,8 +516,15 @@ internal object SettingsCardBackgroundHook {
     }
 
     private fun applyStandalone(view: View) {
-        val target = standaloneTarget(view) ?: return
-        val state = standaloneState(view)
+        val tracked = synchronized(standaloneStates) { standaloneStates[view] }
+        val target = standaloneTarget(view)
+        if (target == null) {
+            // 曾经接管过、但现在已经不是独立卡片的行（蓝牙可用设备行、列表中曾连接过的设备）：
+            // 撤掉我们的材质，原生表面以系统最后一次绑定写入的状态为准。
+            if (tracked != null) releaseStandalone(view, tracked)
+            return
+        }
+        val state = tracked ?: standaloneState(view)
         val colors = palette
         if (!colors.enabled) {
             restoreStandalone(view, state)
@@ -602,6 +618,31 @@ internal object SettingsCardBackgroundHook {
         view.invalidate()
     }
 
+    /**
+     * Drop our material from a view that stopped being a standalone card (the Bluetooth row is
+     * still the same CardView, it just became a list entry). Unlike [restoreStandalone] the saved
+     * highlight layer is discarded rather than put back: the row now belongs to the surrounding
+     * group card and the native surface was already re-created by the latest bind.
+     */
+    private fun releaseStandalone(view: View, state: StandaloneState) {
+        if (state.applied == null && state.material == STANDALONE_MATERIAL_NONE) return
+        clearStandaloneMaterial(view, state)
+        withStandaloneWrite {
+            // CardView rows keep the very same background object, so skip the setter: writing it
+            // back would only re-enter the host's background hooks for a no-op change.
+            if (view.background !== state.original) view.background = state.original
+            restoreCardBackgroundColor(view, state.originalCardColor)
+            view.clipToOutline = state.originalClipToOutline
+        }
+        bluetoothSurface(view)?.let { content ->
+            synchronized(bluetoothSurfaces) { bluetoothSurfaces.remove(content) }
+        }
+        state.applied = null
+        state.signature = null
+        state.failureLogged = false
+        view.invalidate()
+    }
+
     private fun clearStandaloneMaterial(view: View, state: StandaloneState) {
         when (state.material) {
             STANDALONE_MATERIAL_FROST -> SettingsCardFrostDrawable.clearFromView(view)
@@ -625,9 +666,27 @@ internal object SettingsCardBackgroundHook {
         // view_corner is generic; the Bluetooth row is the CardView that owns
         // view_high_light_root in preference_bt_icon_corner.
         if (!view.javaClass.name.contains("CardView")) return null
-        val contentId = view.resources.getIdentifier(BLUETOOTH_CARD_CONTENT_ID, "id", SETTINGS_PACKAGE)
-        return if (contentId != 0 && (view as? ViewGroup)?.findViewById<View>(contentId) != null) name else null
+        val content = bluetoothSurface(view) ?: return null
+        // BluetoothDevicePreference reuses one layout (preference_bt_icon_corner) for real cards
+        // and for plain list rows. Only the bonded card state keeps a surface of its own:
+        // onBindViewHolder writes the highlight layer into view_high_light_root and immediately
+        // clears it again for every other state - 可用设备行、列表中"之前连接过"的设备、无障碍列表 -
+        // which are flush rows living on the surrounding MIUIX group card. Applying the material
+        // there stacks a second soft glass on top of the list background, so those rows stay native.
+        if (!bluetoothRowOwnsSurface(content)) return null
+        return name
     }
+
+    /**
+     * True while the row still owns the highlight surface the system wrote during its last bind.
+     * Rows rendered as plain list entries have that layer cleared on every bind, so they must keep
+     * the material of the group card behind them. The saved original covers the window in which our
+     * own material has already suppressed the layer, and is dropped again as soon as the system
+     * clears it (see [installBluetoothCardBindHook]).
+     */
+    private fun bluetoothRowOwnsSurface(content: View): Boolean =
+        content.background != null ||
+            synchronized(bluetoothSurfaces) { bluetoothSurfaces.containsKey(content) }
 
     private fun cloneAndTint(view: View, source: Drawable?, color: Int): Drawable? =
         cloneDrawable(view, source)?.let { drawable ->

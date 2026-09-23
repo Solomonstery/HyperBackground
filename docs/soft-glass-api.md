@@ -201,3 +201,26 @@ SettingsCardBackgroundHook (路由)
   自身绘制。
 - 诊断日志：`Card material branch: soft glass (api=? bionicProp=? blurEnable=? materialStyle=?)`，
   一次分支切换打一条，直接看出卡在哪个开关。
+
+## 10. 独立卡片 vs 列表行：防止柔光玻璃重复应用
+
+`SettingsCardBackgroundHook` 的独立卡片路由按资源 id 匹配（`view_corner`、`device_basic_layout`…），
+但同一个 id 在不同状态下的角色并不相同。蓝牙是最典型的例子：
+`BluetoothDevicePreference` 对**已保存设备**和**可用设备**用的是同一个布局
+`preference_bt_icon_corner`（内含 `view_corner` CardView + `view_high_light_root`），
+只是 `onBindViewHolder` 按配对状态分支：
+
+| 状态 | `view_corner` 边距 | `view_high_light_root` 背景 | 角色 |
+|---|---|---|---|
+| 已配对 / 已保存（`mCachedBondState == 12` 或 GATT 已配对） | `preference_bt_custom_margin_*` | 保留 `ConnectPreferenceHelper` 写入的高亮层 | 独立卡片 |
+| 可用设备、`PreviouslyConnectedDevice`、无障碍列表 | 全部清零 | 绑定末尾 `setBackground(null)` 就地清空 | 分组卡里的普通行 |
+
+判定规则（`standaloneTarget` → `bluetoothRowOwnsSurface`）：
+
+- 行**保留**自有高亮层 → 独立卡片，套用所选材质；
+- 行的高亮层**被清空** → 它是外层 MIUIX 分组卡面之上的普通行，材质由分组卡提供，不再叠加。
+
+误把列表行当卡片处理的症状就是「列表背景一层柔光玻璃 + 每一行再一层」的重复应用
+（可用设备列表）。失去卡片身份的旧行由 `releaseStandalone` 撤回材质，且**不回填**已保存的
+高亮层——原生表面以系统最后一次绑定写入的状态为准。每轮绑定
+（`settings-cards:bluetooth-row-bound`）都会刷新高亮层记录，避免把列表行误判成卡片。

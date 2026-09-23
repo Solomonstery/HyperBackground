@@ -5,7 +5,6 @@ import com.ciallo.hyperbackground.util.setAdditionalInstanceField
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.ColorFilter
 import android.graphics.Outline
 import android.graphics.Paint
@@ -60,7 +59,7 @@ internal class SettingsSoftGlassDrawable(
     fun configure(color: Int, value: SoftGlassParams, density: Float) {
         // The reference maps transparency to shader channel 14 as a percentage scale of the
         // tint alpha; here the tint is drawn by the display list, so scale the paint instead.
-        tint.color = adjustedTintColor(color, value)
+        tint.color = materialTintColor(color, value)
         config = value
         this.density = density
     }
@@ -360,8 +359,13 @@ internal class SettingsSoftGlassDrawable(
                 "materialStyle=${Settings.Secure.getInt(resolver, "material_style", -1)}"
         }.getOrDefault("diagnostics unavailable")
 
-        /** Apply the same Bionics material directly to a real, attached widget. */
-        fun applyToView(view: View, color: Int, config: SoftGlassParams, density: Float): Boolean {
+        /**
+         * Apply the same Bionics material parameters directly to a real, attached widget.
+         * The caller paints [materialTintColor] into the widget's native rounded background,
+         * matching the display-list tint used by [GlassNode] instead of using shader tint
+         * channels 11-14, which compose color and alpha differently.
+         */
+        fun applyToView(view: View, config: SoftGlassParams, density: Float): Boolean {
             val api = glassApi ?: return false
             if (!view.isAttachedToWindow || !view.isHardwareAccelerated || !isBionicsActive(view.context)) return false
             return runCatching {
@@ -371,13 +375,8 @@ internal class SettingsSoftGlassDrawable(
                 requireAccepted(api.clearBlend, view)
                 requireAccepted(api.materialType, view, 1)
                 requireAccepted(api.glassRadius, view, radius, radius)
-                requireAccepted(api.setGlass, view, customizeViewParams(baseParams(), config, color))
+                requireAccepted(api.setGlass, view, customizeParams(baseParams(), config))
                 requireAccepted(api.enhanceFlag, view, 8192, 12288)
-
-                // Keep the drawable as the View outline source, but let the shader own the fill.
-                val background = view.background?.mutate()
-                background?.setTint(Color.TRANSPARENT)
-                if (background != null && background !== view.background) view.background = background
                 view.invalidate()
                 true
             }.onFailure {
@@ -462,8 +461,9 @@ internal class SettingsSoftGlassDrawable(
             }
             // Xiaomi's expanded token also mixes a fixed white inner layer through channels
             // 15/16. Keeping it after clearing the RGB tint is what makes the island look
-            // opaque gray, so zero it for cards. The palette tint is drawn by the node's
-            // own display list instead of shader channels 11-14.
+            // opaque gray, so zero it for cards. The palette tint is drawn by the group's
+            // display list or the standalone View's native background instead of shader
+            // channels 11-14.
             params[11] = 0f
             params[12] = 0f
             params[13] = 0f
@@ -473,20 +473,9 @@ internal class SettingsSoftGlassDrawable(
             return params
         }
 
-        private fun customizeViewParams(
-            source: FloatArray,
-            config: SoftGlassParams,
-            color: Int,
-        ): FloatArray = customizeParams(source, config).apply {
-            val tintColor = adjustedTintColor(color, config)
-            this[11] = Color.red(tintColor) / 255f
-            this[12] = Color.green(tintColor) / 255f
-            this[13] = Color.blue(tintColor) / 255f
-            this[14] = Color.alpha(tintColor) / 255f
-        }
-
-        private fun adjustedTintColor(color: Int, config: SoftGlassParams): Int {
-            val alpha = (Color.alpha(color) / 255f * (1f + config.transparency.toFloat() / 100f))
+        fun materialTintColor(color: Int, config: SoftGlassParams): Int {
+            val sourceAlpha = color ushr 24 and 0xFF
+            val alpha = (sourceAlpha / 255f * (1f + config.transparency.toFloat() / 100f))
                 .coerceIn(0f, 1f)
             return (color and 0x00FFFFFF) or ((alpha * 255f).roundToInt() shl 24)
         }

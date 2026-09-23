@@ -2,6 +2,7 @@ package com.ciallo.hyperbackground.appearance
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
@@ -87,6 +88,7 @@ internal object SettingsCardBackgroundHook {
     private class StandaloneState(
         var original: Drawable?,
         val originalClipToOutline: Boolean,
+        var originalCardColor: ColorStateList?,
     ) {
         var applied: Drawable? = null
         var signature: StandaloneSignature? = null
@@ -139,7 +141,7 @@ internal object SettingsCardBackgroundHook {
             .onFailure { module.log(Log.WARN, TAG, "Recycler group color hook unavailable", it) }
         runCatching { installPreference(classLoader) }
             .onFailure { module.log(Log.WARN, TAG, "Preference group color hook unavailable", it) }
-        runCatching { installStandaloneCards() }
+        runCatching { installStandaloneCards(classLoader) }
             .onFailure { module.log(Log.WARN, TAG, "Standalone Settings card hook unavailable", it) }
     }
 
@@ -229,7 +231,7 @@ internal object SettingsCardBackgroundHook {
      * decorations. Route only the verified resource ids through the same palette. Hooking the
      * framework attach dispatch also covers RecyclerView rows without scanning every screen.
      */
-    private fun installStandaloneCards() {
+    private fun installStandaloneCards(classLoader: ClassLoader) {
         val attach = View::class.java.declaredMethods.firstOrNull {
             it.name == "dispatchAttachedToWindow" && it.parameterCount == 2
         } ?: error("View.dispatchAttachedToWindow not found")
@@ -275,7 +277,41 @@ internal object SettingsCardBackgroundHook {
                 }
                 result
             }
+
+        // AndroidX CardView keeps its own RoundRectDrawable reference. Changing View.background
+        // alone does not reliably replace that internal fill, and Bluetooth rebinds it through
+        // setCardBackgroundColor. Observe those exact writes and re-apply our selected material.
+        runCatching { installCardViewColorHooks(classLoader) }
+            .onFailure { module.log(Log.WARN, TAG, "Bluetooth CardView color hook unavailable", it) }
         module.log(Log.INFO, TAG, "Installed standalone card material routing")
+    }
+
+    private fun installCardViewColorHooks(classLoader: ClassLoader) {
+        val type = classLoader.loadClass("androidx.cardview.widget.CardView")
+        val methods = type.declaredMethods.filter {
+            it.name == "setCardBackgroundColor" && it.parameterCount == 1
+        }
+        check(methods.isNotEmpty()) { "CardView.setCardBackgroundColor not found" }
+        methods.forEachIndexed { index, method ->
+            method.isAccessible = true
+            module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
+                .setId("settings-cards:bluetooth-card-color-$index").intercept { chain ->
+                    if (standaloneWrite.get() == true) return@intercept chain.proceed()
+                    val view = chain.thisObject as? View
+                    val result = chain.proceed()
+                    if (view != null && standaloneTarget(view) == BLUETOOTH_CARD_ID) {
+                        val state = standaloneState(view)
+                        state.original = view.background
+                        state.originalCardColor = cardBackgroundColor(view)
+                        state.applied = null
+                        state.signature = null
+                        if (palette.enabled && view.isAttachedToWindow) {
+                            view.post { applyStandalone(view) }
+                        }
+                    }
+                    result
+                }
+        }
     }
 
     private fun applyStandalone(view: View) {
@@ -303,17 +339,11 @@ internal object SettingsCardBackgroundHook {
         val applied = when (colors.mode) {
             CARD_BACKGROUND_COLOR -> {
                 val color = if (dark) colors.dark else colors.light
-                val drawable = cloneAndTint(view, state.original, color)
-                if (drawable == null) false else {
-                    setStandaloneBackground(view, drawable, state.originalClipToOutline)
-                    true
-                }
+                prepareStandaloneBackground(view, state, color, state.originalClipToOutline)
             }
             CARD_BACKGROUND_FROST -> {
                 val color = if (dark) colors.darkFrost else colors.lightFrost
-                val drawable = cloneAndTint(view, state.original, color)
-                if (drawable == null) false else {
-                    setStandaloneBackground(view, drawable, true)
+                if (!prepareStandaloneBackground(view, state, color, true)) false else {
                     val ready = withStandaloneWrite {
                         SettingsCardFrostDrawable.applyToView(
                             view,
@@ -327,14 +357,13 @@ internal object SettingsCardBackgroundHook {
             }
             CARD_BACKGROUND_SOFT_GLASS -> {
                 val color = if (dark) colors.darkFrost else colors.lightFrost
-                val drawable = cloneDrawable(view, state.original)
-                if (drawable == null) false else {
-                    setStandaloneBackground(view, drawable, true)
+                val config = if (dark) colors.darkGlass else colors.lightGlass
+                val tintColor = SettingsSoftGlassDrawable.materialTintColor(color, config)
+                if (!prepareStandaloneBackground(view, state, tintColor, true)) false else {
                     val ready = withStandaloneWrite {
                         SettingsSoftGlassDrawable.applyToView(
                             view,
-                            color,
-                            if (dark) colors.darkGlass else colors.lightGlass,
+                            config,
                             density,
                         )
                     }
@@ -347,9 +376,9 @@ internal object SettingsCardBackgroundHook {
 
         if (!applied) {
             clearStandaloneMaterial(view, state)
-            val transparent = cloneAndTint(view, state.original, Color.TRANSPARENT)
-                ?: ColorDrawable(Color.TRANSPARENT)
-            setStandaloneBackground(view, transparent, state.originalClipToOutline)
+            if (!prepareStandaloneBackground(view, state, Color.TRANSPARENT, state.originalClipToOutline)) {
+                setStandaloneBackground(view, ColorDrawable(Color.TRANSPARENT), state.originalClipToOutline)
+            }
             if (!state.failureLogged) {
                 state.failureLogged = true
                 module.log(
@@ -371,6 +400,7 @@ internal object SettingsCardBackgroundHook {
         clearStandaloneMaterial(view, state)
         withStandaloneWrite {
             view.background = state.original
+            restoreCardBackgroundColor(view, state.originalCardColor)
             view.clipToOutline = state.originalClipToOutline
         }
         state.applied = null
@@ -388,7 +418,9 @@ internal object SettingsCardBackgroundHook {
     }
 
     private fun standaloneState(view: View): StandaloneState = synchronized(standaloneStates) {
-        standaloneStates.getOrPut(view) { StandaloneState(view.background, view.clipToOutline) }
+        standaloneStates.getOrPut(view) {
+            StandaloneState(view.background, view.clipToOutline, cardBackgroundColor(view))
+        }
     }
 
     private fun standaloneTarget(view: View): String? {
@@ -415,6 +447,45 @@ internal object SettingsCardBackgroundHook {
                 drawable
             }.getOrNull()
         }
+
+    private fun prepareStandaloneBackground(
+        view: View,
+        state: StandaloneState,
+        color: Int,
+        clipToOutline: Boolean,
+    ): Boolean {
+        if (standaloneTarget(view) == BLUETOOTH_CARD_ID) {
+            val updated = withStandaloneWrite { setCardBackgroundColor(view, color) }
+            if (updated) view.clipToOutline = clipToOutline
+            return updated
+        }
+        val drawable = cloneAndTint(view, state.original, color) ?: return false
+        setStandaloneBackground(view, drawable, clipToOutline)
+        return true
+    }
+
+    private fun cardBackgroundColor(view: View): ColorStateList? = runCatching {
+        view.javaClass.getMethod("getCardBackgroundColor").invoke(view) as? ColorStateList
+    }.getOrNull()
+
+    private fun setCardBackgroundColor(view: View, color: Int): Boolean = runCatching {
+        // A previously applied drawable tint would override CardView's internal base color.
+        // Clear it before switching styles or restoring the native ColorStateList.
+        view.background?.setTintList(null)
+        view.javaClass.getMethod("setCardBackgroundColor", Int::class.javaPrimitiveType!!)
+            .invoke(view, color)
+        true
+    }.getOrDefault(false)
+
+    private fun restoreCardBackgroundColor(view: View, color: ColorStateList?) {
+        color ?: return
+        view.background?.setTintList(null)
+        val restored = runCatching {
+            view.javaClass.getMethod("setCardBackgroundColor", ColorStateList::class.java)
+                .invoke(view, color)
+        }.isSuccess
+        if (!restored) setCardBackgroundColor(view, color.defaultColor)
+    }
 
     private fun cloneDrawable(view: View, source: Drawable?): Drawable? = runCatching {
         source?.constantState?.newDrawable(view.resources, view.context.theme)?.mutate()
@@ -638,6 +709,7 @@ internal object SettingsCardBackgroundHook {
         "lock_screen_notification_card",
         "float_notification_card",
         "show_app_badge_card",
+        "device_basic_layout",
         "device_params",
         BLUETOOTH_CARD_ID,
     )

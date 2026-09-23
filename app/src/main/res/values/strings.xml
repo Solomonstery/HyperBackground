@@ -232,9 +232,12 @@
     <string name="update_latest_stable">Latest stable %1$s</string>
     <string name="update_failed">Update check failed</string>
     <string name="author">Author · 苍簇</string>
-    <string name="open_app_info">Open app info</string>
     <string name="coolapk">CoolApk</string>
     <string name="github">GitHub</string>
+    <string name="donate">Buy me a coffee</string>
+    <string name="donate_message">HyperBackground is free and always will be. If it saved you some trouble, a coffee is a lovely way to say thanks.</string>
+    <string name="donate_hint">Scan with WeChat · You can also screenshot the code and pick it from the album in WeChat → Scan</string>
+    <string name="donate_voluntary">Entirely voluntary. Nothing about the module changes either way.</string>
     <string name="root_requested">Requesting root access…</string>
     <string name="scope_restarted">Scopes restarted</string>
     <string name="root_unavailable">Root is unavailable or permission was denied</string>

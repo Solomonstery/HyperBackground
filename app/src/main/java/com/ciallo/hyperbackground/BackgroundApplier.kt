@@ -1592,6 +1592,11 @@ object BackgroundApplier {
                 return true
             }
 
+            // CardView 的圆角与卡面同源于它自带的 RoundRectDrawable：清掉 background 会把圆角
+            // 一并抹掉，框架之后写回底色时只剩方角（主题商店「在线主题」标题条即此类）。
+            // CardView 本身是卡片而非页面宿主面板，这里与下方 large 分支的 cardview 豁免保持一致。
+            if (isCardView(view)) return false
+
             // The supplied Phone/Account/Theme builds split a Miuix page into several
             // full-width host panels instead of one full-height root. Clear those host
             // panels while retaining inset cards and controls.
@@ -1659,6 +1664,17 @@ object BackgroundApplier {
         private fun containsAny(value: String?, vararg needles: String): Boolean {
             if (value.isNullOrEmpty()) return false
             for (needle in needles) if (value.contains(needle)) return true
+            return false
+        }
+
+        // 沿继承链识别 androidx CardView（含各厂商子类，如 com.miui.support.cardview.CardView），
+        // 不直接引用 androidx.cardview，避免为一个判断引入编译期依赖。
+        private fun isCardView(view: View): Boolean {
+            var type: Class<*>? = view.javaClass
+            while (type != null) {
+                if ("androidx.cardview.widget.CardView" == type.name) return true
+                type = type.superclass
+            }
             return false
         }
 

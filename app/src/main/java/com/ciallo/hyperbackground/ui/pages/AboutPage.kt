@@ -1,8 +1,5 @@
 package com.ciallo.hyperbackground.ui.pages
 
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -46,6 +43,7 @@ fun AboutPage(
     modifier: Modifier = Modifier,
     padding: androidx.compose.foundation.layout.PaddingValues = androidx.compose.foundation.layout.PaddingValues(0.dp),
     onOpenChangelog: () -> Unit = {},
+    onOpenDonate: () -> Unit = {},
 ) {
     LazyColumn(
         modifier.fillMaxSize(),
@@ -58,7 +56,7 @@ fun AboutPage(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { AppLabelCard(activity) }
-        item { AboutInfoCard(activity, onOpenChangelog) }
+        item { AboutInfoCard(activity, onOpenChangelog, onOpenDonate) }
     }
 }
 
@@ -198,9 +196,13 @@ private fun ShieldBadge(
     }
 }
 
-/** 关于信息卡：制作者、版本、酷安 / GitHub / 更新日志 / 应用信息。 */
+/** 关于信息卡：制作者、版本、酷安 / GitHub / 更新日志 / 请作者喝咖啡。 */
 @Composable
-private fun AboutInfoCard(activity: MainActivity, onOpenChangelog: () -> Unit) {
+private fun AboutInfoCard(
+    activity: MainActivity,
+    onOpenChangelog: () -> Unit,
+    onOpenDonate: () -> Unit,
+) {
     UiCard(activity, Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(R.string.author), style = MiuixTheme.textStyles.headline1)
@@ -228,15 +230,8 @@ private fun AboutInfoCard(activity: MainActivity, onOpenChangelog: () -> Unit) {
             )
             TextButton(
                 modifier = Modifier.fillMaxWidth(),
-                text = stringResource(R.string.open_app_info),
-                onClick = {
-                    activity.startActivity(
-                        Intent(
-                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                            Uri.parse("package:${activity.packageName}"),
-                        )
-                    )
-                },
+                text = stringResource(R.string.donate),
+                onClick = onOpenDonate,
             )
         }
     }

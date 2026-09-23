@@ -11,6 +11,7 @@ import com.ciallo.hyperbackground.appearance.APPEARANCE_SLOT_DEVICE
 import com.ciallo.hyperbackground.appearance.SETTINGS_APPEARANCE_PREFERENCES
 import com.ciallo.hyperbackground.appearance.SettingsAppearanceSources
 import com.ciallo.hyperbackground.appearance.SettingsBackgroundView
+import com.ciallo.hyperbackground.appearance.ThemePersonalizeCardHook
 import com.ciallo.hyperbackground.util.callMethod
 import com.ciallo.hyperbackground.util.hookMethod
 import com.ciallo.hyperbackground.util.log
@@ -26,6 +27,7 @@ object SettingsBackgroundHook {
         val settings = BackgroundContract.PACKAGE_SETTINGS == packageName
         val contacts = BackgroundContract.PACKAGE_CONTACTS == packageName
         val mms = BackgroundContract.PACKAGE_MMS == packageName
+        val themeManager = BackgroundContract.PACKAGE_THEME_MANAGER == packageName
 
         hookGlobalActivities()
         hookInstrumentationLifecycle()
@@ -58,6 +60,11 @@ object SettingsBackgroundHook {
             hookMmsHomeActivities(classLoader)
             hookMmsChatActivities(classLoader)
             hookMmsViewBackground()
+        }
+
+        if (themeManager) {
+            // 「系统个性化」页的文字卡走自绘卡片材质，不再依赖通用清透明兜底。
+            ThemePersonalizeCardHook.install(classLoader)
         }
     }
 

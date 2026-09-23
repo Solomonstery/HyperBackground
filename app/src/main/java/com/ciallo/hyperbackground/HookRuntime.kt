@@ -25,6 +25,8 @@ object HookRuntime {
         return value
     }
 
+    fun module(): XposedModule = module ?: throw IllegalStateException("Hook module is not initialized")
+
     fun remotePreferences(name: String): SharedPreferences? = module?.getRemotePreferences(name)
 
     @Throws(FileNotFoundException::class)

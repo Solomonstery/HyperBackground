@@ -49,8 +49,7 @@ internal object DynamicCardMaterialHook {
             .onFailure { module.log(Log.WARN, TAG, "Dynamic layout-complete hook unavailable", it) }
         runCatching { installItemDecorationHook(classLoader) }
             .onFailure { module.log(Log.WARN, TAG, "Dynamic ItemDecoration discovery unavailable", it) }
-        // 弹窗（菜单 / 下拉选择框）材质：MIUI 用 PopupView / miuix AlertDialog，不是 PopupWindow，
-        // 单独一条入口，需要目标进程的 classLoader 才能定位 miuix 类。
+        // MIUIX menus and list popups use their own rounded containers, not PopupWindow backgrounds.
         runCatching { DynamicPopupMaterialHook.install(module, classLoader, prefs) }
             .onFailure { module.log(Log.WARN, TAG, "Dynamic popup material hook unavailable", it) }
         runCatching { DynamicFloatingBarHook.install(module, classLoader, prefs) }

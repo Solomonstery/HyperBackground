@@ -18,6 +18,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import com.ciallo.hyperbackground.dynamic.popup.DynamicPopupMaterialHook
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_COLOR
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_FROST
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
@@ -519,6 +520,7 @@ internal object DynamicCardBackgroundHook {
     private fun standaloneTarget(view: View): String? {
         if (!palette.enabled) return null
         if (!palette.standaloneCard) return null
+        if (DynamicPopupMaterialHook.owns(view)) return null
         // The suspended action menu has its own material route and scope switch.
         if (view.javaClass.name == "miuix.appcompat.internal.view.menu.action.ResponsiveActionMenuView") return null
         // MIUIX search owns its material and alpha animation; do not repaint it as a card on resize.

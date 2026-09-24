@@ -1,166 +1,249 @@
 package com.ciallo.hyperbackground.dynamic.popup
 
 import android.content.SharedPreferences
+import android.content.res.Configuration
+import android.graphics.Canvas
+import android.graphics.drawable.Drawable
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ListView
 import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
+import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
 import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_POPUP
 import com.ciallo.hyperbackground.appearance.KEY_CUSTOM_CARD_ENABLED
 import com.ciallo.hyperbackground.appearance.KEY_DARK_CARD_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_DARK_FROST_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_DARK_SOFT_GLASS
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_CARD_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_LIGHT_FROST_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_LIGHT_SOFT_GLASS
+import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
 import com.ciallo.hyperbackground.dynamic.material.DynamicMaterialPalette
+import com.ciallo.hyperbackground.dynamic.material.DynamicSoftGlassDrawable
 import io.github.libxposed.api.XposedInterface.ExceptionMode
 import io.github.libxposed.api.XposedModule
+import java.util.WeakHashMap
 
-/**
- * 弹窗整体背景的材质接管——**从源头**，不遍历内容树、不 hook `View.setBackground`。
- *
- * MIUI 的「右上角三点菜单」和「下拉选择框」都**不是** `android.widget.PopupWindow`，而是 MIUI
- * 自绘组件，所以 `PopupWindow.setBackgroundDrawable` 那条路对它们完全无效（这也是之前测试
- * 「hook installed 但弹窗没变色」的真正原因）：
- *
- * 1. **右上角三点菜单** → `miuix.popupwidget.widget.PopupView`（`FrameLayout` 子类）。
- *    背景在其 `applyContentView()` 里对 `content_view` 子 view 设置
- *    `R.attr.immersionWindowBackground` 解析出的 drawable。`PopupView` 提供公开方法
- *    `getContentView()` 直接拿到这个承载背景的 view。
- *
- * 2. **下拉选择框（ListPreference / 单选多选）** → `miuix.appcompat.app.AlertDialog`，其圆角
- *    面板是 `miuix.appcompat.internal.widget.DialogParentPanel2`（`LinearLayout` 子类）。
- *    背景来自它被 inflate 的 XML（`miuix_appcompat_alert_dialog_content`）里的 `android:background`
- *    属性，因此构造结束即已就绪，直接改 `view.background` 即可。
- *
- * 从源头解决：hook 这两个类的**构造方法**，构造完成后替换背景。每类每实例只触发一次，
- * 零遍历（PopupView 用其公开 `getContentView()` 直取，不 find、不递归）、零 post、零定时器。
- *
- * 类名说明：二者都是 `miuix` 库（以 jar 依赖打包进 apk）里的 `public class`，类名经 jadx 反编译
- * 验证为完整未混淆（R8 只压主 apk 自身的类，不改已编译的库类名），因此此处引用是安全的。
- */
+/** Apply popup color to the rounded outer surface, not the list inside it. */
 internal object DynamicPopupMaterialHook {
-
     private const val TAG = "HyperBackgroundCards"
-
-    /** miuix 菜单弹窗（右上角三点菜单）—— `FrameLayout` 自绘。 */
-    private const val POPUP_VIEW_CLASS = "miuix.popupwidget.widget.PopupView"
-    /** miuix 对话框圆角面板（下拉选择框的容器）—— `LinearLayout`。 */
-    private const val DIALOG_PANEL_CLASS = "miuix.appcompat.internal.widget.DialogParentPanel2"
+    private const val POPUP_VIEW = "miuix.popupwidget.widget.PopupView"
+    private const val HYPER_POPUP = "miuix.appcompat.widget.HyperPopupWindow"
+    private const val DIALOG_PANEL = "miuix.appcompat.internal.widget.DialogParentPanel2"
+    private const val SMOOTH_FRAME = "miuix.smooth.SmoothFrameLayout2"
+    private const val SPRING_BACK = "miuix.springback.view.SpringBackLayout"
 
     private lateinit var module: XposedModule
-
-    /** 目标 app 的 classLoader（miuix 类在目标进程里，必须用它加载）。 */
-    private lateinit var targetLoader: ClassLoader
     @Volatile private var palette = DynamicMaterialPalette()
+    private val main = Handler(Looper.getMainLooper())
     private var preferences: SharedPreferences? = null
+    private val originals = WeakHashMap<View, Drawable?>()
+    private val replacements = WeakHashMap<View, Drawable>()
+    private val glass = WeakHashMap<View, Boolean>()
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
         if (key == null || key in setOf(
                 KEY_CUSTOM_CARD_ENABLED, KEY_COMPONENT_POPUP, KEY_LIGHT_CARD_COLOR,
-                KEY_DARK_CARD_COLOR, KEY_CARD_DARK_FOLLOWS_LIGHT,
+                KEY_DARK_CARD_COLOR, KEY_CARD_DARK_FOLLOWS_LIGHT, KEY_CARD_BACKGROUND_MODE,
+                KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR,
+                KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS,
             )
-        ) palette = DynamicMaterialPalette.read(prefs)
+        ) {
+            palette = DynamicMaterialPalette.read(prefs)
+            main.post { originals.keys.toList().forEach { applyBackground(it, true) } }
+        }
     }
 
-    /** 我们的替换是否正在写入，避免 hook 自己触发自己（递归）。 */
-    private val writing = ThreadLocal<Boolean>()
-
-    /** 已替换过的 view（身份去重），避免多构造链对同一实例重复替换。 */
-    private val handled = java.util.Collections.synchronizedSet(
-        java.util.Collections.newSetFromMap(java.util.IdentityHashMap<View, Boolean>()),
-    )
-
-    fun install(value: XposedModule, classLoader: ClassLoader, prefs: SharedPreferences) {
+    fun install(value: XposedModule, loader: ClassLoader, prefs: SharedPreferences) {
         module = value
-        targetLoader = classLoader
         preferences?.unregisterOnSharedPreferenceChangeListener(listener)
         preferences = prefs
         palette = DynamicMaterialPalette.read(prefs)
         prefs.registerOnSharedPreferenceChangeListener(listener)
-        runCatching { installPopupViewHook() }
-            .onFailure { module.log(Log.WARN, TAG, "PopupView constructor hook unavailable", it) }
-        runCatching { installDialogPanelHook() }
-            .onFailure { module.log(Log.WARN, TAG, "DialogParentPanel2 constructor hook unavailable", it) }
-        module.log(Log.INFO, TAG, "Dynamic popup material hook installed (PopupView + DialogParentPanel2 sources)")
+        runCatching { installPopupViewHook(loader) }
+            .onFailure { module.log(Log.WARN, TAG, "PopupView hook unavailable", it) }
+        runCatching { installHyperPopupHook(loader) }
+            .onFailure { module.log(Log.WARN, TAG, "HyperPopupWindow hook unavailable", it) }
+        runCatching { installDialogPanelHook(loader) }
+            .onFailure { module.log(Log.WARN, TAG, "DialogParentPanel2 hook unavailable", it) }
+        runCatching { installListSurfaceHook(loader) }
+            .onFailure { module.log(Log.WARN, TAG, "MIUIX list popup hook unavailable", it) }
+        module.log(Log.INFO, TAG, "MIUIX popup hook installed for ${loader.javaClass.name}")
     }
 
-    /**
-     * 菜单弹窗：`PopupView` 构造完成后，用其公开方法 `getContentView()` 直取承载背景的 view 并替换。
-     * 背景在 `init()` → `applyContentView()` 里已同步设好，构造返回即就绪，无需 post。
-     */
-    private fun installPopupViewHook() {
-        val type = Class.forName(POPUP_VIEW_CLASS, false, targetLoader)
+    private fun installPopupViewHook(loader: ClassLoader) {
+        val type = Class.forName(POPUP_VIEW, false, loader)
+        val content = type.getDeclaredField("mContentView").apply { isAccessible = true }
         type.declaredConstructors.forEachIndexed { index, ctor ->
             ctor.isAccessible = true
             module.hook(ctor).setExceptionMode(ExceptionMode.PROTECTIVE)
                 .setId("dynamic-cards:popupview-ctor-$index").intercept { chain ->
                     val result = chain.proceed()
-                    val popup = chain.thisObject as? View
-                    if (popup != null && writing.get() != true) {
-                        val contentView = runCatching {
-                            type.getMethod("getContentView").invoke(popup) as? View
-                        }.getOrNull()
-                        if (contentView != null) {
-                            replaceBackground(contentView, "menu PopupView.content")
-                        } else {
-                            // getContentView 拿不到时退化为「自身一层子 view 里有背景者」的浅查找，
-                            // 仍然不做整树遍历。
-                            findAndReplaceChildBackground(popup, "menu PopupView.child")
-                        }
+                    (chain.thisObject as? View)?.let { popup ->
+                        (content.get(popup) as? View)?.let { applyBackground(it, true) }
                     }
                     result
                 }
         }
-        module.log(Log.INFO, TAG, "PopupView constructor hook installed (${type.declaredConstructors.size} ctor)")
+        // Keep MIUIX's pass-window blur setup on the menu layer. Our glass replaces its
+        // surface after prepareShow, but cannot sample the backdrop if setup is skipped.
+        type.getMethod("prepareShow", View::class.java).let { method ->
+            module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
+                .setId("dynamic-cards:popupview-show").intercept { chain ->
+                    val result = chain.proceed()
+                    if (result == true) (chain.thisObject as? View)?.let { popup ->
+                        (content.get(popup) as? View)?.let { applyBackground(it) }
+                    }
+                    result
+                }
+        }
     }
 
-    /**
-     * 下拉框面板：`DialogParentPanel2` 自身即圆角面板，构造结束其 XML 背景已就绪，直接替换。
-     */
-    private fun installDialogPanelHook() {
-        val type = Class.forName(DIALOG_PANEL_CLASS, false, targetLoader)
+    private fun installDialogPanelHook(loader: ClassLoader) {
+        val type = Class.forName(DIALOG_PANEL, false, loader)
         type.declaredConstructors.forEachIndexed { index, ctor ->
             ctor.isAccessible = true
             module.hook(ctor).setExceptionMode(ExceptionMode.PROTECTIVE)
                 .setId("dynamic-cards:dialogpanel-ctor-$index").intercept { chain ->
                     val result = chain.proceed()
-                    val panel = chain.thisObject as? View
-                    if (panel != null && writing.get() != true) {
-                        replaceBackground(panel, "dialog DialogParentPanel2")
+                    (chain.thisObject as? View)?.let { watchFirstDraw(it) }
+                    result
+                }
+        }
+        val draw = type.getDeclaredMethod("draw", Canvas::class.java).apply { isAccessible = true }
+        module.hook(draw).setExceptionMode(ExceptionMode.PROTECTIVE)
+            .setId("dynamic-cards:dialogpanel-draw").intercept { chain ->
+                (chain.thisObject as? View)?.let { panel ->
+                    if (panel.isAttachedToWindow) applyBackground(panel)
+                }
+                chain.proceed()
+            }
+    }
+
+    private fun installHyperPopupHook(loader: ClassLoader) {
+        val type = Class.forName(HYPER_POPUP, false, loader)
+        val container = type.getMethod("getContainerView")
+        // HyperPopupWindow also sets up the backdrop in applyMaterial. Let it run before
+        // replacing the surface, rather than suppressing its blur and leaving a flat fill.
+        type.getMethod("show", View::class.java).let { method ->
+            module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
+                .setId("dynamic-cards:hyperpopup-show").intercept { chain ->
+                    val result = chain.proceed()
+                    (chain.thisObject as? android.widget.PopupWindow)?.let { popup ->
+                        (container.invoke(popup) as? View)?.let { applyBackground(it, true) }
                     }
                     result
                 }
         }
-        module.log(Log.INFO, TAG, "DialogParentPanel2 constructor hook installed (${type.declaredConstructors.size} ctor)")
     }
 
-    /** 替换 view 自身背景为色板填充克隆；色板关/无背景时不动。 */
-    private fun replaceBackground(view: View, label: String) {
-        if (!handled.add(view)) return
-        val original = view.background ?: return
-        val replacement = DynamicPopupBackground.create(original, view.context, palette)
-        if (replacement == null) {
-            module.log(Log.WARN, TAG, "$label bg: no replacement (palette off)")
-            return
-        }
-        module.log(
-            Log.INFO, TAG,
-            "$label bg: original=${original.javaClass.name} -> tinted",
-        )
-        writing.set(true)
-        try {
-            view.background = replacement
-        } finally {
-            writing.remove()
-        }
+    private fun installListSurfaceHook(loader: ClassLoader) {
+        val frame = Class.forName(SMOOTH_FRAME, false, loader)
+        val draw = frame.getDeclaredMethod("draw", Canvas::class.java).apply { isAccessible = true }
+        module.hook(draw).setExceptionMode(ExceptionMode.PROTECTIVE)
+            .setId("dynamic-cards:popup-list-draw").intercept { chain ->
+                val view = chain.thisObject as? View
+                if (view != null && isListPopup(view)) applyBackground(view)
+                chain.proceed()
+            }
     }
 
-    /** 浅查找（仅直接子 view）有背景者并替换，作为 getContentView 不可用时的兜底。 */
-    private fun findAndReplaceChildBackground(parent: View, label: String) {
-        if (parent !is ViewGroup) return
-        for (i in 0 until parent.childCount) {
-            val child = parent.getChildAt(i)
-            if (child != null && child.background != null) {
-                replaceBackground(child, label)
-                return
+    private fun watchFirstDraw(view: View) {
+        view.addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
+            override fun onLayoutChange(
+                v: View, left: Int, top: Int, right: Int, bottom: Int,
+                oldLeft: Int, oldTop: Int, oldRight: Int, oldBottom: Int,
+            ) {
+                v.removeOnLayoutChangeListener(this)
+                applyBackground(v)
+            }
+        })
+    }
+
+    private fun isListPopup(frame: View): Boolean {
+        val group = frame as? ViewGroup ?: return false
+        for (i in 0 until group.childCount) {
+            val spring = group.getChildAt(i) as? ViewGroup ?: continue
+            if (spring.javaClass.name != SPRING_BACK) continue
+            for (j in 0 until spring.childCount) {
+                if (spring.getChildAt(j) is ListView) return true
             }
         }
+        return false
+    }
+
+    internal fun owns(view: View): Boolean {
+        var node: View? = view
+        repeat(8) {
+            val current = node ?: return false
+            if (current.javaClass.name == POPUP_VIEW || current.javaClass.name == DIALOG_PANEL ||
+                current.javaClass.name == SMOOTH_FRAME && isListPopup(current)
+            ) return true
+            node = current.parent as? View
+        }
+        return false
+    }
+
+    private fun applyBackground(view: View, refresh: Boolean = false) {
+        val current = view.background
+        val previous = replacements[view]
+        if (current !== previous && (!originals.containsKey(view) || current != null)) {
+            originals[view] = current
+        }
+        if (!originals.containsKey(view)) originals[view] = null
+        val original = originals[view]
+        val config = palette
+        val wantsGlass = config.enabled && config.popup && config.mode == CARD_BACKGROUND_SOFT_GLASS
+        if (!palette.enabled || !palette.popup) {
+            if (glass.remove(view) != null) DynamicSoftGlassDrawable.clearFromView(view)
+            if (current === previous) view.background = original
+            replacements.remove(view)
+            return
+        }
+        if (current === previous && previous != null && !refresh) {
+            if (!wantsGlass || glass[view] == true && previous.alpha == 255) return
+            if (!view.isAttachedToWindow || !view.isHardwareAccelerated) return
+        }
+        if (glass.remove(view) != null) DynamicSoftGlassDrawable.clearFromView(view)
+        val replacement = DynamicPopupBackground.create(original, view.context, config) ?: run {
+            module.log(Log.WARN, TAG, "Popup background unavailable: ${original?.javaClass?.name}")
+            return
+        }
+        replacements[view] = replacement
+        view.background = replacement
+        if (wantsGlass) {
+            if (!view.isAttachedToWindow || !view.isHardwareAccelerated) return
+            val night = view.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+                Configuration.UI_MODE_NIGHT_YES
+            val dark = night && !config.darkFollowsLight
+            val color = if (dark) config.darkFrost else config.lightFrost
+            val params = if (dark) config.darkGlass else config.lightGlass
+            if (DynamicSoftGlassDrawable.applyToView(
+                    view, color, params, view.resources.displayMetrics.density,
+                )
+            ) {
+                replacement.alpha = 255
+                // SmoothContainerDrawable2 paints its child directly; tinting the wrapper
+                // transparent does not remove that opaque fill on MIUIX builds.
+                val cleared = DynamicPopupBackground.clearFill(replacement)
+                glass[view] = true
+                val spring = (view as? ViewGroup)?.let { group ->
+                    (0 until group.childCount).map { group.getChildAt(it) }
+                        .firstOrNull { it.javaClass.name == SPRING_BACK }
+                }
+                val list = (spring as? ViewGroup)?.let { group ->
+                    (0 until group.childCount).map { group.getChildAt(it) }
+                        .firstOrNull { it is ListView }
+                }
+                module.log(Log.INFO, TAG, "Popup glass applied: ${view.javaClass.name}@${System.identityHashCode(view).toString(16)} fillCleared=$cleared rootBg=${view.rootView.background?.javaClass?.simpleName} springBg=${spring?.background?.javaClass?.simpleName} listBg=${list?.background?.javaClass?.simpleName}")
+                return
+            }
+            DynamicSoftGlassDrawable.clearFromView(view)
+            replacement.setTintList(null)
+            glass[view] = false
+        }
+        module.log(Log.INFO, TAG, "Popup color fallback: ${view.javaClass.name}@${System.identityHashCode(view).toString(16)} original=${original?.javaClass?.name} mode=${config.mode}")
     }
 }

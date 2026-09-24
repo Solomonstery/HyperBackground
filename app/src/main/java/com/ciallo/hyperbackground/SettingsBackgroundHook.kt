@@ -12,6 +12,7 @@ import com.ciallo.hyperbackground.appearance.SETTINGS_APPEARANCE_PREFERENCES
 import com.ciallo.hyperbackground.appearance.SettingsAppearanceSources
 import com.ciallo.hyperbackground.appearance.SettingsBackgroundView
 import com.ciallo.hyperbackground.dynamic.card.DynamicCardBackgroundHook
+import com.ciallo.hyperbackground.dynamic.topbar.DynamicActionBarHook
 import com.ciallo.hyperbackground.util.callMethod
 import com.ciallo.hyperbackground.util.hookMethod
 import com.ciallo.hyperbackground.util.log
@@ -64,6 +65,10 @@ object SettingsBackgroundHook {
         // 不依赖任何包名 / 资源名。为验证跨作用域可行性，对所有进程统一安装，
         // 由 CardSurfaceDetector / 色板开关自行决定要不要接管（匹配不上自然不动）。
         installSecurityCenterCardMaterial(classLoader)
+        if (!settings) {
+            runCatching { DynamicActionBarHook.install(HookRuntime.module(), classLoader) }
+                .onFailure { log("[HyperBackground] Dynamic action bar unavailable: $it") }
+        }
     }
 
     /**

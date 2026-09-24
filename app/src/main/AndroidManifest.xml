@@ -1,8 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- 「软件作用域」要把 LSPosed 里勾选的作用域包名解析成应用名和图标。作用域是动态的，
+         可能包含任意第三方应用，也有 com.milink.service、com.miui.powerkeeper 这类没有启动入口的
+         系统包，无法用静态 <queries> 覆盖；缺少该权限时 Android 11+ 的包可见性限制会让
+         getApplicationInfo 直接抛 NameNotFoundException，导致列表数量和实际作用域对不上。 -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
 
 
     <application

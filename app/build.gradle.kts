@@ -100,6 +100,8 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")
 
+    implementation("org.luckypray:dexkit:2.3.0")
+
     compileOnly("io.github.libxposed:api:102.0.0")
     implementation("io.github.libxposed:service:102.0.0")
     debugImplementation("androidx.compose.ui:ui-tooling")

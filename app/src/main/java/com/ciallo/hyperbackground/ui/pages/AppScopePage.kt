@@ -152,11 +152,14 @@ private class ScopedApp(
 )
 
 /**
- * 把作用域包名解析成可展示的列表项，并过滤掉不该出现在开关列表里的包名：
- * 模块自身（在自身进程里没有意义）、空包名、以及已卸载 / 无法解析 ApplicationInfo 的包。
+ * 把作用域包名解析成可展示的列表项，只过滤掉模块自身与空包名。
  *
  * 不按「有无启动入口」过滤：SystemUI、桌面这类没有 launcher 入口的包同样是关键作用域，
  * 过滤掉会让用户再也无法单独关闭它们。
+ *
+ * 也不按「能否解析 ApplicationInfo」过滤：解析失败时退回包名本身作为标题、图标留空。
+ * 早期版本在这里直接丢弃解析失败的包，结果在 Android 11+ 的包可见性限制下会静默少一截，
+ * 列表数量和作用域对不上，用户也没法再单独关闭这些包。
  */
 private fun loadScopedApps(context: Context, packages: List<String>): List<ScopedApp> {
     val manager = context.packageManager
@@ -166,17 +169,21 @@ private fun loadScopedApps(context: Context, packages: List<String>): List<Scope
         .map { it.trim() }
         .filter { it.isNotEmpty() && it != self }
         .distinct()
-        .mapNotNull { packageName ->
+        .map { packageName ->
             val info = runCatching {
                 manager.getApplicationInfo(packageName, PackageManager.ApplicationInfoFlags.of(0))
-            }.getOrNull() ?: return@mapNotNull null
+            }.getOrNull()
             ScopedApp(
                 packageName = packageName,
-                label = runCatching { manager.getApplicationLabel(info).toString() }
-                    .getOrDefault(packageName),
-                icon = runCatching {
-                    manager.getApplicationIcon(info).toAppIconBitmap(iconSize).asImageBitmap()
-                }.getOrNull(),
+                label = info
+                    ?.let { runCatching { manager.getApplicationLabel(it).toString() }.getOrNull() }
+                    ?.takeIf { it.isNotBlank() }
+                    ?: packageName,
+                icon = info?.let {
+                    runCatching {
+                        manager.getApplicationIcon(it).toAppIconBitmap(iconSize).asImageBitmap()
+                    }.getOrNull()
+                },
             )
         }
         .sortedBy { it.label.lowercase() }

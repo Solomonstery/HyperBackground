@@ -2,11 +2,9 @@ package com.ciallo.hyperbackground.appearance
 
 import android.app.Activity
 import android.content.res.ColorStateList
-import android.content.res.Configuration
 import android.content.res.Resources
 import android.graphics.Color
 import android.graphics.drawable.Drawable
-import android.graphics.drawable.ColorDrawable
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -29,7 +27,6 @@ object SettingsAppearanceApplier {
     private val textModes = Collections.synchronizedMap(WeakHashMap<TextView, Int>())
     private val appliedFontModes = Collections.synchronizedMap(WeakHashMap<Activity, Int>())
     private val logoSessions = Collections.synchronizedMap(WeakHashMap<Any, LogoSession>())
-    private val cardSessions = Collections.synchronizedMap(WeakHashMap<Activity, CardAlphaSession>())
     private val tutorialCards = Collections.synchronizedMap(WeakHashMap<Any, TutorialCardSession>())
     private val deviceInfoCards = Collections.synchronizedMap(WeakHashMap<Any, DeviceInfoCardsSession>())
     private val harmonyCards = Collections.synchronizedMap(WeakHashMap<Any, HarmonyCardSession>())
@@ -51,7 +48,6 @@ object SettingsAppearanceApplier {
         runCatching {
             val context = fragment.javaClass.getMethod("getContext").invoke(fragment) as? android.content.Context ?: return
             val source = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_DEVICE)
-            fragmentActivity(fragment)?.let { applyCardOpacity(it, source.lightCardOpacity) }
             val old = deviceLayers[fragment]
             Log.i(TAG, "device apply class=${fragment.javaClass.name} exists=${source.exists} enabled=${source.enabled} mime=${source.mime} size=${source.size}")
             if (!source.exists) {
@@ -102,7 +98,6 @@ object SettingsAppearanceApplier {
     fun applyDevice(activity: Activity) {
         runCatching {
             val source = SettingsAppearanceSources.query(activity, APPEARANCE_SLOT_DEVICE)
-            applyCardOpacity(activity, source.lightCardOpacity)
             val old = deviceLayers[activity]
             if (!source.exists) {
                 old?.remove()
@@ -154,7 +149,6 @@ object SettingsAppearanceApplier {
     fun destroy(activity: Activity?) {
         if (activity == null) return
         layers.remove(activity)?.remove()
-        cardSessions.remove(activity)?.remove()
         appliedFontModes.remove(activity)
         restoreTextColors(activity.window?.decorView)
     }
@@ -496,91 +490,6 @@ object SettingsAppearanceApplier {
     private fun isCustomDeviceCardEnabled(context: android.content.Context): Boolean =
         SettingsAppearanceSources.query(context, APPEARANCE_SLOT_DEVICE_IMAGE).deviceInterfaceStyle != DEVICE_INTERFACE_STYLE_SYSTEM
 
-    fun cardColorResourceReplacement(
-        context: android.content.Context,
-        resources: Resources,
-        resourceId: Int,
-        resolvedColor: Int,
-    ): Int? {
-        if (context.packageName != "com.android.settings" || !isLightMode(resources)) return null
-        val name = runCatching { resources.getResourceEntryName(resourceId).lowercase() }.getOrNull() ?: return null
-        if (name !in LIGHT_CARD_COLOR_RESOURCES) return null
-        val opacity = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_HOME)
-            .lightCardOpacity.coerceIn(0, 100)
-        if (opacity >= 100) return null
-        val alpha = opacity * 255 / 100
-        val replacement = (alpha shl 24) or 0x00FFFFFF
-        return replacement
-    }
-
-    fun cardColorStateListResourceReplacement(
-        context: android.content.Context,
-        resources: Resources,
-        resourceId: Int,
-        original: ColorStateList,
-    ): ColorStateList? = cardColorResourceReplacement(
-        context,
-        resources,
-        resourceId,
-        original.defaultColor,
-    )?.let(ColorStateList::valueOf)
-
-    fun cardFinalColorReplacement(view: View, original: Int): Int? {
-        if (view.context.packageName != "com.android.settings" || !isLightMode(view)) return null
-        if (SettingsCardBackgroundHook.managesStandalone(view)) return null
-        if (!isCardLike(view)) return null
-        val opacity = lightCardOpacity(view.context)
-        if (opacity >= 100) return null
-        return cardColor(opacity)
-    }
-
-    fun cardFinalStateListReplacement(view: View, original: ColorStateList): ColorStateList? {
-        return cardFinalColorReplacement(view, original.defaultColor)?.let(ColorStateList::valueOf)
-    }
-
-    fun cardFinalDrawableReplacement(view: View, drawable: Drawable) {
-        if (view.context.packageName != "com.android.settings" || !isLightMode(view)) return
-        if (SettingsCardBackgroundHook.managesStandalone(view)) return
-        if (!isCardLike(view)) return
-        val opacity = lightCardOpacity(view.context)
-        if (opacity >= 100) return
-
-        // HyperCardView may recreate its drawable after the resource lookup. For
-        // plain color drawables, replace the actual color; for vendor drawables,
-        // retain their shape and apply the requested alpha at the final setter.
-        runCatching {
-            val colorDrawable = drawable as? ColorDrawable
-            if (colorDrawable != null) colorDrawable.color = cardColor(opacity)
-            else drawable.mutate().alpha = opacity * 255 / 100
-        }
-    }
-
-    private fun lightCardOpacity(context: android.content.Context): Int =
-        SettingsAppearanceSources.query(context, APPEARANCE_SLOT_HOME).lightCardOpacity.coerceIn(0, 100)
-
-    private fun cardColor(opacity: Int): Int = (opacity * 255 / 100 shl 24) or 0x00FFFFFF
-
-    private fun isLightMode(resources: Resources): Boolean =
-        resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK != Configuration.UI_MODE_NIGHT_YES
-
-    private val LIGHT_CARD_COLOR_RESOURCES = setOf(
-        "card_background_stroke_color",
-        "card_style_summary_normal_color",
-        "card_view_background_color",
-        "cardview_light_background",
-        "default_home_preference_item_background",
-        "device_card_background",
-        "list_card_background",
-        "locale_cardview_background_color",
-        "miuix_default_card_drawable_color_light",
-        "miuix_default_color_container_list_light",
-        "my_card_bg",
-        "miuix_preference_card_group_background_light",
-        "miuix_preference_card_group_background_color_light",
-        "miuix_recyclerview_card_group_background_light",
-        "wifi_cardview_background_color",
-    )
-
     private fun harmonyCardLayoutParams(context: android.content.Context) = FrameLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT,
         tutorialDp(context, 243),
@@ -604,15 +513,6 @@ object SettingsAppearanceApplier {
         } finally {
             internalLogo.remove()
         }
-    }
-
-    fun cardBlurAlpha(view: View): Float? {
-        if (view.context.packageName != "com.android.settings") return null
-        if (SettingsCardBackgroundHook.managesStandalone(view)) return null
-        if (!isLightMode(view) || !isCardLike(view)) return null
-        val source = SettingsAppearanceSources.query(view.context, APPEARANCE_SLOT_DEVICE)
-        if (source.lightCardOpacity >= 100) return null
-        return source.lightCardOpacity.coerceIn(0, 100) / 100f
     }
 
     private fun applyActivity(activity: Activity, slot: String) {
@@ -643,7 +543,6 @@ object SettingsAppearanceApplier {
             // 全树遍历（refresh / 卡片透明度 / 字体色）延迟到下一帧，让账号绑定等异步回调先执行。
             content.post {
                 session.attach(activity)
-                applyCardOpacity(activity, source.lightCardOpacity)
                 applyFontMode(activity, source.fontMode)
             }
         }
@@ -702,11 +601,6 @@ object SettingsAppearanceApplier {
             }
         }
         if (view is ViewGroup) for (i in 0 until view.childCount) restoreTextColors(view.getChildAt(i))
-    }
-
-    private fun applyCardOpacity(activity: Activity, opacity: Int) {
-        val session = cardSessions[activity] ?: CardAlphaSession(activity).also { cardSessions[activity] = it }
-        session.apply(opacity.coerceIn(0, 100))
     }
 
     private fun clearNamedSurfaces(activity: Activity, session: LayerSession) {
@@ -992,7 +886,7 @@ object SettingsAppearanceApplier {
         private val originalChildVisibility = List(parent.childCount) { index ->
             parent.getChildAt(index)
         }.filter { child -> child !== view }.map { child -> child to child.visibility }
-        // 参数大卡（device_params）由 SettingsCardBackgroundHook 的 standalone 路由接管，
+        // 参数大卡（device_params）由动态卡面路由（CardSurfaceDetector）接管，
         // 与页面内其它原生卡片一致走「卡片样式」三种材质，这里不再写死玻璃色。
 
         fun matches(parent: LinearLayout, name: View, storage: View): Boolean =
@@ -1178,90 +1072,6 @@ object SettingsAppearanceApplier {
         private fun containsAny(value: String, vararg needles: String): Boolean {
             return needles.any(value::contains)
         }
-    }
-
-    private class CardAlphaSession(private val activity: Activity) {
-        private data class Entry(val view: View, val drawable: Drawable, val alpha: Int)
-        private val entries = ArrayList<Entry>()
-        private val root: View = activity.window?.decorView ?: returnRoot(activity)
-        private var lastRefreshAt = 0L
-        private val listener = ViewTreeObserver.OnGlobalLayoutListener {
-            val now = android.os.SystemClock.uptimeMillis()
-            if (now - lastRefreshAt < 200L) return@OnGlobalLayoutListener
-            refresh(currentOpacity)
-        }
-        private var currentOpacity = 100
-
-        init { runCatching { root.viewTreeObserver.addOnGlobalLayoutListener(listener) } }
-
-        fun apply(opacity: Int) {
-            val coerced = opacity.coerceIn(0, 100)
-            // opacity 未变则跳过全树遍历，避免 scheduleAppearance 多次调用重复执行。
-            if (coerced == currentOpacity) return
-            currentOpacity = coerced
-            if (!isLightMode() || coerced >= 100) {
-                restore()
-                return
-            }
-            refresh(coerced)
-        }
-
-        private fun refresh(opacity: Int) {
-            lastRefreshAt = android.os.SystemClock.uptimeMillis()
-            if (!isLightMode() || opacity >= 100) { restore(); return }
-            visit(root, opacity)
-        }
-
-        private fun visit(view: View, opacity: Int) {
-            if (isCard(view)) {
-                val drawable = view.background
-                if (drawable != null && entries.none { it.view === view && it.drawable === drawable }) {
-                    entries += Entry(view, drawable, drawable.alpha)
-                }
-                drawable?.mutate()?.alpha = opacity * 255 / 100
-            }
-            if (view is ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i), opacity)
-        }
-
-        private fun isCard(view: View): Boolean {
-            if (view.width <= 0 || view.height <= 0) return false
-            if (SettingsCardBackgroundHook.managesStandalone(view)) return false
-            val name = runCatching {
-                if (view.id == View.NO_ID || view.id == 0) ""
-                else activity.resources.getResourceEntryName(view.id).lowercase()
-            }.getOrDefault("")
-            val cls = view.javaClass.name.lowercase()
-            return (name.contains("card") || cls.contains("card")) &&
-                !name.contains("icon") && !name.contains("button") &&
-                view.width >= activity.resources.displayMetrics.widthPixels * 0.55f
-        }
-
-        private fun isLightMode(): Boolean =
-            activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK != Configuration.UI_MODE_NIGHT_YES
-
-        private fun restore() {
-            entries.forEach { entry -> runCatching { entry.drawable.alpha = entry.alpha } }
-            entries.clear()
-        }
-
-        fun remove() {
-            runCatching { root.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
-            restore()
-        }
-
-        private fun returnRoot(activity: Activity): View = activity.window?.decorView ?: View(activity)
-    }
-
-    private fun isLightMode(view: View): Boolean =
-        view.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK != Configuration.UI_MODE_NIGHT_YES
-
-    private fun isCardLike(view: View): Boolean {
-        val name = runCatching {
-            if (view.id == View.NO_ID || view.id == 0) "" else view.resources.getResourceEntryName(view.id).lowercase()
-        }.getOrDefault("")
-        val cls = view.javaClass.name.lowercase()
-        return (name.contains("card") || cls.contains("card")) &&
-            !name.contains("icon") && !name.contains("button") && view.width > 0 && view.height > 0
     }
 
     private class DeviceLayerSession(

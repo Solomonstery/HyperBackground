@@ -1,4 +1,4 @@
-package com.ciallo.hyperbackground.appearance
+package com.ciallo.hyperbackground.dynamic.card
 
 import android.content.Context
 import android.graphics.Canvas

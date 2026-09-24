@@ -59,6 +59,11 @@ internal const val KEY_DARK_CARD_BLUR = "dark_card_blur"
 internal const val KEY_LIGHT_SOFT_GLASS = "light_soft_glass"
 internal const val KEY_DARK_SOFT_GLASS = "dark_soft_glass"
 internal const val KEY_CARD_DARK_FOLLOWS_LIGHT = "card_dark_follows_light"
+// 组件作用域：动态适配按组件类型（分组卡片 / 独立卡片 / 弹窗 / 搜索框）分别控制是否套用材质。
+internal const val KEY_COMPONENT_GROUP_CARD = "component_group_card"
+internal const val KEY_COMPONENT_STANDALONE_CARD = "component_standalone_card"
+internal const val KEY_COMPONENT_POPUP = "component_popup"
+internal const val KEY_COMPONENT_SEARCH = "component_search"
 const val CARD_BACKGROUND_COLOR = 0
 const val CARD_BACKGROUND_FROST = 1
 const val CARD_BACKGROUND_SOFT_GLASS = 2
@@ -244,6 +249,10 @@ data class SettingsAppearanceSettings(
     val lightSoftGlass: SoftGlassParams = SoftGlassParams(),
     val darkSoftGlass: SoftGlassParams = SoftGlassParams(),
     val cardDarkFollowsLight: Boolean = false,
+    val componentGroupCard: Boolean = true,
+    val componentStandaloneCard: Boolean = true,
+    val componentPopup: Boolean = true,
+    val componentSearch: Boolean = true,
     val tutorialCardEnabled: Boolean = false,
     val tutorialCardTitle: String = "",
     val tutorialCardSlogan: String = "",
@@ -388,6 +397,10 @@ internal fun SharedPreferences.toSettingsAppearance() = SettingsAppearanceSettin
     lightSoftGlass = decodeSoftGlass(getString(KEY_LIGHT_SOFT_GLASS, null)),
     darkSoftGlass = decodeSoftGlass(getString(KEY_DARK_SOFT_GLASS, null)),
     cardDarkFollowsLight = getBoolean(KEY_CARD_DARK_FOLLOWS_LIGHT, false),
+    componentGroupCard = getBoolean(KEY_COMPONENT_GROUP_CARD, true),
+    componentStandaloneCard = getBoolean(KEY_COMPONENT_STANDALONE_CARD, true),
+    componentPopup = getBoolean(KEY_COMPONENT_POPUP, true),
+    componentSearch = getBoolean(KEY_COMPONENT_SEARCH, true),
     tutorialCardEnabled = getBoolean(KEY_TUTORIAL_CARD_ENABLED, false),
     tutorialCardTitle = getString(KEY_TUTORIAL_CARD_TITLE, "").orEmpty(),
     tutorialCardSlogan = getString(KEY_TUTORIAL_CARD_SLOGAN, "").orEmpty(),
@@ -546,6 +559,10 @@ private fun SharedPreferences.writeSettingsAppearance(value: SettingsAppearanceS
         .putString(KEY_LIGHT_SOFT_GLASS, value.lightSoftGlass.encodeSoftGlass())
         .putString(KEY_DARK_SOFT_GLASS, value.darkSoftGlass.encodeSoftGlass())
         .putBoolean(KEY_CARD_DARK_FOLLOWS_LIGHT, value.cardDarkFollowsLight)
+        .putBoolean(KEY_COMPONENT_GROUP_CARD, value.componentGroupCard)
+        .putBoolean(KEY_COMPONENT_STANDALONE_CARD, value.componentStandaloneCard)
+        .putBoolean(KEY_COMPONENT_POPUP, value.componentPopup)
+        .putBoolean(KEY_COMPONENT_SEARCH, value.componentSearch)
         .putBoolean(KEY_TUTORIAL_CARD_ENABLED, value.tutorialCardEnabled)
         .putString(KEY_TUTORIAL_CARD_TITLE, value.tutorialCardTitle)
         .putString(KEY_TUTORIAL_CARD_SLOGAN, value.tutorialCardSlogan)

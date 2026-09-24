@@ -1,5 +1,6 @@
-package com.ciallo.hyperbackground.appearance
+package com.ciallo.hyperbackground.dynamic.card
 
+import com.ciallo.hyperbackground.appearance.SoftGlassParams
 import com.ciallo.hyperbackground.util.getAdditionalInstanceField
 import com.ciallo.hyperbackground.util.setAdditionalInstanceField
 

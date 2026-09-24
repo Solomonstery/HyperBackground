@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.ciallo.hyperbackground.dynamic.card.SettingsCardBackgroundHook
 
 /** Runtime replacement for the tutorial style 1 device card. */
 class TutorialDeviceCardView(

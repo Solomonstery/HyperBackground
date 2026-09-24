@@ -11,7 +11,7 @@ import com.ciallo.hyperbackground.appearance.APPEARANCE_SLOT_DEVICE
 import com.ciallo.hyperbackground.appearance.SETTINGS_APPEARANCE_PREFERENCES
 import com.ciallo.hyperbackground.appearance.SettingsAppearanceSources
 import com.ciallo.hyperbackground.appearance.SettingsBackgroundView
-import com.ciallo.hyperbackground.appearance.ThemePersonalizeCardHook
+import com.ciallo.hyperbackground.dynamic.card.SettingsCardBackgroundHook
 import com.ciallo.hyperbackground.util.callMethod
 import com.ciallo.hyperbackground.util.hookMethod
 import com.ciallo.hyperbackground.util.log
@@ -27,7 +27,6 @@ object SettingsBackgroundHook {
         val settings = BackgroundContract.PACKAGE_SETTINGS == packageName
         val contacts = BackgroundContract.PACKAGE_CONTACTS == packageName
         val mms = BackgroundContract.PACKAGE_MMS == packageName
-        val themeManager = BackgroundContract.PACKAGE_THEME_MANAGER == packageName
 
         hookGlobalActivities()
         hookInstrumentationLifecycle()
@@ -39,7 +38,8 @@ object SettingsBackgroundHook {
         TextColorOverride.install()
 
         if (settings) {
-            SettingsSearchMaskOverride.install(classLoader)
+            // 临时禁用搜索框适配（测试效果用，验证组件作用域外的搜索框软玻璃/遮罩清除原貌）
+            // SettingsSearchMaskOverride.install(classLoader)
             SettingsTopBarBlurHook.install(classLoader)
             // 「配置」栏目 - 设置页软件入口：往设置首页 Header 列表插入模块条目。
             SettingsHomeEntryHook.install(classLoader)
@@ -62,9 +62,30 @@ object SettingsBackgroundHook {
             hookMmsViewBackground()
         }
 
-        if (themeManager) {
-            // 「系统个性化」页的文字卡走自绘卡片材质，不再依赖通用清透明兜底。
-            ThemePersonalizeCardHook.install(classLoader)
+        // 动态卡片材质是「纯动态」的：只认 framework/AndroidX 公开 API 与结构形状，
+        // 不依赖任何包名 / 资源名。为验证跨作用域可行性，对所有进程统一安装，
+        // 由 CardSurfaceDetector / 色板开关自行决定要不要接管（匹配不上自然不动）。
+        installSecurityCenterCardMaterial(classLoader)
+    }
+
+    /**
+     * 安全中心进程只装「卡片材质」运行时（含动态路由 hook），不装设置进程的其它
+     * device-profile / 搜索遮罩 / 顶栏模糊等专属管线。省电与电池页的卡片与设置页
+     * 共用同一套色板（SETTINGS_APPEARANCE_PREFERENCES）与材质实现。
+     */
+    private fun installSecurityCenterCardMaterial(classLoader: ClassLoader) {
+        val prefs = HookRuntime.remotePreferences(SETTINGS_APPEARANCE_PREFERENCES)
+        if (prefs == null) {
+            log("[HyperBackground] Security center card material: appearance preferences unavailable")
+            return
+        }
+        runCatching {
+            SettingsCardBackgroundHook.install(
+                HookRuntime.module(), classLoader, prefs,
+                standalone = true, groupHooks = true,
+            )
+        }.onFailure {
+            log("[HyperBackground] Security center card material: runtime failed: $it")
         }
     }
 

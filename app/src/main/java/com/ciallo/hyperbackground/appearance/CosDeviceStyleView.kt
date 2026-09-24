@@ -26,6 +26,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextClock
 import android.widget.TextView
+import com.ciallo.hyperbackground.dynamic.card.SettingsCardBackgroundHook
 import java.util.Locale
 import kotlin.math.roundToInt
 

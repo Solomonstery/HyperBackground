@@ -13,15 +13,16 @@ import com.ciallo.hyperbackground.appearance.DEFAULT_DARK_FROST_COLOR
 import com.ciallo.hyperbackground.appearance.DEFAULT_LIGHT_FROST_COLOR
 import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
 import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
+import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_SEARCH
 import com.ciallo.hyperbackground.appearance.KEY_CUSTOM_CARD_ENABLED
 import com.ciallo.hyperbackground.appearance.KEY_DARK_FROST_COLOR
 import com.ciallo.hyperbackground.appearance.KEY_DARK_SOFT_GLASS
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_FROST_COLOR
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_SOFT_GLASS
 import com.ciallo.hyperbackground.appearance.SETTINGS_APPEARANCE_PREFERENCES
-import com.ciallo.hyperbackground.appearance.SettingsSoftGlassDrawable
 import com.ciallo.hyperbackground.appearance.SoftGlassParams
 import com.ciallo.hyperbackground.appearance.decodeSoftGlass
+import com.ciallo.hyperbackground.dynamic.card.SettingsSoftGlassDrawable
 import com.ciallo.hyperbackground.util.callMethod
 import com.ciallo.hyperbackground.util.hookMethod
 import com.ciallo.hyperbackground.util.log
@@ -126,6 +127,8 @@ internal object SettingsSearchMaskOverride {
         val values = prefs.all
         if (values[KEY_CUSTOM_CARD_ENABLED] as? Boolean != true) return null
         if (values[KEY_CARD_BACKGROUND_MODE] as? Int != CARD_BACKGROUND_SOFT_GLASS) return null
+        // 组件作用域：搜索框软玻璃受「搜索框」开关控制，遮罩清除不受此开关影响。
+        if (values[KEY_COMPONENT_SEARCH] as? Boolean == false) return null
 
         val night = view.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
             Configuration.UI_MODE_NIGHT_YES

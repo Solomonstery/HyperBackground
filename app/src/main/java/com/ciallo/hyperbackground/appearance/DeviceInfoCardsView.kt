@@ -13,6 +13,7 @@ import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.ciallo.hyperbackground.dynamic.card.SettingsCardBackgroundHook
 import java.util.Locale
 import kotlin.math.roundToInt
 

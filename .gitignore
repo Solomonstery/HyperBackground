@@ -18,3 +18,4 @@ signing.properties
 /.vscode
 /analysis
 /jadx-settings-out
+/.gradle-home

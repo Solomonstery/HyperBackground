@@ -1,4 +1,4 @@
-package com.ciallo.hyperbackground.appearance
+package com.ciallo.hyperbackground.dynamic.card
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -18,6 +18,30 @@ import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_COLOR
+import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_FROST
+import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
+import com.ciallo.hyperbackground.appearance.DEFAULT_CARD_BLUR
+import com.ciallo.hyperbackground.appearance.DEFAULT_DARK_CARD_COLOR
+import com.ciallo.hyperbackground.appearance.DEFAULT_DARK_FROST_COLOR
+import com.ciallo.hyperbackground.appearance.DEFAULT_LIGHT_CARD_COLOR
+import com.ciallo.hyperbackground.appearance.DEFAULT_LIGHT_FROST_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
+import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
+import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_GROUP_CARD
+import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_POPUP
+import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_STANDALONE_CARD
+import com.ciallo.hyperbackground.appearance.KEY_CUSTOM_CARD_ENABLED
+import com.ciallo.hyperbackground.appearance.KEY_DARK_CARD_BLUR
+import com.ciallo.hyperbackground.appearance.KEY_DARK_CARD_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_DARK_FROST_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_DARK_SOFT_GLASS
+import com.ciallo.hyperbackground.appearance.KEY_LIGHT_CARD_BLUR
+import com.ciallo.hyperbackground.appearance.KEY_LIGHT_CARD_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_LIGHT_FROST_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_LIGHT_SOFT_GLASS
+import com.ciallo.hyperbackground.appearance.SoftGlassParams
+import com.ciallo.hyperbackground.appearance.decodeSoftGlass
 import io.github.libxposed.api.XposedInterface.ExceptionMode
 import io.github.libxposed.api.XposedModule
 import java.lang.ref.WeakReference
@@ -46,12 +70,17 @@ internal object SettingsCardBackgroundHook {
         val lightGlass: SoftGlassParams = SoftGlassParams(),
         val darkGlass: SoftGlassParams = SoftGlassParams(),
         val darkFollowsLight: Boolean = false,
+        /** 组件作用域开关：分组卡片 / 独立卡片 / 弹窗是否各自套用材质。 */
+        val groupCard: Boolean = true,
+        val standaloneCard: Boolean = true,
+        val popup: Boolean = true,
     )
     @Volatile private var palette = Palette()
     private val preferenceKeys = setOf(
         KEY_CUSTOM_CARD_ENABLED, KEY_LIGHT_CARD_COLOR, KEY_DARK_CARD_COLOR, KEY_CARD_BACKGROUND_MODE,
         KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR, KEY_LIGHT_CARD_BLUR, KEY_DARK_CARD_BLUR,
         KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS, KEY_CARD_DARK_FOLLOWS_LIGHT,
+        KEY_COMPONENT_GROUP_CARD, KEY_COMPONENT_STANDALONE_CARD, KEY_COMPONENT_POPUP,
     )
     private var groupClipAvailable = false
     /** 分组路由是否在该进程成功接管（Miuix 分组工厂 hook 至少一个成功）。 */
@@ -59,8 +88,18 @@ internal object SettingsCardBackgroundHook {
         private set
     private val states = WeakHashMap<Any, State>()
     private val standaloneStates = Collections.synchronizedMap(WeakHashMap<View, StandaloneState>())
-    private val bluetoothSurfaces = Collections.synchronizedMap(WeakHashMap<View, Drawable>())
     private val standaloneWrite = ThreadLocal<Boolean>()
+    /**
+     * 动态发现的分组装饰器类（来自 `RecyclerView.addItemDecoration`）。
+     * 与字面名路径汇总去重，[installDynamicDecoration] 用它保证同一个类只挂一次。
+     */
+    private val decorationClasses = Collections.synchronizedSet(LinkedHashSet<Class<*>>())
+    /** 已挂过 hook 的分组裁剪方法，避免两条路径重复挂载同一个方法。 */
+    private val hookedClipMethods = Collections.synchronizedSet(HashSet<String>())
+    /** 通用路由诊断日志的去重集合，见 [logCandidate]。 */
+    private val candidateLog = Collections.synchronizedSet(HashSet<String>())
+    /** 动态路径 hook id 的序号，保证同一进程内每次挂载都拿到唯一 id。 */
+    private var dynamicHookSeq = 0
     private val handler by lazy { Handler(Looper.getMainLooper()) }
     private var preferences: SharedPreferences? = null
     private lateinit var module: XposedModule
@@ -68,9 +107,10 @@ internal object SettingsCardBackgroundHook {
     private class Access(
         val drawable: Field,
         val paint: Field?,
-        val factory: Method,
-        val outer: Field? = null,
-        val getContext: Method? = null,
+        /** 原生 drawable 的工厂方法；结构发现路径可能找不到，因此可空。 */
+        val factory: Method?,
+        /** 装饰器自带 `Context` 字段时的兜底（绘制方法的 View 参数取不到 context 时用）。 */
+        val contextField: Field? = null,
     ) {
         var failureLogged = false
         var frostFailureLogged = false
@@ -153,31 +193,25 @@ internal object SettingsCardBackgroundHook {
             module.log(Log.INFO, TAG, "Card material runtime: palette only, group hooks skipped")
             return
         }
-        groupClipAvailable = runCatching { installGroupClip(classLoader) }
-            .onFailure { module.log(Log.WARN, TAG, "Group material clip unavailable; using the selected tint", it) }
-            .isSuccess
-        module.log(Log.INFO, TAG, "Card material runtime: clip=$groupClipAvailable " +
-            "bionicsApi=${SettingsSoftGlassDrawable.hasBionicsApi()}")
-        // Isolate both paths: a missing MIUIX class must not disable the other one.
-        var recycler = false
-        var preference = false
-        runCatching { installRecycler(classLoader) }.onSuccess { recycler = true }
-            .onFailure { module.log(Log.WARN, TAG, "Recycler group color hook unavailable", it) }
-        runCatching { installPreference(classLoader) }.onSuccess { preference = true }
-            .onFailure { module.log(Log.WARN, TAG, "Preference group color hook unavailable", it) }
+        // 纯动态路由：所有按字面类名 / 资源名认目标的 hook 都不装。分组装饰器由
+        // DynamicCardMaterialHook 从 RecyclerView.addItemDecoration 现场发现；
+        // 独立卡片由 CardSurfaceDetector 按「这一行自己画了什么面」判定。
+        module.log(
+            Log.INFO, TAG,
+            "Card material runtime: dynamic routing " +
+                "bionicsApi=${SettingsSoftGlassDrawable.hasBionicsApi()}",
+        )
         if (standalone) {
             runCatching { installStandaloneCards(classLoader) }
                 .onFailure { module.log(Log.WARN, TAG, "Standalone Settings card hook unavailable", it) }
         }
-        // 任一分组工厂 hook 成功即认为该进程存在 Miuix 分组卡片结构，三种样式可接管；
-        // 外部进程（如主题商店）据此决定是否豁免暴力透明，路由不可用时保持透明回退。
-        routingAvailable = recycler || preference
-        module.log(Log.INFO, TAG, "Card material routing available: $routingAvailable")
+        // 动态路由的两个入口 hook（View.onSizeChanged 补判独立卡 + RecyclerView.addItemDecoration
+        // 现场发现分组装饰器）随卡片材质一起装，保证任何装卡片材质的进程（含安全中心）都带上。
+        runCatching { DynamicCardMaterialHook.install(module, classLoader) }
+            .onFailure { module.log(Log.WARN, TAG, "Dynamic card routing unavailable", it) }
     }
 
     /** True when the exact custom card is owned by the new material router. */
-    fun managesStandalone(view: View): Boolean = palette.enabled && standaloneTarget(view) != null
-
     private const val CUSTOM_MATERIAL_NONE = 0
     private const val CUSTOM_MATERIAL_FLAT = 1
     private const val CUSTOM_MATERIAL_FROST = 2
@@ -324,75 +358,12 @@ internal object SettingsCardBackgroundHook {
             decodeSoftGlass(values[KEY_LIGHT_SOFT_GLASS] as? String),
             decodeSoftGlass(values[KEY_DARK_SOFT_GLASS] as? String),
             values[KEY_CARD_DARK_FOLLOWS_LIGHT] as? Boolean ?: false,
+            values[KEY_COMPONENT_GROUP_CARD] as? Boolean ?: true,
+            values[KEY_COMPONENT_STANDALONE_CARD] as? Boolean ?: true,
+            values[KEY_COMPONENT_POPUP] as? Boolean ?: true,
         )
     }
 
-    private fun installGroupClip(classLoader: ClassLoader) {
-        val type = classLoader.loadClass("miuix.recyclerview.card.base.BaseDecoration")
-        val method = type.getDeclaredMethod(
-            "clipDrawableRoundRect", Canvas::class.java, RectF::class.java, Path::class.java, Drawable::class.java,
-        ).apply { isAccessible = true }
-        module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
-            .setId("settings-cards:material-clip").intercept { chain ->
-                val material = chain.getArg(3) as? SettingsGroupMaterial
-                if (material == null) {
-                    chain.proceed()
-                } else {
-                    // MIUIX's saveLayerAlpha would isolate the card from the actual backdrop.
-                    // Only our drawables bypass that layer, keeping the exact native group path.
-                    material.drawGroup(chain.getArg(0) as Canvas, chain.getArg(1) as RectF, chain.getArg(2) as Path)
-                    null
-                }
-            }
-    }
-
-    private fun installRecycler(classLoader: ClassLoader) {
-        val type = classLoader.loadClass("miuix.recyclerview.card.CardItemDecoration")
-        val factory = type.getDeclaredMethod("getGroupDrawable", Context::class.java).apply { isAccessible = true }
-        val access = Access(requireNotNull(field(type, "mGroupDrawable")), field(type, "mPaint"), factory)
-        // Never inject a frosted drawable unless its per-frame lifecycle is hooked.
-        installDrawHooks(type, access, "calculateGroupRectAndDraw", "recycler")
-        module.hook(factory).setExceptionMode(ExceptionMode.PROTECTIVE)
-            .setId("settings-cards:recycler-fill").intercept { chain ->
-                // Let the system resolve its native drawable first, so disabling can restore it.
-                val original = chain.proceed()
-                val owner = chain.thisObject ?: return@intercept original
-                val context = chain.getArg(0) as? Context ?: return@intercept original
-                val state = state(owner, access)
-                update(owner, state, context, nativeResolved = true)
-                if (state.applied) state.replacement else original
-            }
-        module.log(Log.INFO, TAG, "Installed RecyclerView group colors for light and dark themes")
-    }
-
-    private fun installPreference(classLoader: ClassLoader) {
-        val type = classLoader.loadClass("miuix.preference.PreferenceFragment\$FrameDecoration")
-        val factory = type.getDeclaredMethod("setCardDrawable").apply { isAccessible = true }
-        val outer = requireNotNull(field(type, "this\$0"))
-        val access = Access(
-            requireNotNull(field(type, "mCardGroupBackground")),
-            requireNotNull(field(type, "mPaint")),
-            factory,
-            outer,
-            outer.type.getMethod("getContext").apply { isAccessible = true },
-        )
-        installDrawHooks(type, access, "calculateGroupRectAndDraw", "preference")
-        module.hook(factory).setExceptionMode(ExceptionMode.PROTECTIVE)
-            .setId("settings-cards:preference-fill").intercept { chain ->
-                val result = chain.proceed()
-                val owner = chain.thisObject ?: return@intercept result
-                val context = fragmentContext(owner, access) ?: return@intercept result
-                update(owner, state(owner, access), context, nativeResolved = true)
-                result
-            }
-        module.log(Log.INFO, TAG, "Installed Preference group colors for light and dark themes")
-    }
-
-    /**
-     * A few Settings 17 pages use ordinary LinearLayouts/CardViews instead of MIUIX group
-     * decorations. Route only the verified resource ids through the same palette. Hooking the
-     * framework attach dispatch also covers RecyclerView rows without scanning every screen.
-     */
     private fun installStandaloneCards(classLoader: ClassLoader) {
         val attach = View::class.java.declaredMethods.firstOrNull {
             it.name == "dispatchAttachedToWindow" && it.parameterCount == 2
@@ -439,87 +410,7 @@ internal object SettingsCardBackgroundHook {
                 }
                 result
             }
-
-        // AndroidX CardView keeps its own RoundRectDrawable reference. Changing View.background
-        // alone does not reliably replace that internal fill, and Bluetooth rebinds it through
-        // setCardBackgroundColor. Observe those exact writes and re-apply our selected material.
-        runCatching { installCardViewColorHooks(classLoader) }
-            .onFailure { module.log(Log.WARN, TAG, "Bluetooth CardView color hook unavailable", it) }
-        // ConnectPreferenceHelper 在 View attach 之后才写入浅色白底；必须等整行绑定结束后接管。
-        runCatching { installBluetoothCardBindHook(classLoader) }
-            .onFailure { module.log(Log.WARN, TAG, "Bluetooth card bind hook unavailable", it) }
         module.log(Log.INFO, TAG, "Installed standalone card material routing")
-    }
-
-    private fun installCardViewColorHooks(classLoader: ClassLoader) {
-        val type = classLoader.loadClass("androidx.cardview.widget.CardView")
-        val methods = type.declaredMethods.filter {
-            it.name == "setCardBackgroundColor" && it.parameterCount == 1
-        }
-        check(methods.isNotEmpty()) { "CardView.setCardBackgroundColor not found" }
-        methods.forEachIndexed { index, method ->
-            method.isAccessible = true
-            module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
-                .setId("settings-cards:bluetooth-card-color-$index").intercept { chain ->
-                    if (standaloneWrite.get() == true) return@intercept chain.proceed()
-                    val view = chain.thisObject as? View
-                    val result = chain.proceed()
-                    if (view != null && standaloneTarget(view) == BLUETOOTH_CARD_ID) {
-                        val state = standaloneState(view)
-                        state.original = view.background
-                        state.originalCardColor = cardBackgroundColor(view)
-                        state.applied = null
-                        state.signature = null
-                        if (palette.enabled && view.isAttachedToWindow) {
-                            view.post { applyStandalone(view) }
-                        }
-                    }
-                    result
-                }
-        }
-    }
-
-    /**
-     * 蓝牙已保存设备的白底不是 CardView 的初始颜色，而是 ConnectPreferenceHelper
-     * 在 onBindViewHolder 中后写入 view_high_light_root 的 bgDrawableParent。
-     * attach 阶段接管会被这次绑定覆盖，因此在整行绑定完成后强制重新应用材质。
-     *
-     * 同一个回调也是「这一行到底是不是独立卡片」的唯一权威判定点：系统刚写完高亮层，
-     * 只有卡片行会把它保留下来，可用设备行等列表行被就地清空。每轮绑定据此刷新高亮层记录，
-     * 让 [standaloneTarget] 不会把列表行误判成卡片，并让失去卡片身份的旧行撤回我们的材质。
-     */
-    private fun installBluetoothCardBindHook(classLoader: ClassLoader) {
-        val preferenceType = classLoader.loadClass(
-            "com.android.settings.bluetooth.BluetoothDevicePreference",
-        )
-        val holderType = classLoader.loadClass("androidx.preference.PreferenceViewHolder")
-        val itemViewField = requireNotNull(field(holderType, "itemView"))
-        val method = preferenceType.getDeclaredMethod("onBindViewHolder", holderType).apply {
-            isAccessible = true
-        }
-        module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
-            .setId("settings-cards:bluetooth-row-bound").intercept { chain ->
-                val result = chain.proceed()
-                val holder = chain.getArg(0) ?: return@intercept result
-                val itemView = itemViewField.get(holder) as? View ?: return@intercept result
-                val cardId = itemView.resources.getIdentifier(
-                    BLUETOOTH_CARD_ID,
-                    "id",
-                    SETTINGS_PACKAGE,
-                )
-                val card = if (cardId != 0) itemView.findViewById<View>(cardId) else null
-                if (card != null) {
-                    // Discard a stale record when the system itself cleared the layer this bind:
-                    // the row is a list entry again and must not be mistaken for a card.
-                    val content = bluetoothSurface(card)
-                    if (content != null && content.background == null) {
-                        synchronized(bluetoothSurfaces) { bluetoothSurfaces.remove(content) }
-                    }
-                    synchronized(standaloneStates) { standaloneStates[card] }?.signature = null
-                    if (card.isAttachedToWindow) applyStandalone(card)
-                }
-                result
-            }
     }
 
     private fun applyStandalone(view: View) {
@@ -618,7 +509,6 @@ internal object SettingsCardBackgroundHook {
             restoreCardBackgroundColor(view, state.originalCardColor)
             view.clipToOutline = state.originalClipToOutline
         }
-        restoreBluetoothSurface(view)
         state.applied = null
         state.signature = null
         state.failureLogged = false
@@ -626,10 +516,9 @@ internal object SettingsCardBackgroundHook {
     }
 
     /**
-     * Drop our material from a view that stopped being a standalone card (the Bluetooth row is
-     * still the same CardView, it just became a list entry). Unlike [restoreStandalone] the saved
-     * highlight layer is discarded rather than put back: the row now belongs to the surrounding
-     * group card and the native surface was already re-created by the latest bind.
+     * Drop our material from a view that stopped being a standalone card. Unlike [restoreStandalone]
+     * the saved highlight layer is discarded rather than put back: the view now belongs to the
+     * surrounding group card and the native surface was already re-created by the latest bind.
      */
     private fun releaseStandalone(view: View, state: StandaloneState) {
         if (state.applied == null && state.material == STANDALONE_MATERIAL_NONE) return
@@ -640,9 +529,6 @@ internal object SettingsCardBackgroundHook {
             if (view.background !== state.original) view.background = state.original
             restoreCardBackgroundColor(view, state.originalCardColor)
             view.clipToOutline = state.originalClipToOutline
-        }
-        bluetoothSurface(view)?.let { content ->
-            synchronized(bluetoothSurfaces) { bluetoothSurfaces.remove(content) }
         }
         state.applied = null
         state.signature = null
@@ -664,36 +550,26 @@ internal object SettingsCardBackgroundHook {
         }
     }
 
-    private fun standaloneTarget(view: View): String? {
-        if (view.context.packageName != SETTINGS_PACKAGE || view.id == View.NO_ID || view.id == 0) return null
-        val name = runCatching { view.resources.getResourceEntryName(view.id) }.getOrNull() ?: return null
-        if (name !in STANDALONE_CARD_IDS) return null
-        if (name != BLUETOOTH_CARD_ID) return name
-
-        // view_corner is generic; the Bluetooth row is the CardView that owns
-        // view_high_light_root in preference_bt_icon_corner.
-        if (!view.javaClass.name.contains("CardView")) return null
-        val content = bluetoothSurface(view) ?: return null
-        // BluetoothDevicePreference reuses one layout (preference_bt_icon_corner) for real cards
-        // and for plain list rows. Only the bonded card state keeps a surface of its own:
-        // onBindViewHolder writes the highlight layer into view_high_light_root and immediately
-        // clears it again for every other state - 可用设备行、列表中"之前连接过"的设备、无障碍列表 -
-        // which are flush rows living on the surrounding MIUIX group card. Applying the material
-        // there stacks a second soft glass on top of the list background, so those rows stay native.
-        if (!bluetoothRowOwnsSurface(content)) return null
-        return name
-    }
-
     /**
-     * True while the row still owns the highlight surface the system wrote during its last bind.
-     * Rows rendered as plain list entries have that layer cleared on every bind, so they must keep
-     * the material of the group card behind them. The saved original covers the window in which our
-     * own material has already suppressed the layer, and is dropped again as soon as the system
-     * clears it (see [installBluetoothCardBindHook]).
+     * 独立卡片路由的入口，返回一个稳定的 key（`null` = 这一行不该被接管）。
+     *
+     * 纯动态：完全不看资源 id / 类名 / 包名，只看这一行**自己画了什么面**
+     * （[CardSurfaceDetector]），因此换页面、换 apk、换机型都不需要再适配。
      */
-    private fun bluetoothRowOwnsSurface(content: View): Boolean =
-        content.background != null ||
-            synchronized(bluetoothSurfaces) { bluetoothSurfaces.containsKey(content) }
+    private fun standaloneTarget(view: View): String? {
+        if (!palette.enabled) return null
+        if (!palette.standaloneCard) return null
+        val reason = CardSurfaceDetector.probe(view)
+        if (reason != null) {
+            // 尺寸不足 / 没有自己的背景是正常行为，不打日志；其余「自己有面却被拦下」
+            // 的原因（透明面 / 负向词 / 非卡片形状 / 外层卡面）都值得记录，用来定位漏判。
+            if (CardSurfaceDetector.isNearMiss(reason)) logCandidate(view, "near-miss $reason")
+            return null
+        }
+        val key = CardSurfaceDetector.key(view)
+        logCandidate(view, "matched key=$key")
+        return key
+    }
 
     private fun cloneAndTint(view: View, source: Drawable?, color: Int): Drawable? =
         cloneDrawable(view, source)?.let { drawable ->
@@ -713,14 +589,6 @@ internal object SettingsCardBackgroundHook {
         color: Int,
         clipToOutline: Boolean,
     ): Boolean {
-        if (standaloneTarget(view) == BLUETOOTH_CARD_ID) {
-            val updated = withStandaloneWrite { setCardBackgroundColor(view, color) }
-            if (updated) {
-                view.clipToOutline = clipToOutline
-                suppressBluetoothSurface(view)
-            }
-            return updated
-        }
         val drawable = cloneAndTint(view, state.original, color) ?: return false
         setStandaloneBackground(view, drawable, clipToOutline)
         return true
@@ -729,30 +597,6 @@ internal object SettingsCardBackgroundHook {
     private fun cardBackgroundColor(view: View): ColorStateList? = runCatching {
         view.javaClass.getMethod("getCardBackgroundColor").invoke(view) as? ColorStateList
     }.getOrNull()
-
-    private fun bluetoothSurface(view: View): View? {
-        val contentId = view.resources.getIdentifier(BLUETOOTH_CARD_CONTENT_ID, "id", SETTINGS_PACKAGE)
-        return if (contentId != 0) (view as? ViewGroup)?.findViewById(contentId) else null
-    }
-
-    /**
-     * 保存并清掉绑定阶段写入的原生连接态表面，让外层 CardView 的所选材质真正可见。
-     * RecyclerView 每次重绑都可能写入新 Drawable，因此始终保存最近一次非空原件。
-     */
-    private fun suppressBluetoothSurface(view: View) {
-        val child = bluetoothSurface(view) ?: return
-        val background = child.background ?: return
-        synchronized(bluetoothSurfaces) { bluetoothSurfaces[child] = background }
-        withStandaloneWrite { child.background = null }
-    }
-
-    private fun restoreBluetoothSurface(view: View) {
-        val child = bluetoothSurface(view) ?: return
-        val background = synchronized(bluetoothSurfaces) { bluetoothSurfaces.remove(child) } ?: return
-        if (child.background == null) {
-            withStandaloneWrite { child.background = background }
-        }
-    }
 
     private fun setCardBackgroundColor(view: View, color: Int): Boolean = runCatching {
         // A previously applied drawable tint would override CardView's internal base color.
@@ -795,12 +639,35 @@ internal object SettingsCardBackgroundHook {
         }
     }
 
-    private fun installDrawHooks(type: Class<*>, access: Access, name: String, id: String) {
-        // Resolve signatures once; RecyclerView itself belongs to the target application's loader.
-        val methods = generateSequence<Class<*>>(type) { it.superclass }.flatMap { it.declaredMethods.asSequence() }
-            .filter { it.name == name && !Modifier.isAbstract(it.modifiers) }
-            .distinctBy { it.parameterTypes.toList() }.toList()
+    /**
+     * 动态路径用的分组绘制方法定位：**不看方法名**（R8 会改），只看签名——
+     * 非抽象、非静态，首参是 `Canvas`、次参是某个 `View` 子类（即 `RecyclerView`）。
+     *
+     * 这个形状把同一层里的 `onDraw(Canvas)` / `dispatchDraw(Canvas)` 这类无关重载排除在外，
+     * 同时不依赖 `calculateGroupRectAndDraw` 这种会被压缩掉的名字。
+     */
+    private fun installDrawHooksBySignature(type: Class<*>, access: Access, id: String) {
+        val methods = generateSequence<Class<*>>(type) { it.superclass }
+            .flatMap { it.declaredMethods.asSequence() }
+            .filter { method ->
+                !Modifier.isAbstract(method.modifiers) &&
+                    !Modifier.isStatic(method.modifiers) &&
+                    method.parameterCount >= 3 &&
+                    method.parameterTypes[0] == Canvas::class.java &&
+                    View::class.java.isAssignableFrom(method.parameterTypes[1])
+            }
+            .distinctBy { it.parameterTypes.toList() }
+            .toList()
         check(methods.isNotEmpty()) { "No group draw method on ${type.name}" }
+        hookGroupDrawMethods(methods, type, access, id)
+    }
+
+    /**
+     * 分组卡的每帧绘制入口。MIUIX 在 `Canvas.saveLayerAlpha` 里画分组卡，
+     * 所以这里绕不开两件事：把宿主 View 交给材质（采背景要用它）、
+     * 用 `beginFrame` / `endFrame` 框住这一帧的多张卡（模糊只做一次）。
+     */
+    private fun hookGroupDrawMethods(methods: List<Method>, type: Class<*>, access: Access, id: String) {
         for ((index, method) in methods.withIndex()) {
             val hostIndex = method.parameterTypes.indexOfFirst { View::class.java.isAssignableFrom(it) }
             method.isAccessible = true
@@ -813,7 +680,7 @@ internal object SettingsCardBackgroundHook {
                         val state = state(owner, access)
                         val host = if (hostIndex >= 0) chain.getArg(hostIndex) as? View else null
                         if (host != null && state.host?.get() !== host) state.host = WeakReference(host)
-                        val context = host?.context ?: state.context?.get() ?: fragmentContext(owner, access)
+                        val context = host?.context ?: state.context?.get() ?: ownerContext(owner, access)
                         if (context != null) update(owner, state, context)
                         frost = state.frost
                         glass = state.glass
@@ -864,7 +731,7 @@ internal object SettingsCardBackgroundHook {
                 }
             }
             val colors = palette
-            if (!colors.enabled) {
+            if (!colors.enabled || !colors.groupCard) {
                 if (state.applied) {
                     state.applied = false
                     state.frost?.dispose()
@@ -876,8 +743,11 @@ internal object SettingsCardBackgroundHook {
                         state.originalPaintColor?.let { paint?.color = it }
                         // Re-resolve the current theme instead of restoring hardcoded white/transparent.
                         // Our factory hook now observes enabled=false, so this does not recurse.
-                        if (access.factory.parameterCount == 1) access.factory.invoke(owner, context)
-                        else access.factory.invoke(owner)
+                        // 结构发现路径可能压根找不到工厂方法，那就只恢复我们自己保存的那一份。
+                        access.factory?.let { factory ->
+                            if (factory.parameterCount == 1) factory.invoke(owner, context)
+                            else factory.invoke(owner)
+                        }
                     }
                     state.replacement = null
                 }
@@ -968,35 +838,215 @@ internal object SettingsCardBackgroundHook {
         }
     }
 
-    private fun fragmentContext(owner: Any, access: Access): Context? = runCatching {
-        val outer = access.outer?.get(owner) ?: return@runCatching null
-        access.getContext?.invoke(outer) as? Context
-    }.getOrNull()
+    /**
+     * 分组绘制的 Context 来源：绘制点的 View → 已记录 Context → 装饰器自带 Context 字段。
+     * 动态路径没有 `this$0` 可用，用「类型为 Context 的字段」兜底。
+     */
+    private fun ownerContext(owner: Any, access: Access): Context? =
+        access.contextField?.let { runCatching { it.get(owner) as? Context }.getOrNull() }
 
-    private fun field(type: Class<*>, name: String): Field? {
-        var current: Class<*>? = type
-        while (current != null) {
-            try {
-                return current.getDeclaredField(name).apply { isAccessible = true }
-            } catch (_: NoSuchFieldException) {
-                current = current.superclass
-            }
-        }
-        return null
+    // ---------------------------------------------------------------- 动态路由（结构发现）
+
+    /**
+     * 布局完成时机。attach / inflate 阶段 `width == 0`，[CardSurfaceDetector.probe] 必然早退成
+     * `too-small`，通用路由形同虚设；这里在真实尺寸写回的那一刻补判一次。
+     *
+     * 由 [DynamicCardMaterialHook] 的 `View.onSizeChanged` hook 调用。
+     */
+    internal fun onViewLaidOut(view: View) {
+        if (!palette.enabled) return
+        if (view.width <= 0 || view.height <= 0) return
+        // 已经接管过的不再重复判定：尺寸变化不改变材质，后续 resize 交给重绘。
+        if (synchronized(standaloneStates) { standaloneStates[view] }?.applied != null) return
+        if (standaloneTarget(view) == null) return
+        view.post { applyStandalone(view) }
     }
 
-    private const val SETTINGS_PACKAGE = "com.android.settings"
-    private const val BLUETOOTH_CARD_ID = "view_corner"
-    private const val BLUETOOTH_CARD_CONTENT_ID = "view_high_light_root"
+    /**
+     * 弹窗（PopupMenu / PopupWindow）整体背景的色板填充。
+     *
+     * 弹窗底是 PopupWindow 自己持有的 `PopupBackgroundDrawable`（圆角矩形），不在任何
+     * 子 view 的 background 上，[onViewLaidOut] / [CardSurfaceDetector] 碰不到它。
+     * 这里按当前色板克隆原生背景形状（圆角保留）、替换填充色。返回 null 表示「不动」：
+     * 色板关闭，或原生背景拿不到可复制的形状。
+     */
+    internal fun popupBackgroundFor(original: Drawable?, context: Context?): Drawable? {
+        val colors = palette
+        if (!colors.enabled) return null
+        if (!colors.popup) return null
+        if (original == null || context == null) return null
+        val night = context.resources.configuration.uiMode and
+            Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        val dark = night && !colors.darkFollowsLight
+        // 弹窗背景用与独立卡一致的纯色填充（柔光/磨砂在弹窗这种离屏浮层上拿不到稳定背景，
+        // 统一退化为纯色，保证弹窗底跟随所选色板而不是原生主题色）。
+        val color = if (dark) colors.dark else colors.light
+        return cloneAndTint(context, original, color)
+    }
+
+    /**
+     * 无 View 上下文时的弹窗底：克隆原生背景形状（圆角/阴影 alpha 全保留），
+     * 用 [android.graphics.PorterDuff.Mode.SRC_IN] 着色替换填充。
+     *
+     * 不用 `setTint`：它对 NinePatchDrawable / InsetDrawable（弹窗默认背景的结构）经常不响应，
+     * `setColorFilter` + SRC_IN 则对几乎所有 Drawable 确定生效，且保留 alpha 通道（圆角、阴影）。
+     */
+    private fun cloneAndTint(context: Context, source: Drawable?, color: Int): Drawable? =
+        runCatching {
+            source?.constantState?.newDrawable(context.resources, context.theme)?.mutate()
+                ?: source?.constantState?.newDrawable()?.mutate()
+        }.getOrNull()?.let { drawable ->
+            runCatching {
+                drawable.setColorFilter(color, android.graphics.PorterDuff.Mode.SRC_IN)
+                drawable
+            }.getOrNull()
+        }
+
+    /**
+     * 动态接管一个刚注册到 `RecyclerView` 的分组装饰器
+     * （由 [DynamicCardMaterialHook] 在 `RecyclerView.addItemDecoration` 里发现后调用）。
+     *
+     * 不假定类名、字段名、方法名。第一关是 [clipMethodOf]：只有存在
+     * `(Canvas, RectF, Path, Drawable)` 这个裁剪入口的类才可能是分组装饰器——
+     * 普通分隔线没有这个签名，会在这一步被排除，不会误伤。
+     */
+    internal fun installDynamicDecoration(type: Class<*>): Boolean {
+        // 不在这里判断 palette.enabled：装饰器只在 RecyclerView 初始化时注册一次，
+        // 若此刻材质是关的就跳过，用户之后打开开关就再也没有第二次机会。
+        // 挂上 hook 的成本是零（[update] 在 enabled=false 时会恢复原生 drawable），
+        // 所以一律安装，由绘制时的 update 决定要不要接管。
+        synchronized(decorationClasses) { if (!decorationClasses.add(type)) return routingAvailable }
+        val clip = clipMethodOf(type) ?: return false
+        val access = runCatching { structuralAccess(type) }.getOrNull() ?: return false
+        return runCatching {
+            installDrawHooksBySignature(type, access, dynamicHookId())
+            hookClipMethod(clip)
+            groupClipAvailable = true
+            routingAvailable = true
+            module.log(
+                Log.INFO, TAG,
+                "Dynamic group decoration: ${type.name} " +
+                    "drawable=${access.drawable.type.simpleName} " +
+                    "factory=${access.factory?.name ?: "-"}",
+            )
+            true
+        }.getOrElse { error ->
+            module.log(Log.WARN, TAG, "Dynamic group decoration failed: ${type.name}", error)
+            false
+        }
+    }
+
+    /**
+     * 结构发现：只知道「这是个分组装饰器」，其余全靠形状推断。
+     *
+     * - drawable 字段：类型为 `Drawable` 的那个。若有多个（例如另配一张阴影 drawable），
+     *   优先取类型与裁剪方法第 4 个参数**完全一致**的那个——那才是被裁剪的卡面；
+     * - paint 字段：类型为 `Paint` 的那个（可空，MIUIX 用它给卡面着色）；
+     * - 工厂方法：返回同一个 drawable 类型、参数 0 个或 1 个 `Context` 的那个
+     *   （关材质或切主题时用它让系统重新解析原生 drawable）；
+     * - contextField：类型为 `Context` 的字段，绘制方法取不到宿主 View 时的兜底。
+     */
+    private fun structuralAccess(type: Class<*>): Access? {
+        val hierarchy = generateSequence<Class<*>>(type) { it.superclass }.toList()
+        val fields = hierarchy.flatMap { it.declaredFields.toList() }
+        val clipDrawableType = clipMethodOf(type)?.parameterTypes?.getOrNull(3)
+        val drawableCandidates = fields.filter { Drawable::class.java.isAssignableFrom(it.type) }
+        val drawableField =
+            (drawableCandidates.firstOrNull { it.type == clipDrawableType } ?: drawableCandidates.firstOrNull())
+                ?.apply { isAccessible = true } ?: return null
+        val paintField = fields.firstOrNull { Paint::class.java.isAssignableFrom(it.type) }
+            ?.apply { isAccessible = true }
+        val contextField = fields.firstOrNull { Context::class.java.isAssignableFrom(it.type) }
+            ?.apply { isAccessible = true }
+        val drawableType = drawableField.type
+        val factory = hierarchy.asSequence()
+            .flatMap { it.declaredMethods.asSequence() }
+            .firstOrNull { method ->
+                !Modifier.isStatic(method.modifiers) &&
+                    method.parameterCount <= 1 &&
+                    (method.parameterCount == 0 ||
+                        Context::class.java.isAssignableFrom(method.parameterTypes[0])) &&
+                    drawableType.isAssignableFrom(method.returnType)
+            }
+            ?.apply { isAccessible = true }
+        return Access(drawableField, paintField, factory, contextField = contextField)
+    }
+
+    /**
+     * 分组卡的裁剪入口：`void (Canvas, RectF, Path, Drawable)`。
+     * 方法名会被 R8 压掉（设置里是 `clipDrawableRoundRect`，安全中心里是 `g`），签名不会。
+     */
+    private fun clipMethodOf(type: Class<*>): Method? =
+        generateSequence<Class<*>>(type) { it.superclass }
+            .flatMap { it.declaredMethods.asSequence() }
+            .firstOrNull { method ->
+                method.parameterCount == 4 &&
+                    method.parameterTypes[0] == Canvas::class.java &&
+                    method.parameterTypes[1] == RectF::class.java &&
+                    method.parameterTypes[2] == Path::class.java &&
+                    Drawable::class.java.isAssignableFrom(method.parameterTypes[3])
+            }
+            ?.apply { isAccessible = true }
+
+    /**
+     * 挂上裁剪绕行。玻璃 / 磨砂必须走这条路：MIUIX 的 `saveLayerAlpha` 会把卡片与真实背景
+     * 隔离成一层，材质拿不到背景就只能是死色。同一个方法只挂一次——动态发现会在多个
+     * `RecyclerView` 上反复遇到同一个装饰器类。
+     */
+    private fun hookClipMethod(method: Method): Boolean {
+        val key = "${method.declaringClass.name}#${method.name}#" +
+            method.parameterTypes.joinToString { it.name }
+        synchronized(hookedClipMethods) {
+            if (key in hookedClipMethods) return true
+            hookedClipMethods.add(key)
+        }
+        method.isAccessible = true
+        module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
+            .setId("settings-cards:clip-${dynamicHookId()}").intercept { chain ->
+                val material = chain.getArg(3) as? SettingsGroupMaterial
+                if (material == null) {
+                    chain.proceed()
+                } else {
+                    // 只有我们的 drawable 需要绕开那一层，其余情况保持原生分组路径。
+                    material.drawGroup(
+                        chain.getArg(0) as Canvas,
+                        chain.getArg(1) as RectF,
+                        chain.getArg(2) as Path,
+                    )
+                    null
+                }
+            }
+        return true
+    }
+
+    private fun dynamicHookId(): String = synchronized(decorationClasses) {
+        "dyn${dynamicHookSeq++}"
+    }
+
+    /**
+     * 通用路由的接管 / 近失诊断日志：按「原因 + 类名 + 资源名」去重并全局封顶，
+     * 既能在日志里回答「这张卡到底接管了没、被哪条规则拦下」，又不会在列表页刷屏
+     * （每类视图最多一行）。
+     */
+    internal fun logCandidate(view: View, detail: String) {
+        val id = if (view.id == View.NO_ID || view.id == 0) "-" else {
+            runCatching { view.resources.getResourceEntryName(view.id) }.getOrNull() ?: "-"
+        }
+        val key = "$detail|${view.javaClass.name}|$id"
+        synchronized(candidateLog) {
+            if (key in candidateLog || candidateLog.size >= CANDIDATE_LOG_LIMIT) return
+            candidateLog.add(key)
+        }
+        module.log(
+            Log.INFO, TAG,
+            "Standalone $detail class=${view.javaClass.simpleName} id=$id " +
+                "size=${view.width}x${view.height}",
+        )
+    }
+
+    /** 通用路由诊断日志每种视图最多记几行，防止在长列表页刷屏。 */
+    private const val CANDIDATE_LOG_LIMIT = 60
     private const val STANDALONE_MATERIAL_NONE = 0
     private const val STANDALONE_MATERIAL_FROST = 1
     private const val STANDALONE_MATERIAL_GLASS = 2
-    private val STANDALONE_CARD_IDS = setOf(
-        "lock_screen_notification_card",
-        "float_notification_card",
-        "show_app_badge_card",
-        "device_basic_layout",
-        "device_params",
-        BLUETOOTH_CARD_ID,
-    )
 }

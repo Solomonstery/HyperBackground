@@ -4,22 +4,20 @@ import android.content.SharedPreferences
 import android.app.Activity
 import android.content.Context
 import android.content.res.Resources
-import android.content.res.TypedArray
 import android.content.res.ColorStateList
 import android.os.Bundle
-import android.os.Build
 import android.util.Log
 import android.view.View
 import android.graphics.drawable.Drawable
 import android.widget.ImageView
 import android.widget.TextView
+import com.ciallo.hyperbackground.dynamic.card.SettingsCardBackgroundHook
 import io.github.libxposed.api.XposedInterface.ExceptionMode
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam
 
 /** Hooks only Settings' presentation models; no system property is written. */
 class SettingsDeviceModule : XposedModule() {
-    @Volatile private var applicationContext: Context? = null
     override fun onPackageLoaded(param: PackageLoadedParam) {
         if (!param.isFirstPackage || param.packageName != SETTINGS_PACKAGE) return
         val appearancePreferences = getRemotePreferences(SETTINGS_APPEARANCE_PREFERENCES)
@@ -33,9 +31,6 @@ class SettingsDeviceModule : XposedModule() {
             installAppearanceHooks(param.defaultClassLoader)
             installPersistentLogoHooks()
             installLogoResourceHooks()
-            installCardColorResourceHooks()
-            installCardFinalBackgroundHooks()
-            installCardMaterialHooks()
             // 停用：设置页字体强制色与本项目原有 TextColorOverride 完全重复且同 hook TextView.setTextColor，
             // 两者并行会互相覆盖。字体色统一交给 TextColorOverride 管理，函数体保留以便回退。
             // installPersistentTextColorHooks()
@@ -67,51 +62,6 @@ class SettingsDeviceModule : XposedModule() {
             log(Log.INFO, TAG, "Installed persistent Settings text-color hooks")
         }.onFailure { error ->
             log(Log.WARN, TAG, "Could not hook Settings text colors", error)
-        }
-    }
-
-    private fun installCardFinalBackgroundHooks() {
-        runCatching {
-            hook(View::class.java.getMethod("setBackgroundColor", Int::class.javaPrimitiveType))
-                .setExceptionMode(ExceptionMode.PROTECTIVE)
-                .setId("settings-appearance:card-background-color-final")
-                .intercept { chain ->
-                    val view = chain.thisObject as? View
-                    val color = chain.getArg(0) as? Int
-                    val replacement = if (view != null && color != null) {
-                        SettingsAppearanceApplier.cardFinalColorReplacement(view, color)
-                    } else null
-                    if (replacement == null) chain.proceed()
-                    else chain.proceedWith(chain.thisObject, arrayOf(replacement))
-                }
-
-            hook(View::class.java.getMethod("setBackgroundTintList", ColorStateList::class.java))
-                .setExceptionMode(ExceptionMode.PROTECTIVE)
-                .setId("settings-appearance:card-background-tint-final")
-                .intercept { chain ->
-                    val view = chain.thisObject as? View
-                    val list = chain.getArg(0) as? ColorStateList
-                    val replacement = if (view != null && list != null) {
-                        SettingsAppearanceApplier.cardFinalStateListReplacement(view, list)
-                    } else null
-                    if (replacement == null) chain.proceed()
-                    else chain.proceedWith(chain.thisObject, arrayOf(replacement))
-                }
-
-            hook(View::class.java.getMethod("setBackground", Drawable::class.java))
-                .setExceptionMode(ExceptionMode.PROTECTIVE)
-                .setId("settings-appearance:card-background-final")
-                .intercept { chain ->
-                    val view = chain.thisObject as? View
-                    val drawable = chain.getArg(0) as? Drawable
-                    if (view != null && drawable != null) {
-                        SettingsAppearanceApplier.cardFinalDrawableReplacement(view, drawable)
-                    }
-                    chain.proceed()
-                }
-            log(Log.INFO, TAG, "Installed final Settings card background hooks")
-        }.onFailure { error ->
-            log(Log.WARN, TAG, "Could not hook final Settings card backgrounds", error)
         }
     }
 
@@ -195,149 +145,6 @@ class SettingsDeviceModule : XposedModule() {
             log(Log.INFO, TAG, "Installed Settings logo resource replacement hooks")
         }.onFailure { error -> log(Log.WARN, TAG, "Could not hook Settings logo resource access", error) }
     }
-
-    private fun installCardMaterialHooks() {
-        runCatching {
-            hook(View::class.java.getMethod("setBackgroundBlurAlpha", Float::class.javaPrimitiveType))
-                .setExceptionMode(ExceptionMode.PROTECTIVE)
-                .setId("settings-appearance:card-blur-alpha")
-                .intercept { chain ->
-                    val view = chain.thisObject as? View
-                    val alpha = view?.let(SettingsAppearanceApplier::cardBlurAlpha)
-                    if (alpha != null) chain.proceedWith(arrayOf(alpha)) else chain.proceed()
-                }
-            listOf("setMiBackgroundBlurAlpha", "setMiViewBlurAlpha").forEach { name ->
-                runCatching {
-                    hook(View::class.java.getMethod(name, Float::class.javaPrimitiveType))
-                        .setExceptionMode(ExceptionMode.PROTECTIVE)
-                        .setId("settings-appearance:card-$name")
-                        .intercept { chain ->
-                            val view = chain.thisObject as? View
-                            val alpha = view?.let(SettingsAppearanceApplier::cardBlurAlpha)
-                            if (alpha != null) chain.proceedWith(arrayOf(alpha)) else chain.proceed()
-                        }
-                }
-            }
-            log(Log.INFO, TAG, "Installed Settings card material opacity hooks")
-        }.onFailure { error -> log(Log.DEBUG, TAG, "Settings card material alpha unavailable", error) }
-    }
-
-    private fun installCardColorResourceHooks() {
-        runCatching {
-            listOf(
-                Resources::class.java.getMethod("getColor", Int::class.javaPrimitiveType),
-                Resources::class.java.getMethod("getColor", Int::class.javaPrimitiveType, Resources.Theme::class.java),
-            ).forEachIndexed { index, method ->
-                hook(method)
-                    .setExceptionMode(ExceptionMode.PROTECTIVE)
-                    .setId("settings-appearance:card-color-resources-$index")
-                    .intercept { chain ->
-                        val resources = chain.thisObject as? Resources
-                            ?: return@intercept chain.proceed()
-                        val resourceId = chain.getArg(0) as? Int
-                            ?: return@intercept chain.proceed()
-                        val result = chain.proceed()
-                        val original = result as? Int ?: return@intercept result
-                        val context = currentApplicationContext()
-                            ?: return@intercept original
-                        SettingsAppearanceApplier.cardColorResourceReplacement(
-                            context, resources, resourceId, original,
-                        ) ?: original
-                    }
-            }
-
-            listOf(
-                Resources::class.java.getMethod("getColorStateList", Int::class.javaPrimitiveType),
-                Resources::class.java.getMethod("getColorStateList", Int::class.javaPrimitiveType, Resources.Theme::class.java),
-            ).forEachIndexed { index, method ->
-                hook(method)
-                    .setExceptionMode(ExceptionMode.PROTECTIVE)
-                    .setId("settings-appearance:card-color-state-resources-$index")
-                    .intercept { chain ->
-                        val resources = chain.thisObject as? Resources
-                            ?: return@intercept chain.proceed()
-                        val resourceId = chain.getArg(0) as? Int
-                            ?: return@intercept chain.proceed()
-                        val result = chain.proceed()
-                        val original = result as? ColorStateList ?: return@intercept result
-                        val context = currentApplicationContext()
-                            ?: return@intercept original
-                        SettingsAppearanceApplier.cardColorStateListResourceReplacement(
-                            context, resources, resourceId, original,
-                        ) ?: original
-                    }
-            }
-
-            hook(Context::class.java.getMethod("getColor", Int::class.javaPrimitiveType))
-                .setExceptionMode(ExceptionMode.PROTECTIVE)
-                .setId("settings-appearance:card-color-context")
-                .intercept { chain ->
-                    val context = chain.thisObject as? Context
-                        ?: return@intercept chain.proceed()
-                    val resourceId = chain.getArg(0) as? Int
-                        ?: return@intercept chain.proceed()
-                    val result = chain.proceed()
-                    val original = result as? Int ?: return@intercept result
-                    SettingsAppearanceApplier.cardColorResourceReplacement(
-                        context, context.resources, resourceId, original,
-                    ) ?: original
-                }
-
-            hook(TypedArray::class.java.getMethod("getColor", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType))
-                .setExceptionMode(ExceptionMode.PROTECTIVE)
-                .setId("settings-appearance:card-color-typed-array")
-                .intercept { chain ->
-                    val typedArray = chain.thisObject as? TypedArray
-                        ?: return@intercept chain.proceed()
-                    val index = chain.getArg(0) as? Int
-                        ?: return@intercept chain.proceed()
-                    val result = chain.proceed()
-                    val original = result as? Int ?: return@intercept result
-                    val resourceId = runCatching { typedArray.getResourceId(index, 0) }.getOrDefault(0)
-                    if (resourceId == 0) return@intercept original
-                    val resources = runCatching {
-                        TypedArray::class.java.getMethod("getResources").invoke(typedArray) as? Resources
-                    }.getOrNull() ?: return@intercept original
-                    val context = currentApplicationContext()
-                        ?: return@intercept original
-                    SettingsAppearanceApplier.cardColorResourceReplacement(
-                        context, resources, resourceId, original,
-                    ) ?: original
-                }
-
-            hook(TypedArray::class.java.getMethod("getColorStateList", Int::class.javaPrimitiveType))
-                .setExceptionMode(ExceptionMode.PROTECTIVE)
-                .setId("settings-appearance:card-color-state-typed-array")
-                .intercept { chain ->
-                    val typedArray = chain.thisObject as? TypedArray
-                        ?: return@intercept chain.proceed()
-                    val index = chain.getArg(0) as? Int
-                        ?: return@intercept chain.proceed()
-                    val result = chain.proceed()
-                    val original = result as? ColorStateList ?: return@intercept result
-                    val resourceId = runCatching { typedArray.getResourceId(index, 0) }.getOrDefault(0)
-                    if (resourceId == 0) return@intercept original
-                    val resources = runCatching {
-                        TypedArray::class.java.getMethod("getResources").invoke(typedArray) as? Resources
-                    }.getOrNull() ?: return@intercept original
-                    val context = currentApplicationContext()
-                        ?: return@intercept original
-                    SettingsAppearanceApplier.cardColorStateListResourceReplacement(
-                        context, resources, resourceId, original,
-                    ) ?: original
-                }
-
-            log(Log.INFO, TAG, "Installed Settings card color resource replacement hooks")
-        }.onFailure { error ->
-            log(Log.WARN, TAG, "Could not hook Settings card color resources", error)
-        }
-    }
-
-    private fun currentApplicationContext(): Context? = applicationContext ?: runCatching {
-        Class.forName("android.app.ActivityThread")
-            .getMethod("currentApplication")
-            .invoke(null) as? Context
-    }.getOrNull()?.also { applicationContext = it }
 
     private fun installAppearanceHooks(classLoader: ClassLoader) {
         installActivityAppearanceHooks(classLoader)

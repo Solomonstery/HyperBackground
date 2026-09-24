@@ -355,4 +355,20 @@
     <string name="settings_card_import_done">Card configuration imported</string>
     <string name="settings_card_import_failed">Import failed: not a valid card configuration</string>
     <string name="slider_range_hint">Range: %1$s ~ %2$s</string>
+    <string name="nav_dynamic">Dynamic</string>
+    <string name="dynamic_scope_title">Scope</string>
+    <string name="component_scope_title">Component scope</string>
+    <string name="component_scope_summary">Choose which component types use the material</string>
+    <string name="app_scope_title">App scope</string>
+    <string name="app_scope_summary">Choose which apps use the material</string>
+    <string name="component_scope_types_title">Component types</string>
+    <string name="component_group_card">Group cards</string>
+    <string name="component_group_card_summary">RecyclerView group decorations in Settings, Security Center and other pages</string>
+    <string name="component_standalone_card">Standalone cards</string>
+    <string name="component_standalone_card_summary">Views that draw their own rounded surface, e.g. battery cards</string>
+    <string name="component_popup">Popups</string>
+    <string name="component_popup_summary">Overflow menus and dropdown dialogs</string>
+    <string name="component_search">Search bar</string>
+    <string name="component_search_summary">Soft glass on the Settings home search bar</string>
+    <string name="app_scope_placeholder">App scope is not available yet. It will read the currently enabled scopes from the LSPosed service.</string>
 </resources>

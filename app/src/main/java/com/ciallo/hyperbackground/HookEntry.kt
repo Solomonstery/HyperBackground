@@ -12,7 +12,7 @@ class HookEntry : XposedModule() {
 
     @RequiresApi(Build.VERSION_CODES.Q)
     override fun onPackageLoaded(param: PackageLoadedParam) {
-        if (!param.isFirstPackage || !BackgroundContract.isSupportedPackage(param.packageName)) return
+        if (!param.isFirstPackage) return
         val preferences = getRemotePreferences(BackgroundContract.PREFS)
         HookRuntime.initialize(this, preferences)
         configListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->

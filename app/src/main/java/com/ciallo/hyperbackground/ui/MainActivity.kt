@@ -67,10 +67,13 @@ import com.ciallo.hyperbackground.appearance.DeviceProfileSettings
 import com.ciallo.hyperbackground.appearance.SettingsAppearanceSettings
 import com.ciallo.hyperbackground.ui.pages.BackgroundDetailPage
 import com.ciallo.hyperbackground.ui.pages.AboutPage
+import com.ciallo.hyperbackground.ui.pages.AppScopePage
 import com.ciallo.hyperbackground.ui.pages.ChangelogPage
+import com.ciallo.hyperbackground.ui.pages.ComponentScopePage
 import com.ciallo.hyperbackground.ui.pages.DonatePage
 import com.ciallo.hyperbackground.ui.pages.DeviceCardPage
 import com.ciallo.hyperbackground.ui.pages.DeviceInfoPage
+import com.ciallo.hyperbackground.ui.pages.DynamicMaterialPage
 import com.ciallo.hyperbackground.ui.pages.HomePage
 import com.ciallo.hyperbackground.ui.pages.SettingsPage
 import com.ciallo.hyperbackground.ui.pages.SettingsCardMaterialPage
@@ -100,6 +103,7 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.All
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Home
 import top.yukonga.miuix.kmp.icon.extended.Info
@@ -476,6 +480,7 @@ class MainActivity : ComponentActivity() {
                     onMonet = onMonet,
                     onAccent = onAccent,
                     onOpenBackground = openRoute,
+                    onOpenRoute = openRoute,
                     onOpenChangelog = { openRoute(ROUTE_CHANGELOG) },
                     onOpenDonate = { openRoute(ROUTE_DONATE) },
                 )
@@ -485,10 +490,11 @@ class MainActivity : ComponentActivity() {
                     ROUTE_DEVICE_INFO -> DeviceInfoScreen(onBack = popRoute)
                     ROUTE_RANDOM_BG -> RandomBackgroundScreen(onBack = popRoute)
                     ROUTE_CARD_MATERIAL -> CardMaterialScreen(onBack = popRoute)
+                    ROUTE_COMPONENT_SCOPE -> ComponentScopeScreen(onBack = popRoute)
+                    ROUTE_APP_SCOPE -> AppScopeScreen(onBack = popRoute)
                     else -> BackgroundDetailScreen(
                         slot = slot,
                         onBack = popRoute,
-                        onOpenCardMaterial = { openRoute(ROUTE_CARD_MATERIAL) },
                     )
                 }
             }
@@ -506,10 +512,11 @@ class MainActivity : ComponentActivity() {
         onMonet: (Boolean) -> Unit,
         onAccent: (Int) -> Unit,
         onOpenBackground: (String) -> Unit,
+        onOpenRoute: (String) -> Unit,
         onOpenChangelog: () -> Unit,
         onOpenDonate: () -> Unit,
     ) {
-        val pagerState = rememberPagerState(pageCount = { 3 })
+        val pagerState = rememberPagerState(pageCount = { 4 })
         val scope = rememberCoroutineScope()
         val backgroundColor = MiuixTheme.colorScheme.surface
         val backdrop = if (bottomBarBlurEnabled) {
@@ -557,6 +564,12 @@ class MainActivity : ComponentActivity() {
                         FloatingNavigationBarItem(
                             selected = pagerState.currentPage == 2,
                             onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
+                            icon = MiuixIcons.All,
+                            label = getString(R.string.nav_dynamic),
+                        )
+                        FloatingNavigationBarItem(
+                            selected = pagerState.currentPage == 3,
+                            onClick = { scope.launch { pagerState.animateScrollToPage(3) } },
                             icon = MiuixIcons.Info,
                             label = getString(R.string.nav_about),
                         )
@@ -582,6 +595,12 @@ class MainActivity : ComponentActivity() {
                         NavigationBarItem(
                             selected = pagerState.currentPage == 2,
                             onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
+                            icon = MiuixIcons.All,
+                            label = getString(R.string.nav_dynamic),
+                        )
+                        NavigationBarItem(
+                            selected = pagerState.currentPage == 3,
+                            onClick = { scope.launch { pagerState.animateScrollToPage(3) } },
                             icon = MiuixIcons.Info,
                             label = getString(R.string.nav_about),
                         )
@@ -636,7 +655,20 @@ class MainActivity : ComponentActivity() {
                                 onThemeColorEnabled = onThemeColorEnabled,
                                 onMonet = onMonet,
                                 onAccent = onAccent,
-                                onOpenChangelog = { scope.launch { pagerState.animateScrollToPage(2) } },
+                                onOpenChangelog = { scope.launch { pagerState.animateScrollToPage(3) } },
+                            )
+                        }
+                        2 -> MainPageScaffold(
+                            title = getString(R.string.nav_dynamic),
+                            bottomPadding = bottomPadding,
+                        ) { padding, scrollModifier ->
+                            DynamicMaterialPage(
+                                activity = this@MainActivity,
+                                modifier = scrollModifier,
+                                padding = padding,
+                                onOpenMaterial = { onOpenRoute(ROUTE_CARD_MATERIAL) },
+                                onOpenComponentScope = { onOpenRoute(ROUTE_COMPONENT_SCOPE) },
+                                onOpenAppScope = { onOpenRoute(ROUTE_APP_SCOPE) },
                             )
                         }
                         else -> MainPageScaffold(
@@ -699,7 +731,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun BackgroundDetailScreen(slot: String, onBack: () -> Unit, onOpenCardMaterial: () -> Unit) {
+    private fun BackgroundDetailScreen(slot: String, onBack: () -> Unit) {
         val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
         val hasUiBackground = remember(revision) { currentUiBackgroundFile().isFile }
         val topBarColor = if (hasUiBackground) {
@@ -737,7 +769,73 @@ class MainActivity : ComponentActivity() {
                 padding = padding,
                 slot = slot,
                 revision = revision,
-                onOpenCardMaterial = onOpenCardMaterial,
+            )
+        }
+    }
+
+    @Composable
+    private fun ComponentScopeScreen(onBack: () -> Unit) {
+        val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+        val hasUiBackground = remember(revision) { currentUiBackgroundFile().isFile }
+        val topBarColor = if (hasUiBackground) {
+            Color.Transparent
+        } else {
+            MiuixTheme.colorScheme.surface.copy(alpha = cardOpacity)
+        }
+        val title = getString(R.string.component_scope_title)
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    color = topBarColor,
+                    title = title,
+                    largeTitle = title,
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(MiuixIcons.Back, contentDescription = getString(R.string.back))
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            ComponentScopePage(
+                activity = this@MainActivity,
+                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                padding = padding,
+            )
+        }
+    }
+
+    @Composable
+    private fun AppScopeScreen(onBack: () -> Unit) {
+        val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+        val hasUiBackground = remember(revision) { currentUiBackgroundFile().isFile }
+        val topBarColor = if (hasUiBackground) {
+            Color.Transparent
+        } else {
+            MiuixTheme.colorScheme.surface.copy(alpha = cardOpacity)
+        }
+        val title = getString(R.string.app_scope_title)
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    color = topBarColor,
+                    title = title,
+                    largeTitle = title,
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(MiuixIcons.Back, contentDescription = getString(R.string.back))
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            AppScopePage(
+                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                padding = padding,
             )
         }
     }
@@ -1080,5 +1178,7 @@ class MainActivity : ComponentActivity() {
         const val ROUTE_DEVICE_INFO = "__appearance_device_info__"
         const val ROUTE_RANDOM_BG = "__random_bg__"
         const val ROUTE_CARD_MATERIAL = "__card_material__"
+        const val ROUTE_COMPONENT_SCOPE = "__component_scope__"
+        const val ROUTE_APP_SCOPE = "__app_scope__"
     }
 }

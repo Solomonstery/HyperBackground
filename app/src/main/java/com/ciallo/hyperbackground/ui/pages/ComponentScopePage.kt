@@ -1,0 +1,85 @@
+package com.ciallo.hyperbackground.ui.pages
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.ciallo.hyperbackground.R
+import com.ciallo.hyperbackground.ui.MainActivity
+import com.ciallo.hyperbackground.ui.components.SectionTitle
+import com.ciallo.hyperbackground.ui.components.UiCard
+import top.yukonga.miuix.kmp.preference.SwitchPreference
+
+/**
+ * 「组件作用域」二级页：列出动态适配支持的组件类型，各自独立控制是否套用材质。
+ *
+ * 组件类型与动态路由三入口一一对应：
+ * - 分组卡片 → RecyclerView 分组装饰器（DynamicCardMaterialHook + installDynamicDecoration）
+ * - 独立卡片 → 自带卡面的视图（CardSurfaceDetector + standaloneTarget）
+ * - 弹窗     → PopupView / miuix AlertDialog（DynamicPopupMaterialHook + popupBackgroundFor）
+ */
+@Composable
+fun ComponentScopePage(
+    activity: MainActivity,
+    modifier: Modifier = Modifier,
+    padding: PaddingValues = PaddingValues(0.dp),
+) {
+    val appearance = activity.appearance
+    LazyColumn(
+        modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            top = padding.calculateTopPadding() + 12.dp,
+            bottom = padding.calculateBottomPadding() + 12.dp,
+            start = 12.dp,
+            end = 12.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item { SectionTitle(stringResource(R.string.component_scope_types_title)) }
+        item {
+            UiCard(activity, Modifier.fillMaxWidth()) {
+                Column {
+                    SwitchPreference(
+                        title = stringResource(R.string.component_group_card),
+                        summary = stringResource(R.string.component_group_card_summary),
+                        checked = appearance.componentGroupCard,
+                        onCheckedChange = { value ->
+                            activity.updateAppearance { it.copy(componentGroupCard = value) }
+                        },
+                    )
+                    SwitchPreference(
+                        title = stringResource(R.string.component_standalone_card),
+                        summary = stringResource(R.string.component_standalone_card_summary),
+                        checked = appearance.componentStandaloneCard,
+                        onCheckedChange = { value ->
+                            activity.updateAppearance { it.copy(componentStandaloneCard = value) }
+                        },
+                    )
+                    SwitchPreference(
+                        title = stringResource(R.string.component_popup),
+                        summary = stringResource(R.string.component_popup_summary),
+                        checked = appearance.componentPopup,
+                        onCheckedChange = { value ->
+                            activity.updateAppearance { it.copy(componentPopup = value) }
+                        },
+                    )
+                    SwitchPreference(
+                        title = stringResource(R.string.component_search),
+                        summary = stringResource(R.string.component_search_summary),
+                        checked = appearance.componentSearch,
+                        onCheckedChange = { value ->
+                            activity.updateAppearance { it.copy(componentSearch = value) }
+                        },
+                    )
+                }
+            }
+        }
+    }
+}

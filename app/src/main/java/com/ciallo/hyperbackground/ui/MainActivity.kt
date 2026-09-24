@@ -840,6 +840,7 @@ class MainActivity : ComponentActivity() {
             },
         ) { padding ->
             AppScopePage(
+                activity = this@MainActivity,
                 modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
                 padding = padding,
             )

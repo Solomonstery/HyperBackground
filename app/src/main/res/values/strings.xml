@@ -372,5 +372,7 @@
     <string name="component_floating_bar_summary">Suspended MIUIX action menus, such as the actions on app details pages</string>
     <string name="component_search">Search bar</string>
     <string name="component_search_summary">Soft glass on the Settings home search bar</string>
-    <string name="app_scope_placeholder">App scope is not available yet. It will read the currently enabled scopes from the LSPosed service.</string>
+    <string name="app_scope_apps_title">Scoped apps</string>
+    <string name="app_scope_inactive">Module inactive: enable HyperBackground in LSPosed and select the scopes it should apply to.</string>
+    <string name="app_scope_empty">No enabled scope apps were found. Select the scopes for HyperBackground in LSPosed, then come back to this page.</string>
 </resources>

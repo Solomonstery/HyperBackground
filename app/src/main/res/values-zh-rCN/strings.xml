@@ -132,5 +132,7 @@
     <string name="component_floating_bar_summary">应用详情等页面的 MIUIX 悬浮操作菜单，不影响普通底部导航栏</string>
     <string name="component_search">搜索框</string>
     <string name="component_search_summary">设置主页搜索框的柔光玻璃效果</string>
-    <string name="app_scope_placeholder">软件作用域暂未开放，后续将接入 LSPosed service 动态读取当前启用的作用域。</string>
+    <string name="app_scope_apps_title">作用域应用</string>
+    <string name="app_scope_inactive">模块未激活：请先在 LSPosed 中启用 HyperBackground，并勾选需要生效的作用域。</string>
+    <string name="app_scope_empty">未读取到已启用的作用域应用，请在 LSPosed 中为 HyperBackground 勾选作用域后返回本页。</string>
 </resources>

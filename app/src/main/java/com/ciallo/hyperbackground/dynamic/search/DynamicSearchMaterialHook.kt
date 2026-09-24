@@ -8,7 +8,9 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import com.ciallo.hyperbackground.HookRuntime
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
+import com.ciallo.hyperbackground.appearance.KEY_APP_SCOPE_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
 import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
 import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_SEARCH
@@ -43,6 +45,7 @@ internal object DynamicSearchMaterialHook {
         KEY_CUSTOM_CARD_ENABLED, KEY_CARD_BACKGROUND_MODE, KEY_COMPONENT_SEARCH,
         KEY_CARD_DARK_FOLLOWS_LIGHT, KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR,
         KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS,
+        KEY_APP_SCOPE_DISABLED,
     )
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
         if (key == null || key in keys) {
@@ -188,7 +191,7 @@ internal object DynamicSearchMaterialHook {
 
     private fun apply(view: View) {
         val config = palette
-        if (!config.enabled || !config.search || config.mode != CARD_BACKGROUND_SOFT_GLASS) {
+        if (!config.enabledFor(HookRuntime.targetPackage) || !config.search || config.mode != CARD_BACKGROUND_SOFT_GLASS) {
             restore(view)
             return
         }

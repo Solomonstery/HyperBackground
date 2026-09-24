@@ -14,7 +14,7 @@ class HookEntry : XposedModule() {
     override fun onPackageLoaded(param: PackageLoadedParam) {
         if (!param.isFirstPackage) return
         val preferences = getRemotePreferences(BackgroundContract.PREFS)
-        HookRuntime.initialize(this, preferences)
+        HookRuntime.initialize(this, preferences, param.packageName)
         configListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
             TextColorOverride.invalidateConfig()
         }

@@ -18,10 +18,12 @@ import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import com.ciallo.hyperbackground.HookRuntime
 import com.ciallo.hyperbackground.dynamic.popup.DynamicPopupMaterialHook
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_COLOR
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_FROST
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
+import com.ciallo.hyperbackground.appearance.KEY_APP_SCOPE_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
 import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
 import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_GROUP_CARD
@@ -62,6 +64,7 @@ internal object DynamicCardBackgroundHook {
         KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR, KEY_LIGHT_CARD_BLUR, KEY_DARK_CARD_BLUR,
         KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS, KEY_CARD_DARK_FOLLOWS_LIGHT,
         KEY_COMPONENT_GROUP_CARD, KEY_COMPONENT_STANDALONE_CARD, KEY_COMPONENT_POPUP,
+        KEY_APP_SCOPE_DISABLED,
     )
     private var groupClipAvailable = false
     /** 分组路由是否在该进程成功接管（Miuix 分组工厂 hook 至少一个成功）。 */
@@ -225,7 +228,7 @@ internal object DynamicCardBackgroundHook {
                 this.rippleColor = rippleColor
             }
         }
-        if (!colors.enabled) {
+        if (!colors.enabledFor(HookRuntime.targetPackage)) {
             clearCustomCardMaterial(view)
             return
         }
@@ -365,7 +368,7 @@ internal object DynamicCardBackgroundHook {
                     state.original = view.background
                     state.applied = null
                     state.signature = null
-                    if (palette.enabled && view.isAttachedToWindow) {
+                    if (palette.enabledFor(HookRuntime.targetPackage) && view.isAttachedToWindow) {
                         view.post { applyStandalone(view) }
                     }
                 }
@@ -385,7 +388,7 @@ internal object DynamicCardBackgroundHook {
         }
         val state = tracked ?: standaloneState(view)
         val colors = palette
-        if (!colors.enabled) {
+        if (!colors.enabledFor(HookRuntime.targetPackage)) {
             restoreStandalone(view, state)
             return
         }
@@ -518,7 +521,7 @@ internal object DynamicCardBackgroundHook {
      * （[CardSurfaceDetector]），因此换页面、换 apk、换机型都不需要再适配。
      */
     private fun standaloneTarget(view: View): String? {
-        if (!palette.enabled) return null
+        if (!palette.enabledFor(HookRuntime.targetPackage)) return null
         if (!palette.standaloneCard) return null
         if (DynamicPopupMaterialHook.owns(view)) return null
         // The suspended action menu has its own material route and scope switch.
@@ -716,7 +719,7 @@ internal object DynamicCardBackgroundHook {
                 }
             }
             val colors = palette
-            if (!colors.enabled || !colors.groupCard) {
+            if (!colors.enabledFor(HookRuntime.targetPackage) || !colors.groupCard) {
                 if (state.applied) {
                     state.applied = false
                     state.frost?.dispose()
@@ -839,7 +842,7 @@ internal object DynamicCardBackgroundHook {
      * 由 [DynamicCardMaterialHook] 的 `View.onSizeChanged` hook 调用。
      */
     internal fun onViewLaidOut(view: View) {
-        if (!palette.enabled) return
+        if (!palette.enabledFor(HookRuntime.targetPackage)) return
         if (view.width <= 0 || view.height <= 0) return
         // 已经接管过的不再重复判定：尺寸变化不改变材质，后续 resize 交给重绘。
         if (synchronized(standaloneStates) { standaloneStates[view] }?.applied != null) return
@@ -856,7 +859,7 @@ internal object DynamicCardBackgroundHook {
      * 普通分隔线没有这个签名，会在这一步被排除，不会误伤。
      */
     internal fun installDynamicDecoration(type: Class<*>): Boolean {
-        // 不在这里判断 palette.enabled：装饰器只在 RecyclerView 初始化时注册一次，
+        // 不在这里判断 palette.enabledFor(...)：装饰器只在 RecyclerView 初始化时注册一次，
         // 若此刻材质是关的就跳过，用户之后打开开关就再也没有第二次机会。
         // 挂上 hook 的成本是零（[update] 在 enabled=false 时会恢复原生 drawable），
         // 所以一律安装，由绘制时的 update 决定要不要接管。

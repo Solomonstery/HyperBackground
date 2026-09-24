@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.graphics.PorterDuff
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
+import com.ciallo.hyperbackground.HookRuntime
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_COLOR
 import com.ciallo.hyperbackground.dynamic.material.DynamicMaterialPalette
 
@@ -21,7 +22,7 @@ internal object DynamicPopupBackground {
     }
 
     fun create(original: Drawable?, context: Context, palette: DynamicMaterialPalette): Drawable? {
-        if (!palette.enabled || !palette.popup) return null
+        if (!palette.enabledFor(HookRuntime.targetPackage) || !palette.popup) return null
         val dark = !palette.darkFollowsLight && context.resources.configuration.uiMode and
             Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
         val color = if (palette.mode == CARD_BACKGROUND_COLOR) {

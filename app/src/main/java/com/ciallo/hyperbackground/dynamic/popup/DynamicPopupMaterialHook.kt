@@ -3,13 +3,18 @@ package com.ciallo.hyperbackground.dynamic.popup
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.graphics.Canvas
+import android.graphics.Outline
+import android.graphics.RenderNode
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.widget.ListView
+import com.ciallo.hyperbackground.HookRuntime
+import com.ciallo.hyperbackground.appearance.KEY_APP_SCOPE_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
 import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
 import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_POPUP
@@ -31,6 +36,7 @@ import java.util.WeakHashMap
 internal object DynamicPopupMaterialHook {
     private const val TAG = "HyperBackgroundCards"
     private const val POPUP_VIEW = "miuix.popupwidget.widget.PopupView"
+    private const val LIST_POPUP = "miuix.popupwidget.widget.PopupWindow"
     private const val HYPER_POPUP = "miuix.appcompat.widget.HyperPopupWindow"
     private const val DIALOG_PANEL = "miuix.appcompat.internal.widget.DialogParentPanel2"
     private const val SMOOTH_FRAME = "miuix.smooth.SmoothFrameLayout2"
@@ -43,12 +49,17 @@ internal object DynamicPopupMaterialHook {
     private val originals = WeakHashMap<View, Drawable?>()
     private val replacements = WeakHashMap<View, Drawable>()
     private val glass = WeakHashMap<View, Boolean>()
+    private val outlines = WeakHashMap<View, ViewOutlineProvider?>()
+    private val originalClipping = WeakHashMap<View, Boolean>()
+    private val outlineListeners = WeakHashMap<View, View.OnLayoutChangeListener>()
+    private val expandedLogged = WeakHashMap<View, Boolean>()
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
         if (key == null || key in setOf(
                 KEY_CUSTOM_CARD_ENABLED, KEY_COMPONENT_POPUP, KEY_LIGHT_CARD_COLOR,
                 KEY_DARK_CARD_COLOR, KEY_CARD_DARK_FOLLOWS_LIGHT, KEY_CARD_BACKGROUND_MODE,
                 KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR,
                 KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS,
+                KEY_APP_SCOPE_DISABLED,
             )
         ) {
             palette = DynamicMaterialPalette.read(prefs)
@@ -64,6 +75,8 @@ internal object DynamicPopupMaterialHook {
         prefs.registerOnSharedPreferenceChangeListener(listener)
         runCatching { installPopupViewHook(loader) }
             .onFailure { module.log(Log.WARN, TAG, "PopupView hook unavailable", it) }
+        runCatching { installDropDownPopupHook(loader) }
+            .onFailure { module.log(Log.WARN, TAG, "MIUIX drop-down popup hook unavailable", it) }
         runCatching { installHyperPopupHook(loader) }
             .onFailure { module.log(Log.WARN, TAG, "HyperPopupWindow hook unavailable", it) }
         runCatching { installDialogPanelHook(loader) }
@@ -119,6 +132,22 @@ internal object DynamicPopupMaterialHook {
                     if (panel.isAttachedToWindow) applyBackground(panel)
                 }
                 chain.proceed()
+            }
+    }
+
+    private fun installDropDownPopupHook(loader: ClassLoader) {
+        val type = Class.forName(LIST_POPUP, false, loader)
+        val content = type.getDeclaredField("mContentView").apply { isAccessible = true }
+        val material = type.getDeclaredMethod("isMaterialEnabled").apply { isAccessible = true }
+        module.hook(material).setExceptionMode(ExceptionMode.PROTECTIVE)
+            .setId("dynamic-cards:dropdown-native-material").intercept { chain ->
+                val result = chain.proceed()
+                val config = palette
+                val surface = runCatching { content.get(chain.thisObject) as? View }.getOrNull()
+                if (surface != null && isListPopup(surface) &&
+                    config.enabledFor(HookRuntime.targetPackage) && config.popup &&
+                    config.mode == CARD_BACKGROUND_SOFT_GLASS
+                ) true else result
             }
     }
 
@@ -195,18 +224,37 @@ internal object DynamicPopupMaterialHook {
         if (!originals.containsKey(view)) originals[view] = null
         val original = originals[view]
         val config = palette
-        val wantsGlass = config.enabled && config.popup && config.mode == CARD_BACKGROUND_SOFT_GLASS
-        if (!palette.enabled || !palette.popup) {
+        val packageEnabled = config.enabledFor(HookRuntime.targetPackage)
+        val wantsGlass = packageEnabled && config.popup && config.mode == CARD_BACKGROUND_SOFT_GLASS
+        if (!packageEnabled || !palette.popup) {
             if (glass.remove(view) != null) DynamicSoftGlassDrawable.clearFromView(view)
+            if (outlines.containsKey(view)) {
+                outlineListeners.remove(view)?.let(view::removeOnLayoutChangeListener)
+                expandedLogged.remove(view)
+                view.outlineProvider = outlines.remove(view)
+                originalClipping.remove(view)?.let { view.clipToOutline = it }
+                view.invalidateOutline()
+            }
             if (current === previous) view.background = original
             replacements.remove(view)
             return
         }
         if (current === previous && previous != null && !refresh) {
-            if (!wantsGlass || glass[view] == true && previous.alpha == 255) return
+            if (glass[view] == true) {
+                if (previous.alpha != 255) previous.alpha = 255
+                return
+            }
+            if (!wantsGlass) return
             if (!view.isAttachedToWindow || !view.isHardwareAccelerated) return
         }
         if (glass.remove(view) != null) DynamicSoftGlassDrawable.clearFromView(view)
+        if (outlines.containsKey(view)) {
+            outlineListeners.remove(view)?.let(view::removeOnLayoutChangeListener)
+            expandedLogged.remove(view)
+            view.outlineProvider = outlines.remove(view)
+            originalClipping.remove(view)?.let { view.clipToOutline = it }
+            view.invalidateOutline()
+        }
         val replacement = DynamicPopupBackground.create(original, view.context, config) ?: run {
             module.log(Log.WARN, TAG, "Popup background unavailable: ${original?.javaClass?.name}")
             return
@@ -225,6 +273,64 @@ internal object DynamicPopupMaterialHook {
                 )
             ) {
                 replacement.alpha = 255
+                if (view.javaClass.name == SMOOTH_FRAME && isListPopup(view) &&
+                    view.rootView.javaClass.simpleName == "PopupDecorView"
+                ) {
+                    val radius = runCatching {
+                        val source = original?.takeIf {
+                            it.javaClass.name == "miuix.smooth.SmoothContainerDrawable2"
+                        } ?: view
+                        (source.javaClass.getMethod("getCornerRadius").invoke(source) as Number).toFloat()
+                    }.getOrDefault(0f)
+                    if (radius > 0f) {
+                        outlines[view] = view.outlineProvider
+                        originalClipping[view] = view.clipToOutline
+                        view.outlineProvider = object : ViewOutlineProvider() {
+                            override fun getOutline(v: View, outline: Outline) {
+                                val currentRadius = runCatching {
+                                    (v.background?.javaClass?.getMethod("getCornerRadius")
+                                        ?.invoke(v.background) as? Number)?.toFloat()
+                                }.getOrNull() ?: radius
+                                outline.setRoundRect(0, 0, v.width, v.height, currentRadius)
+                            }
+                        }
+                        view.clipToOutline = true
+                        val updateOutline: (View) -> Unit = { v ->
+                            v.invalidateOutline()
+                            runCatching {
+                                val currentRadius = (v.background?.javaClass
+                                    ?.getMethod("getCornerRadius")?.invoke(v.background) as? Number)
+                                    ?.toFloat() ?: radius
+                                val node = View::class.java.getDeclaredField("mRenderNode")
+                                    .apply { isAccessible = true }.get(v) as RenderNode
+                                node.setOutline(Outline().apply {
+                                    setRoundRect(0, 0, v.width, v.height, currentRadius)
+                                    alpha = 1f
+                                })
+                                node.setClipToOutline(true)
+                                node.setClipToBounds(true)
+                            }.onFailure {
+                                module.log(Log.WARN, TAG, "Drop-down glass outline unavailable", it)
+                            }
+                        }
+                        val listener = object : View.OnLayoutChangeListener {
+                            override fun onLayoutChange(
+                                v: View, left: Int, top: Int, right: Int, bottom: Int,
+                                oldLeft: Int, oldTop: Int, oldRight: Int, oldBottom: Int,
+                            ) {
+                                if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                                    updateOutline(v)
+                                    if (bottom - top > 100 && expandedLogged.put(v, true) == null) {
+                                        module.log(Log.INFO, TAG, "Drop-down expanded: ${v.width}x${v.height} radius=${runCatching { v.background?.javaClass?.getMethod("getCornerRadius")?.invoke(v.background) }.getOrNull()} clip=${v.clipToOutline} bg=${v.background?.javaClass?.simpleName}")
+                                    }
+                                }
+                            }
+                        }
+                        outlineListeners[view] = listener
+                        view.addOnLayoutChangeListener(listener)
+                        if (view.width > 0 && view.height > 0) updateOutline(view)
+                    }
+                }
                 // SmoothContainerDrawable2 paints its child directly; tinting the wrapper
                 // transparent does not remove that opaque fill on MIUIX builds.
                 val cleared = DynamicPopupBackground.clearFill(replacement)
@@ -237,7 +343,53 @@ internal object DynamicPopupMaterialHook {
                     (0 until group.childCount).map { group.getChildAt(it) }
                         .firstOrNull { it is ListView }
                 }
-                module.log(Log.INFO, TAG, "Popup glass applied: ${view.javaClass.name}@${System.identityHashCode(view).toString(16)} fillCleared=$cleared rootBg=${view.rootView.background?.javaClass?.simpleName} springBg=${spring?.background?.javaClass?.simpleName} listBg=${list?.background?.javaClass?.simpleName}")
+                var parent = view.parent
+                val ancestors = ArrayList<String>(4)
+                repeat(4) {
+                    val node = parent as? View ?: return@repeat
+                    ancestors += "${node.javaClass.simpleName}(bg=${node.background?.javaClass?.simpleName},alpha=${node.alpha})"
+                    parent = node.parent
+                }
+                val radius = if (view.javaClass.name == SMOOTH_FRAME) runCatching {
+                    view.javaClass.getMethod("getCornerRadius").invoke(view)
+                }.getOrNull() else null
+                val backgroundRadius = original?.takeIf {
+                    it.javaClass.name == "miuix.smooth.SmoothContainerDrawable2"
+                }?.let { drawable -> runCatching {
+                    drawable.javaClass.getMethod("getCornerRadius").invoke(drawable)
+                }.getOrNull() }
+                fun describe(drawable: Drawable?): String {
+                    if (drawable == null) return "null"
+                    val rawRadius = runCatching {
+                        drawable.javaClass.getDeclaredField("mRadius").apply { isAccessible = true }
+                            .get(drawable)
+                    }.getOrNull()
+                    return "${drawable.javaClass.simpleName}@${System.identityHashCode(drawable).toString(16)}(rawRadius=$rawRadius,bounds=${drawable.bounds})"
+                }
+                val firstRow = (list as? ListView)?.getChildAt(0)
+                module.log(Log.INFO, TAG, "Popup glass applied: ${view.javaClass.name}@${System.identityHashCode(view).toString(16)} size=${view.width}x${view.height} fillCleared=$cleared viewRadius=$radius backgroundRadius=$backgroundRadius original=${describe(original)} replacement=${describe(replacement)} rowBg=${describe(firstRow?.background)} springBg=${spring?.background?.javaClass?.simpleName} listBg=${list?.background?.javaClass?.simpleName} ancestors=$ancestors")
+                if (view.rootView.javaClass.simpleName == "PopupDecorView" && expandedLogged.put(view, true) == null) {
+                    view.postDelayed({
+                        val currentBg = view.background
+                        val expandedRadius = runCatching {
+                            currentBg?.javaClass?.getMethod("getCornerRadius")?.invoke(currentBg)
+                        }.getOrNull()
+                        view.invalidateOutline()
+                        runCatching {
+                            val node = View::class.java.getDeclaredField("mRenderNode")
+                                .apply { isAccessible = true }.get(view) as RenderNode
+                            val radiusNow = (expandedRadius as? Number)?.toFloat() ?: 0f
+                            if (radiusNow > 0f && view.width > 0 && view.height > 0) {
+                                node.setOutline(Outline().apply {
+                                    setRoundRect(0, 0, view.width, view.height, radiusNow)
+                                    alpha = 1f
+                                })
+                                node.setClipToOutline(true)
+                            }
+                        }
+                        module.log(Log.INFO, TAG, "Drop-down settled: ${System.identityHashCode(view).toString(16)} size=${view.width}x${view.height} root=${view.rootView.width}x${view.rootView.height} bg=${describe(currentBg)} radius=$expandedRadius clip=${view.clipToOutline} parent=${view.parent?.javaClass?.simpleName}")
+                    }, 400)
+                }
                 return
             }
             DynamicSoftGlassDrawable.clearFromView(view)

@@ -7,6 +7,7 @@ import com.ciallo.hyperbackground.appearance.DEFAULT_DARK_CARD_COLOR
 import com.ciallo.hyperbackground.appearance.DEFAULT_DARK_FROST_COLOR
 import com.ciallo.hyperbackground.appearance.DEFAULT_LIGHT_CARD_COLOR
 import com.ciallo.hyperbackground.appearance.DEFAULT_LIGHT_FROST_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_APP_SCOPE_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
 import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
 import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_FLOATING_BAR
@@ -43,7 +44,15 @@ internal data class DynamicMaterialPalette(
     val popup: Boolean = true,
     val search: Boolean = true,
     val floatingBar: Boolean = true,
+    val disabledPackages: Set<String> = emptySet(),
 ) {
+    /**
+     * 目标进程是否应套用材质：在全局开关之上，再排除「软件作用域」里被单独关闭的包。
+     * [packageName] 为目标进程包名；为空（框架进程未上报）时不参与过滤。
+     */
+    fun enabledFor(packageName: String?): Boolean =
+        enabled && (packageName == null || packageName !in disabledPackages)
+
     companion object {
         fun read(prefs: SharedPreferences): DynamicMaterialPalette {
             val values = prefs.all
@@ -64,6 +73,8 @@ internal data class DynamicMaterialPalette(
                 popup = values[KEY_COMPONENT_POPUP] as? Boolean ?: true,
                 search = values[KEY_COMPONENT_SEARCH] as? Boolean ?: true,
                 floatingBar = values[KEY_COMPONENT_FLOATING_BAR] as? Boolean ?: true,
+                disabledPackages = (values[KEY_APP_SCOPE_DISABLED] as? Set<*>)
+                    ?.filterIsInstance<String>()?.toSet() ?: emptySet(),
             )
         }
     }

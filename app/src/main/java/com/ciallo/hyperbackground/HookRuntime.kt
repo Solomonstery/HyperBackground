@@ -15,9 +15,18 @@ object HookRuntime {
     @Volatile
     private var prefsRef: SharedPreferences? = null
 
-    internal fun initialize(value: XposedModule, prefs: SharedPreferences) {
+    /**
+     * 当前注入进程的包名，由 [HookEntry] 在 `onPackageLoaded` 时上报。
+     * 动态材质 hook 用它做「软件作用域」的按包名过滤；一个进程内是常量。
+     */
+    @Volatile
+    var targetPackage: String? = null
+        private set
+
+    internal fun initialize(value: XposedModule, prefs: SharedPreferences, packageName: String?) {
         module = value
         prefsRef = prefs
+        targetPackage = packageName
     }
 
     fun preferences(): SharedPreferences {

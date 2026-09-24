@@ -65,6 +65,8 @@ internal const val KEY_COMPONENT_STANDALONE_CARD = "component_standalone_card"
 internal const val KEY_COMPONENT_POPUP = "component_popup"
 internal const val KEY_COMPONENT_SEARCH = "component_search"
 internal const val KEY_COMPONENT_FLOATING_BAR = "component_floating_bar"
+// 软件作用域：被单独关闭材质的包名集合（默认空 = 全部启用，新装应用无需写默认值）。
+internal const val KEY_APP_SCOPE_DISABLED = "app_scope_disabled"
 const val CARD_BACKGROUND_COLOR = 0
 const val CARD_BACKGROUND_FROST = 1
 const val CARD_BACKGROUND_SOFT_GLASS = 2
@@ -255,6 +257,7 @@ data class SettingsAppearanceSettings(
     val componentPopup: Boolean = true,
     val componentSearch: Boolean = true,
     val componentFloatingBar: Boolean = true,
+    val disabledAppScopes: Set<String> = emptySet(),
     val tutorialCardEnabled: Boolean = false,
     val tutorialCardTitle: String = "",
     val tutorialCardSlogan: String = "",
@@ -404,6 +407,7 @@ internal fun SharedPreferences.toSettingsAppearance() = SettingsAppearanceSettin
     componentPopup = getBoolean(KEY_COMPONENT_POPUP, true),
     componentSearch = getBoolean(KEY_COMPONENT_SEARCH, true),
     componentFloatingBar = getBoolean(KEY_COMPONENT_FLOATING_BAR, true),
+    disabledAppScopes = getStringSet(KEY_APP_SCOPE_DISABLED, emptySet())?.toSet().orEmpty(),
     tutorialCardEnabled = getBoolean(KEY_TUTORIAL_CARD_ENABLED, false),
     tutorialCardTitle = getString(KEY_TUTORIAL_CARD_TITLE, "").orEmpty(),
     tutorialCardSlogan = getString(KEY_TUTORIAL_CARD_SLOGAN, "").orEmpty(),
@@ -529,6 +533,7 @@ private fun SettingsAppearanceSettings.normalized() = copy(
     style2BackgroundVerticalOffset = style2BackgroundVerticalOffset.coerceIn(-120, 120),
     style2BackgroundHorizontalOffset = style2BackgroundHorizontalOffset.coerceIn(-120, 120),
     style2BackgroundScale = style2BackgroundScale.coerceIn(40, 200),
+    disabledAppScopes = disabledAppScopes.filterTo(mutableSetOf()) { it.isNotBlank() },
 )
 
 private fun SharedPreferences.writeSettingsAppearance(value: SettingsAppearanceSettings) {
@@ -567,6 +572,7 @@ private fun SharedPreferences.writeSettingsAppearance(value: SettingsAppearanceS
         .putBoolean(KEY_COMPONENT_POPUP, value.componentPopup)
         .putBoolean(KEY_COMPONENT_SEARCH, value.componentSearch)
         .putBoolean(KEY_COMPONENT_FLOATING_BAR, value.componentFloatingBar)
+        .putStringSet(KEY_APP_SCOPE_DISABLED, value.disabledAppScopes.toMutableSet())
         .putBoolean(KEY_TUTORIAL_CARD_ENABLED, value.tutorialCardEnabled)
         .putString(KEY_TUTORIAL_CARD_TITLE, value.tutorialCardTitle)
         .putString(KEY_TUTORIAL_CARD_SLOGAN, value.tutorialCardSlogan)
@@ -641,6 +647,15 @@ private fun SharedPreferences.getFloatCompat(key: String, default: Float): Float
     runCatching { getFloat(key, default) }.getOrElse {
         runCatching { getInt(key, default.toInt()).toFloat() }.getOrDefault(default)
     }
+
+fun SettingsAppearanceSettings.withAppScopeEnabled(packageName: String, enabled: Boolean): SettingsAppearanceSettings =
+    copy(
+        disabledAppScopes = if (enabled) {
+            disabledAppScopes - packageName
+        } else {
+            disabledAppScopes + packageName
+        },
+    )
 
 fun SettingsAppearanceSettings.style2LogoHorizontalOffsetForAlignment(alignment: Int = style2LogoAlignment): Int = when (alignment.coerceIn(0, 2)) {
     0 -> style2LogoHorizontalOffsetLeft

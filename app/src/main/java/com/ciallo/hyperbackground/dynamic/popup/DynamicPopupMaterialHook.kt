@@ -1,9 +1,15 @@
 package com.ciallo.hyperbackground.dynamic.popup
 
+import android.content.SharedPreferences
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
-import com.ciallo.hyperbackground.dynamic.card.SettingsCardBackgroundHook
+import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
+import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_POPUP
+import com.ciallo.hyperbackground.appearance.KEY_CUSTOM_CARD_ENABLED
+import com.ciallo.hyperbackground.appearance.KEY_DARK_CARD_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_LIGHT_CARD_COLOR
+import com.ciallo.hyperbackground.dynamic.material.DynamicMaterialPalette
 import io.github.libxposed.api.XposedInterface.ExceptionMode
 import io.github.libxposed.api.XposedModule
 
@@ -43,6 +49,15 @@ internal object DynamicPopupMaterialHook {
 
     /** 目标 app 的 classLoader（miuix 类在目标进程里，必须用它加载）。 */
     private lateinit var targetLoader: ClassLoader
+    @Volatile private var palette = DynamicMaterialPalette()
+    private var preferences: SharedPreferences? = null
+    private val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+        if (key == null || key in setOf(
+                KEY_CUSTOM_CARD_ENABLED, KEY_COMPONENT_POPUP, KEY_LIGHT_CARD_COLOR,
+                KEY_DARK_CARD_COLOR, KEY_CARD_DARK_FOLLOWS_LIGHT,
+            )
+        ) palette = DynamicMaterialPalette.read(prefs)
+    }
 
     /** 我们的替换是否正在写入，避免 hook 自己触发自己（递归）。 */
     private val writing = ThreadLocal<Boolean>()
@@ -52,9 +67,13 @@ internal object DynamicPopupMaterialHook {
         java.util.Collections.newSetFromMap(java.util.IdentityHashMap<View, Boolean>()),
     )
 
-    fun install(value: XposedModule, classLoader: ClassLoader) {
+    fun install(value: XposedModule, classLoader: ClassLoader, prefs: SharedPreferences) {
         module = value
         targetLoader = classLoader
+        preferences?.unregisterOnSharedPreferenceChangeListener(listener)
+        preferences = prefs
+        palette = DynamicMaterialPalette.read(prefs)
+        prefs.registerOnSharedPreferenceChangeListener(listener)
         runCatching { installPopupViewHook() }
             .onFailure { module.log(Log.WARN, TAG, "PopupView constructor hook unavailable", it) }
         runCatching { installDialogPanelHook() }
@@ -116,7 +135,7 @@ internal object DynamicPopupMaterialHook {
     private fun replaceBackground(view: View, label: String) {
         if (!handled.add(view)) return
         val original = view.background ?: return
-        val replacement = SettingsCardBackgroundHook.popupBackgroundFor(original, view.context)
+        val replacement = DynamicPopupBackground.create(original, view.context, palette)
         if (replacement == null) {
             module.log(Log.WARN, TAG, "$label bg: no replacement (palette off)")
             return

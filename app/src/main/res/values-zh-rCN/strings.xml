@@ -128,6 +128,8 @@
     <string name="component_standalone_card_summary">自带圆角卡面的视图，例如省电与电池卡片</string>
     <string name="component_popup">弹窗</string>
     <string name="component_popup_summary">右上角菜单与下拉选择框</string>
+    <string name="component_floating_bar">悬浮操作底栏</string>
+    <string name="component_floating_bar_summary">应用详情等页面的 MIUIX 悬浮操作菜单，不影响普通底部导航栏</string>
     <string name="component_search">搜索框</string>
     <string name="component_search_summary">设置主页搜索框的柔光玻璃效果</string>
     <string name="app_scope_placeholder">软件作用域暂未开放，后续将接入 LSPosed service 动态读取当前启用的作用域。</string>

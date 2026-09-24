@@ -21,11 +21,6 @@ import android.view.ViewGroup
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_COLOR
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_FROST
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
-import com.ciallo.hyperbackground.appearance.DEFAULT_CARD_BLUR
-import com.ciallo.hyperbackground.appearance.DEFAULT_DARK_CARD_COLOR
-import com.ciallo.hyperbackground.appearance.DEFAULT_DARK_FROST_COLOR
-import com.ciallo.hyperbackground.appearance.DEFAULT_LIGHT_CARD_COLOR
-import com.ciallo.hyperbackground.appearance.DEFAULT_LIGHT_FROST_COLOR
 import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
 import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
 import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_GROUP_CARD
@@ -40,8 +35,10 @@ import com.ciallo.hyperbackground.appearance.KEY_LIGHT_CARD_BLUR
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_CARD_COLOR
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_FROST_COLOR
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_SOFT_GLASS
-import com.ciallo.hyperbackground.appearance.SoftGlassParams
-import com.ciallo.hyperbackground.appearance.decodeSoftGlass
+import com.ciallo.hyperbackground.dynamic.material.DynamicMaterialPalette
+import com.ciallo.hyperbackground.dynamic.material.DynamicFrostDrawable
+import com.ciallo.hyperbackground.dynamic.material.DynamicGroupMaterial
+import com.ciallo.hyperbackground.dynamic.material.DynamicSoftGlassDrawable
 import io.github.libxposed.api.XposedInterface.ExceptionMode
 import io.github.libxposed.api.XposedModule
 import java.lang.ref.WeakReference
@@ -56,26 +53,9 @@ import java.util.WeakHashMap
  * Replace only their fill; MIUIX still computes the group bounds, corners and touch feedback.
  * Read remote preferences on change, never through a ContentProvider from a drawing callback.
  */
-internal object SettingsCardBackgroundHook {
+internal object DynamicCardBackgroundHook {
     private const val TAG = "HyperBackgroundCards"
-    private data class Palette(
-        val enabled: Boolean = false,
-        val light: Int = DEFAULT_LIGHT_CARD_COLOR,
-        val dark: Int = DEFAULT_DARK_CARD_COLOR,
-        val mode: Int = CARD_BACKGROUND_COLOR,
-        val lightFrost: Int = DEFAULT_LIGHT_FROST_COLOR,
-        val darkFrost: Int = DEFAULT_DARK_FROST_COLOR,
-        val lightBlur: Int = DEFAULT_CARD_BLUR,
-        val darkBlur: Int = DEFAULT_CARD_BLUR,
-        val lightGlass: SoftGlassParams = SoftGlassParams(),
-        val darkGlass: SoftGlassParams = SoftGlassParams(),
-        val darkFollowsLight: Boolean = false,
-        /** 组件作用域开关：分组卡片 / 独立卡片 / 弹窗是否各自套用材质。 */
-        val groupCard: Boolean = true,
-        val standaloneCard: Boolean = true,
-        val popup: Boolean = true,
-    )
-    @Volatile private var palette = Palette()
+    @Volatile private var palette = DynamicMaterialPalette()
     private val preferenceKeys = setOf(
         KEY_CUSTOM_CARD_ENABLED, KEY_LIGHT_CARD_COLOR, KEY_DARK_CARD_COLOR, KEY_CARD_BACKGROUND_MODE,
         KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR, KEY_LIGHT_CARD_BLUR, KEY_DARK_CARD_BLUR,
@@ -124,8 +104,8 @@ internal object SettingsCardBackgroundHook {
         var original: Drawable? = null
         var originalPaintColor: Int? = null
         var fill: ColorDrawable? = null
-        var frost: SettingsCardFrostDrawable? = null
-        var glass: SettingsSoftGlassDrawable? = null
+        var frost: DynamicFrostDrawable? = null
+        var glass: DynamicSoftGlassDrawable? = null
         var replacement: Drawable? = null
         var applied = false
         var failed = false
@@ -166,7 +146,7 @@ internal object SettingsCardBackgroundHook {
     // Keep a strong reference: SharedPreferences holds its listeners weakly.
     private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
         if (key == null || key in preferenceKeys) {
-            val updated = readPalette(prefs)
+            val updated = DynamicMaterialPalette.read(prefs)
             if (updated != palette) {
                 palette = updated
                 handler.removeCallbacks(refresh)
@@ -185,7 +165,7 @@ internal object SettingsCardBackgroundHook {
         module = value
         preferences?.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         preferences = prefs
-        palette = readPalette(prefs)
+        palette = DynamicMaterialPalette.read(prefs)
         prefs.registerOnSharedPreferenceChangeListener(preferenceListener)
         if (!groupHooks) {
             // 只做自绘卡片（applyCustomCardMaterial）的进程：调色板 + 刷新监听足够。
@@ -199,7 +179,7 @@ internal object SettingsCardBackgroundHook {
         module.log(
             Log.INFO, TAG,
             "Card material runtime: dynamic routing " +
-                "bionicsApi=${SettingsSoftGlassDrawable.hasBionicsApi()}",
+                "bionicsApi=${DynamicSoftGlassDrawable.hasBionicsApi()}",
         )
         if (standalone) {
             runCatching { installStandaloneCards(classLoader) }
@@ -207,7 +187,7 @@ internal object SettingsCardBackgroundHook {
         }
         // 动态路由的两个入口 hook（View.onSizeChanged 补判独立卡 + RecyclerView.addItemDecoration
         // 现场发现分组装饰器）随卡片材质一起装，保证任何装卡片材质的进程（含安全中心）都带上。
-        runCatching { DynamicCardMaterialHook.install(module, classLoader) }
+        runCatching { DynamicCardMaterialHook.install(module, classLoader, prefs) }
             .onFailure { module.log(Log.WARN, TAG, "Dynamic card routing unavailable", it) }
     }
 
@@ -279,28 +259,28 @@ internal object SettingsCardBackgroundHook {
         val frostColor = if (dark) colors.darkFrost else colors.lightFrost
         // 1) 柔光玻璃（Bionics API + 系统开关齐备才尝试）
         if (colors.mode == CARD_BACKGROUND_SOFT_GLASS &&
-            SettingsSoftGlassDrawable.isBionicsActive(view.context)
+            DynamicSoftGlassDrawable.isBionicsActive(view.context)
         ) {
             val config = if (dark) colors.darkGlass else colors.lightGlass
             setCustomCardBackground(
                 view,
                 roundedCardFill(
-                    SettingsSoftGlassDrawable.materialTintColor(frostColor, config),
+                    DynamicSoftGlassDrawable.materialTintColor(frostColor, config),
                     cornerRadiusPx,
                     rippleColor,
                 ),
             )
-            if (withStandaloneWrite { SettingsSoftGlassDrawable.applyToView(view, config, density) }) {
+            if (withStandaloneWrite { DynamicSoftGlassDrawable.applyToView(view, config, density) }) {
                 spec.material = CUSTOM_MATERIAL_GLASS
                 return
             }
-            SettingsSoftGlassDrawable.clearFromView(view)
+            DynamicSoftGlassDrawable.clearFromView(view)
         }
         // 2) 磨砂（Gaussian blur）
         if (colors.mode != CARD_BACKGROUND_COLOR) {
             setCustomCardBackground(view, roundedCardFill(frostColor, cornerRadiusPx, rippleColor))
             if (withStandaloneWrite {
-                    SettingsCardFrostDrawable.applyToView(
+                    DynamicFrostDrawable.applyToView(
                         view,
                         if (dark) colors.darkBlur else colors.lightBlur,
                         density,
@@ -310,7 +290,7 @@ internal object SettingsCardBackgroundHook {
                 spec.material = CUSTOM_MATERIAL_FROST
                 return
             }
-            SettingsCardFrostDrawable.clearFromView(view)
+            DynamicFrostDrawable.clearFromView(view)
         }
         // 3) 纯色
         setCustomCardBackground(
@@ -326,8 +306,8 @@ internal object SettingsCardBackgroundHook {
         if (spec.material == CUSTOM_MATERIAL_TRANSPARENT) return
         spec.material = CUSTOM_MATERIAL_TRANSPARENT
         spec.signature = -1
-        SettingsSoftGlassDrawable.clearFromView(view)
-        SettingsCardFrostDrawable.clearFromView(view)
+        DynamicSoftGlassDrawable.clearFromView(view)
+        DynamicFrostDrawable.clearFromView(view)
         setCustomCardBackground(view, null)
     }
 
@@ -344,33 +324,13 @@ internal object SettingsCardBackgroundHook {
         withStandaloneWrite { view.background = drawable }
     }
 
-    private fun readPalette(prefs: SharedPreferences): Palette {
-        val values = prefs.all
-        return Palette(
-            values[KEY_CUSTOM_CARD_ENABLED] as? Boolean ?: false,
-            values[KEY_LIGHT_CARD_COLOR] as? Int ?: DEFAULT_LIGHT_CARD_COLOR,
-            values[KEY_DARK_CARD_COLOR] as? Int ?: DEFAULT_DARK_CARD_COLOR,
-            values[KEY_CARD_BACKGROUND_MODE] as? Int ?: CARD_BACKGROUND_COLOR,
-            values[KEY_LIGHT_FROST_COLOR] as? Int ?: DEFAULT_LIGHT_FROST_COLOR,
-            values[KEY_DARK_FROST_COLOR] as? Int ?: DEFAULT_DARK_FROST_COLOR,
-            (values[KEY_LIGHT_CARD_BLUR] as? Int ?: DEFAULT_CARD_BLUR).coerceIn(0, 80),
-            (values[KEY_DARK_CARD_BLUR] as? Int ?: DEFAULT_CARD_BLUR).coerceIn(0, 80),
-            decodeSoftGlass(values[KEY_LIGHT_SOFT_GLASS] as? String),
-            decodeSoftGlass(values[KEY_DARK_SOFT_GLASS] as? String),
-            values[KEY_CARD_DARK_FOLLOWS_LIGHT] as? Boolean ?: false,
-            values[KEY_COMPONENT_GROUP_CARD] as? Boolean ?: true,
-            values[KEY_COMPONENT_STANDALONE_CARD] as? Boolean ?: true,
-            values[KEY_COMPONENT_POPUP] as? Boolean ?: true,
-        )
-    }
-
     private fun installStandaloneCards(classLoader: ClassLoader) {
         val attach = View::class.java.declaredMethods.firstOrNull {
             it.name == "dispatchAttachedToWindow" && it.parameterCount == 2
         } ?: error("View.dispatchAttachedToWindow not found")
         attach.isAccessible = true
         module.hook(attach).setExceptionMode(ExceptionMode.PROTECTIVE)
-            .setId("settings-cards:standalone-attach").intercept { chain ->
+            .setId("dynamic-cards:standalone-attach").intercept { chain ->
                 val result = chain.proceed()
                 (chain.thisObject as? View)?.let(::applyStandalone)
                 result
@@ -380,7 +340,7 @@ internal object SettingsCardBackgroundHook {
             it.name == "dispatchDetachedFromWindow" && it.parameterCount == 0
         }?.apply { isAccessible = true }?.let { detach ->
             module.hook(detach).setExceptionMode(ExceptionMode.PROTECTIVE)
-                .setId("settings-cards:standalone-detach").intercept { chain ->
+                .setId("dynamic-cards:standalone-detach").intercept { chain ->
                     val view = chain.thisObject as? View
                     val state = view?.let { synchronized(standaloneStates) { standaloneStates[it] } }
                     if (view != null && state != null) {
@@ -395,7 +355,7 @@ internal object SettingsCardBackgroundHook {
         // drawable as the native original, then re-apply the selected mode on the next frame.
         val setBackground = View::class.java.getMethod("setBackground", Drawable::class.java)
         module.hook(setBackground).setExceptionMode(ExceptionMode.PROTECTIVE)
-            .setId("settings-cards:standalone-background").intercept { chain ->
+            .setId("dynamic-cards:standalone-background").intercept { chain ->
                 if (standaloneWrite.get() == true) return@intercept chain.proceed()
                 val view = chain.thisObject as? View
                 val result = chain.proceed()
@@ -451,7 +411,7 @@ internal object SettingsCardBackgroundHook {
                 val color = if (dark) colors.darkFrost else colors.lightFrost
                 if (!prepareStandaloneBackground(view, state, color, true)) false else {
                     val ready = withStandaloneWrite {
-                        SettingsCardFrostDrawable.applyToView(
+                        DynamicFrostDrawable.applyToView(
                             view,
                             if (dark) colors.darkBlur else colors.lightBlur,
                             density,
@@ -464,10 +424,10 @@ internal object SettingsCardBackgroundHook {
             CARD_BACKGROUND_SOFT_GLASS -> {
                 val color = if (dark) colors.darkFrost else colors.lightFrost
                 val config = if (dark) colors.darkGlass else colors.lightGlass
-                val tintColor = SettingsSoftGlassDrawable.materialTintColor(color, config)
+                val tintColor = DynamicSoftGlassDrawable.materialTintColor(color, config)
                 if (!prepareStandaloneBackground(view, state, tintColor, true)) false else {
                     val ready = withStandaloneWrite {
-                        SettingsSoftGlassDrawable.applyToView(
+                        DynamicSoftGlassDrawable.applyToView(
                             view,
                             config,
                             density,
@@ -538,8 +498,8 @@ internal object SettingsCardBackgroundHook {
 
     private fun clearStandaloneMaterial(view: View, state: StandaloneState) {
         when (state.material) {
-            STANDALONE_MATERIAL_FROST -> SettingsCardFrostDrawable.clearFromView(view)
-            STANDALONE_MATERIAL_GLASS -> SettingsSoftGlassDrawable.clearFromView(view)
+            STANDALONE_MATERIAL_FROST -> DynamicFrostDrawable.clearFromView(view)
+            STANDALONE_MATERIAL_GLASS -> DynamicSoftGlassDrawable.clearFromView(view)
         }
         state.material = STANDALONE_MATERIAL_NONE
     }
@@ -559,6 +519,8 @@ internal object SettingsCardBackgroundHook {
     private fun standaloneTarget(view: View): String? {
         if (!palette.enabled) return null
         if (!palette.standaloneCard) return null
+        // The suspended action menu has its own material route and scope switch.
+        if (view.javaClass.name == "miuix.appcompat.internal.view.menu.action.ResponsiveActionMenuView") return null
         val reason = CardSurfaceDetector.probe(view)
         if (reason != null) {
             // 尺寸不足 / 没有自己的背景是正常行为，不打日志；其余「自己有面却被拦下」
@@ -672,10 +634,10 @@ internal object SettingsCardBackgroundHook {
             val hostIndex = method.parameterTypes.indexOfFirst { View::class.java.isAssignableFrom(it) }
             method.isAccessible = true
             module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
-                .setId("settings-cards:$id-draw-$index").intercept { chain ->
+                .setId("dynamic-cards:$id-draw-$index").intercept { chain ->
                     val owner = chain.thisObject
-                    var frost: SettingsCardFrostDrawable? = null
-                    var glass: SettingsSoftGlassDrawable? = null
+                    var frost: DynamicFrostDrawable? = null
+                    var glass: DynamicSoftGlassDrawable? = null
                     if (owner != null && type.isInstance(owner)) {
                         val state = state(owner, access)
                         val host = if (hostIndex >= 0) chain.getArg(hostIndex) as? View else null
@@ -710,7 +672,7 @@ internal object SettingsCardBackgroundHook {
         if (access.lastBranch == branch) return
         access.lastBranch = branch
         module.log(Log.INFO, TAG, when (branch) {
-            2 -> "Card material branch: soft glass (${SettingsSoftGlassDrawable.bionicsDiagnostics(context)})"
+            2 -> "Card material branch: soft glass (${DynamicSoftGlassDrawable.bionicsDiagnostics(context)})"
             1 -> "Card material branch: frost (Gaussian path)"
             else -> "Card material branch: flat color"
         })
@@ -759,7 +721,7 @@ internal object SettingsCardBackgroundHook {
             // 柔光玻璃依赖 OS4 的 Bionics 材质 API 与系统开关（材质风格=柔光玻璃）；不可用时降级为磨砂。
             val useGlass = colors.mode == CARD_BACKGROUND_SOFT_GLASS
                 && groupClipAvailable
-                && SettingsSoftGlassDrawable.isBionicsActive(context)
+                && DynamicSoftGlassDrawable.isBionicsActive(context)
             val useFrost = !useGlass && colors.mode != CARD_BACKGROUND_COLOR && groupClipAvailable
             logMaterialBranch(access, context, useGlass, useFrost)
             val glassy = useGlass || useFrost
@@ -770,7 +732,7 @@ internal object SettingsCardBackgroundHook {
             }
             val replacement: Drawable = when {
                 useGlass -> {
-                    val glass = state.glass ?: SettingsSoftGlassDrawable(context) { error ->
+                    val glass = state.glass ?: DynamicSoftGlassDrawable(context) { error ->
                         if (!access.glassFailureLogged) {
                             access.glassFailureLogged = true
                             module.log(Log.WARN, TAG, "Native soft glass unavailable; retaining the selected tint", error)
@@ -787,7 +749,7 @@ internal object SettingsCardBackgroundHook {
                     glass
                 }
                 useFrost -> {
-                    val frost = state.frost ?: SettingsCardFrostDrawable(context) { error ->
+                    val frost = state.frost ?: DynamicFrostDrawable(context) { error ->
                         if (!access.frostFailureLogged) {
                             access.frostFailureLogged = true
                             module.log(Log.WARN, TAG, "Native group blur unavailable; retaining the selected tint", error)
@@ -861,46 +823,6 @@ internal object SettingsCardBackgroundHook {
         if (standaloneTarget(view) == null) return
         view.post { applyStandalone(view) }
     }
-
-    /**
-     * 弹窗（PopupMenu / PopupWindow）整体背景的色板填充。
-     *
-     * 弹窗底是 PopupWindow 自己持有的 `PopupBackgroundDrawable`（圆角矩形），不在任何
-     * 子 view 的 background 上，[onViewLaidOut] / [CardSurfaceDetector] 碰不到它。
-     * 这里按当前色板克隆原生背景形状（圆角保留）、替换填充色。返回 null 表示「不动」：
-     * 色板关闭，或原生背景拿不到可复制的形状。
-     */
-    internal fun popupBackgroundFor(original: Drawable?, context: Context?): Drawable? {
-        val colors = palette
-        if (!colors.enabled) return null
-        if (!colors.popup) return null
-        if (original == null || context == null) return null
-        val night = context.resources.configuration.uiMode and
-            Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-        val dark = night && !colors.darkFollowsLight
-        // 弹窗背景用与独立卡一致的纯色填充（柔光/磨砂在弹窗这种离屏浮层上拿不到稳定背景，
-        // 统一退化为纯色，保证弹窗底跟随所选色板而不是原生主题色）。
-        val color = if (dark) colors.dark else colors.light
-        return cloneAndTint(context, original, color)
-    }
-
-    /**
-     * 无 View 上下文时的弹窗底：克隆原生背景形状（圆角/阴影 alpha 全保留），
-     * 用 [android.graphics.PorterDuff.Mode.SRC_IN] 着色替换填充。
-     *
-     * 不用 `setTint`：它对 NinePatchDrawable / InsetDrawable（弹窗默认背景的结构）经常不响应，
-     * `setColorFilter` + SRC_IN 则对几乎所有 Drawable 确定生效，且保留 alpha 通道（圆角、阴影）。
-     */
-    private fun cloneAndTint(context: Context, source: Drawable?, color: Int): Drawable? =
-        runCatching {
-            source?.constantState?.newDrawable(context.resources, context.theme)?.mutate()
-                ?: source?.constantState?.newDrawable()?.mutate()
-        }.getOrNull()?.let { drawable ->
-            runCatching {
-                drawable.setColorFilter(color, android.graphics.PorterDuff.Mode.SRC_IN)
-                drawable
-            }.getOrNull()
-        }
 
     /**
      * 动态接管一个刚注册到 `RecyclerView` 的分组装饰器
@@ -1002,8 +924,8 @@ internal object SettingsCardBackgroundHook {
         }
         method.isAccessible = true
         module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
-            .setId("settings-cards:clip-${dynamicHookId()}").intercept { chain ->
-                val material = chain.getArg(3) as? SettingsGroupMaterial
+            .setId("dynamic-cards:clip-${dynamicHookId()}").intercept { chain ->
+                val material = chain.getArg(3) as? DynamicGroupMaterial
                 if (material == null) {
                     chain.proceed()
                 } else {

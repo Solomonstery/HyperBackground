@@ -1,4 +1,4 @@
-package com.ciallo.hyperbackground.dynamic.card
+package com.ciallo.hyperbackground.dynamic.material
 
 import com.ciallo.hyperbackground.appearance.SoftGlassParams
 import com.ciallo.hyperbackground.util.getAdditionalInstanceField
@@ -27,10 +27,10 @@ import kotlin.math.roundToInt
 
 /**
  * Per-frame lifecycle shared by group drawables that must bypass MIUIX's saveLayerAlpha clip.
- * SettingsCardBackgroundHook routes each visible group to the implementation selected by the
+ * The card router sends each visible group to the implementation selected by the
  * card background mode, and BaseDecoration's clip hook dispatches through this interface.
  */
-internal interface SettingsGroupMaterial {
+internal interface DynamicGroupMaterial {
     fun bindHost(view: View?)
     fun beginFrame()
     fun endFrame()
@@ -39,15 +39,15 @@ internal interface SettingsGroupMaterial {
 }
 
 /**
- * 柔光玻璃 card material. Reuses SettingsCardFrostDrawable's bridge-View RenderNode trick,
+ * 柔光玻璃 card material. Reuses DynamicFrostDrawable's bridge-View RenderNode trick,
  * but the bridge carries HyperOS 4's Bionics material (setMiViewMaterialType + setMiGlass)
  * instead of the Gaussian blur setters. Each visible group owns one bridge; the bridge View
  * never enters the view tree, and the recorded tint color stays controllable by the palette.
  */
-internal class SettingsSoftGlassDrawable(
+internal class DynamicSoftGlassDrawable(
     context: Context,
     private val onFailure: (Throwable) -> Unit,
-) : Drawable(), View.OnAttachStateChangeListener, SettingsGroupMaterial {
+) : Drawable(), View.OnAttachStateChangeListener, DynamicGroupMaterial {
     private val context = context.applicationContext
     private val tint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nodes = ArrayList<GlassNode>()
@@ -229,7 +229,7 @@ internal class SettingsSoftGlassDrawable(
                     api.glassRadius.invoke(bridge, physicalRadius, physicalRadius)
                     api.setGlass.invoke(bridge, customizeParams(baseParams(), config))
                     // Bionics samples the backdrop through this local clip.  The stock
-                    // Settings views always initialise it to a non-negative RenderNode-local
+                    // Some host views initialise it to a non-negative RenderNode-local
                     // rectangle.  Leaving it at the default makes a scrolled card inherit the
                     // RecyclerView's negative top and keeps the highlight while disabling the
                     // refraction pass.
@@ -378,7 +378,7 @@ internal class SettingsSoftGlassDrawable(
          * MIUIX's `SearchViewMaterialImpl` keys its `BackgroundAlphaTarget` on exactly these child
          * backgrounds, animating them to alpha 0 while its glass is on and back to 1 when it is off.
          * Painting a palette color into such a drawable is therefore either swallowed by the zero
-         * alpha or left behind as a flat film that replaces the native look - the settings search
+         * alpha or left behind as a flat film that replaces the native look - the search
          * box lost its soft glass that way (initial state flat, opened input state still fine).
          * Channel semantics: docs/soft-glass-api.md §5 (11-14 = tint/inner layer).
          *
@@ -386,7 +386,7 @@ internal class SettingsSoftGlassDrawable(
          * extra constraints - `isAttachedToWindow`/`isHardwareAccelerated` as a hard gate, and
          * [requireAccepted] throwing on any setter that answers `false` before [clearFromView]
          * tears the whole material down again. MIUI's `setMi*` family is not consistent about that
-         * return value, and the Settings fragment inflates its search stub before the window is
+         * return value, and search fragments can inflate their stub before the window is
          * attached, so both constraints turn a healthy apply into a silent no-op or an immediate
          * rollback. beta8 had neither and rendered correctly; the call order below is that version.
          */
@@ -533,7 +533,7 @@ internal class SettingsSoftGlassDrawable(
             }.getOrNull()
         }
 
-        /** HyperIsland's expanded-island token baseline; the Settings process has no token to clone. */
+        /** HyperIsland's expanded-island token baseline; the host process has no token to clone. */
         private fun baseParams(): FloatArray = floatArrayOf(
             0f, 2f, .5f, .8f, .15f, 2.4f, .3f, .2f, 0f, 0f, 0f,
             .06f, .06f, .06f, .6f, .15f, .4f, 1.36f, 1f, 72f, 3.8f,

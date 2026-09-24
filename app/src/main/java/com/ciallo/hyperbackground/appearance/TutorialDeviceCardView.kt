@@ -14,7 +14,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.ciallo.hyperbackground.dynamic.card.SettingsCardBackgroundHook
+import com.ciallo.hyperbackground.dynamic.card.DynamicCardBackgroundHook
 
 /** Runtime replacement for the tutorial style 1 device card. */
 class TutorialDeviceCardView(
@@ -79,7 +79,7 @@ class TutorialDeviceCardView(
     fun refresh(context: Context, imageScale: Int, cardAuthor: String, logoScale: Int, logoVerticalOffset: Int, imageLogoSpacing: Int, logoTextSpacing: Int, backgroundBlur: Float, backgroundHorizontalOffset: Int, backgroundVerticalOffset: Int, backgroundScale: Int) {
         val night = isNight()
         // 卡面材质：柔光玻璃 → 磨砂 → 纯色 → 透明（不支持时直接透明）。
-        SettingsCardBackgroundHook.applyCustomCardMaterial(this, dp(20f).toFloat())
+        DynamicCardBackgroundHook.applyCustomCardMaterial(this, dp(20f).toFloat())
         bottomSurface.background = GradientDrawable().apply {
             setColor(if (night) 0x33000000 else 0xB0FAFAFA.toInt())
             val radius = dp(20f).toFloat()

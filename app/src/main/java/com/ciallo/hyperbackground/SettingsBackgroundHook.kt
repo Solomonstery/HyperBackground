@@ -11,7 +11,7 @@ import com.ciallo.hyperbackground.appearance.APPEARANCE_SLOT_DEVICE
 import com.ciallo.hyperbackground.appearance.SETTINGS_APPEARANCE_PREFERENCES
 import com.ciallo.hyperbackground.appearance.SettingsAppearanceSources
 import com.ciallo.hyperbackground.appearance.SettingsBackgroundView
-import com.ciallo.hyperbackground.dynamic.card.SettingsCardBackgroundHook
+import com.ciallo.hyperbackground.dynamic.card.DynamicCardBackgroundHook
 import com.ciallo.hyperbackground.util.callMethod
 import com.ciallo.hyperbackground.util.hookMethod
 import com.ciallo.hyperbackground.util.log
@@ -80,7 +80,7 @@ object SettingsBackgroundHook {
             return
         }
         runCatching {
-            SettingsCardBackgroundHook.install(
+            DynamicCardBackgroundHook.install(
                 HookRuntime.module(), classLoader, prefs,
                 standalone = true, groupHooks = true,
             )

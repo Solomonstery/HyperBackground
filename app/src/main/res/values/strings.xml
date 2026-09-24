@@ -368,6 +368,8 @@
     <string name="component_standalone_card_summary">Views that draw their own rounded surface, e.g. battery cards</string>
     <string name="component_popup">Popups</string>
     <string name="component_popup_summary">Overflow menus and dropdown dialogs</string>
+    <string name="component_floating_bar">Floating action bar</string>
+    <string name="component_floating_bar_summary">Suspended MIUIX action menus, such as the actions on app details pages</string>
     <string name="component_search">Search bar</string>
     <string name="component_search_summary">Soft glass on the Settings home search bar</string>
     <string name="app_scope_placeholder">App scope is not available yet. It will read the currently enabled scopes from the LSPosed service.</string>

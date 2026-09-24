@@ -22,7 +22,7 @@ import com.ciallo.hyperbackground.appearance.KEY_LIGHT_SOFT_GLASS
 import com.ciallo.hyperbackground.appearance.SETTINGS_APPEARANCE_PREFERENCES
 import com.ciallo.hyperbackground.appearance.SoftGlassParams
 import com.ciallo.hyperbackground.appearance.decodeSoftGlass
-import com.ciallo.hyperbackground.dynamic.card.SettingsSoftGlassDrawable
+import com.ciallo.hyperbackground.dynamic.material.DynamicSoftGlassDrawable
 import com.ciallo.hyperbackground.util.callMethod
 import com.ciallo.hyperbackground.util.hookMethod
 import com.ciallo.hyperbackground.util.log
@@ -157,7 +157,7 @@ internal object SettingsSearchMaskOverride {
         // (collapsed) search box lose its soft glass while the opened input state stayed correct.
         // Keep the drawable as the shape/outline source and let the material own the fill: the tint
         // travels in the shader channels through the color-aware overload.
-        SettingsSoftGlassDrawable.applyToView(view, config.color, config.params, config.density)
+        DynamicSoftGlassDrawable.applyToView(view, config.color, config.params, config.density)
     }
 
     private fun clearLoadingMask(root: View) {

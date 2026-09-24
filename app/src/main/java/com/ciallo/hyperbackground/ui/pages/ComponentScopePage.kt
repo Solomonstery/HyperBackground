@@ -71,6 +71,14 @@ fun ComponentScopePage(
                         },
                     )
                     SwitchPreference(
+                        title = stringResource(R.string.component_floating_bar),
+                        summary = stringResource(R.string.component_floating_bar_summary),
+                        checked = appearance.componentFloatingBar,
+                        onCheckedChange = { value ->
+                            activity.updateAppearance { it.copy(componentFloatingBar = value) }
+                        },
+                    )
+                    SwitchPreference(
                         title = stringResource(R.string.component_search),
                         summary = stringResource(R.string.component_search_summary),
                         checked = appearance.componentSearch,

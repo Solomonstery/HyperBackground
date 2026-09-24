@@ -13,7 +13,7 @@ import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.ciallo.hyperbackground.dynamic.card.SettingsCardBackgroundHook
+import com.ciallo.hyperbackground.dynamic.card.DynamicCardBackgroundHook
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -116,8 +116,8 @@ class DeviceInfoCardsView(
         listOf(nameSummary, storageSummary).forEach { configureText(it, secondary, 14f) }
         // 两张小卡卡面走卡片样式材质（柔光玻璃 → 磨砂 → 纯色 → 透明），ripple 色保留点击反馈。
         val ripple = themedColor(android.R.attr.colorControlHighlight, 0x22000000)
-        SettingsCardBackgroundHook.applyCustomCardMaterial(nameCard, dp(19).toFloat(), ripple)
-        SettingsCardBackgroundHook.applyCustomCardMaterial(storageCard, dp(19).toFloat(), ripple)
+        DynamicCardBackgroundHook.applyCustomCardMaterial(nameCard, dp(19).toFloat(), ripple)
+        DynamicCardBackgroundHook.applyCustomCardMaterial(storageCard, dp(19).toFloat(), ripple)
     }
 
     private fun configureText(view: TextView, color: Int, size: Float) {

@@ -64,6 +64,7 @@ internal const val KEY_COMPONENT_GROUP_CARD = "component_group_card"
 internal const val KEY_COMPONENT_STANDALONE_CARD = "component_standalone_card"
 internal const val KEY_COMPONENT_POPUP = "component_popup"
 internal const val KEY_COMPONENT_SEARCH = "component_search"
+internal const val KEY_COMPONENT_FLOATING_BAR = "component_floating_bar"
 const val CARD_BACKGROUND_COLOR = 0
 const val CARD_BACKGROUND_FROST = 1
 const val CARD_BACKGROUND_SOFT_GLASS = 2
@@ -253,6 +254,7 @@ data class SettingsAppearanceSettings(
     val componentStandaloneCard: Boolean = true,
     val componentPopup: Boolean = true,
     val componentSearch: Boolean = true,
+    val componentFloatingBar: Boolean = true,
     val tutorialCardEnabled: Boolean = false,
     val tutorialCardTitle: String = "",
     val tutorialCardSlogan: String = "",
@@ -401,6 +403,7 @@ internal fun SharedPreferences.toSettingsAppearance() = SettingsAppearanceSettin
     componentStandaloneCard = getBoolean(KEY_COMPONENT_STANDALONE_CARD, true),
     componentPopup = getBoolean(KEY_COMPONENT_POPUP, true),
     componentSearch = getBoolean(KEY_COMPONENT_SEARCH, true),
+    componentFloatingBar = getBoolean(KEY_COMPONENT_FLOATING_BAR, true),
     tutorialCardEnabled = getBoolean(KEY_TUTORIAL_CARD_ENABLED, false),
     tutorialCardTitle = getString(KEY_TUTORIAL_CARD_TITLE, "").orEmpty(),
     tutorialCardSlogan = getString(KEY_TUTORIAL_CARD_SLOGAN, "").orEmpty(),
@@ -563,6 +566,7 @@ private fun SharedPreferences.writeSettingsAppearance(value: SettingsAppearanceS
         .putBoolean(KEY_COMPONENT_STANDALONE_CARD, value.componentStandaloneCard)
         .putBoolean(KEY_COMPONENT_POPUP, value.componentPopup)
         .putBoolean(KEY_COMPONENT_SEARCH, value.componentSearch)
+        .putBoolean(KEY_COMPONENT_FLOATING_BAR, value.componentFloatingBar)
         .putBoolean(KEY_TUTORIAL_CARD_ENABLED, value.tutorialCardEnabled)
         .putString(KEY_TUTORIAL_CARD_TITLE, value.tutorialCardTitle)
         .putString(KEY_TUTORIAL_CARD_SLOGAN, value.tutorialCardSlogan)

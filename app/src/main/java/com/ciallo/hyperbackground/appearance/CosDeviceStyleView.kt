@@ -26,7 +26,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextClock
 import android.widget.TextView
-import com.ciallo.hyperbackground.dynamic.card.SettingsCardBackgroundHook
+import com.ciallo.hyperbackground.dynamic.card.DynamicCardBackgroundHook
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -138,7 +138,7 @@ class CosTopCardView(
         signatureView.text = source.cosCardSignature.ifBlank { COS_CARD_DEFAULT_SIGNATURE }
         signatureView.setTextColor(if (night) 0x99f5f5f7.toInt() else 0x9917171a.toInt())
         // 卡面材质：柔光玻璃 → 磨砂 → 纯色 → 透明（不支持时直接透明）。
-        SettingsCardBackgroundHook.applyCustomCardMaterial(wash, dp(20).toFloat())
+        DynamicCardBackgroundHook.applyCustomCardMaterial(wash, dp(20).toFloat())
     }
 
     private fun buildText(sp: Int, bold: Boolean) = TextView(context).apply {
@@ -301,8 +301,8 @@ class CosQuickCardsView(
     private fun applyStaticStyle() {
         val night = isNight()
         // 两张快卡的卡面同样交给卡片样式材质（不支持时透明）。
-        SettingsCardBackgroundHook.applyCustomCardMaterial(deviceCard, dp(19).toFloat())
-        SettingsCardBackgroundHook.applyCustomCardMaterial(storageCard, dp(19).toFloat())
+        DynamicCardBackgroundHook.applyCustomCardMaterial(deviceCard, dp(19).toFloat())
+        DynamicCardBackgroundHook.applyCustomCardMaterial(storageCard, dp(19).toFloat())
         val primary = if (night) 0xfff5f5f7.toInt() else 0xff111114.toInt()
         val secondary = if (night) 0xffaaaab2.toInt() else 0xff777780.toInt()
         listOf(nameTitle, storageTitle).forEach {

@@ -2,7 +2,9 @@ package com.ciallo.hyperbackground.dynamic.card
 
 import android.util.Log
 import android.view.View
+import android.content.SharedPreferences
 import com.ciallo.hyperbackground.dynamic.popup.DynamicPopupMaterialHook
+import com.ciallo.hyperbackground.dynamic.bar.DynamicFloatingBarHook
 import io.github.libxposed.api.XposedInterface.ExceptionMode
 import io.github.libxposed.api.XposedModule
 import java.util.Collections
@@ -37,10 +39,10 @@ internal object DynamicCardMaterialHook {
     @Volatile var discoveredDecorations: Int = 0
         private set
 
-    fun install(value: XposedModule, classLoader: ClassLoader) {
+    fun install(value: XposedModule, classLoader: ClassLoader, prefs: SharedPreferences) {
         module = value
         CardSurfaceDetector.onTranslucentCard = { view, alpha ->
-            SettingsCardBackgroundHook.logCandidate(view, "matched translucent-card alpha=$alpha")
+            DynamicCardBackgroundHook.logCandidate(view, "matched translucent-card alpha=$alpha")
         }
         runCatching { installLayoutCompleteHook() }
             .onFailure { module.log(Log.WARN, TAG, "Dynamic layout-complete hook unavailable", it) }
@@ -48,8 +50,10 @@ internal object DynamicCardMaterialHook {
             .onFailure { module.log(Log.WARN, TAG, "Dynamic ItemDecoration discovery unavailable", it) }
         // 弹窗（菜单 / 下拉选择框）材质：MIUI 用 PopupView / miuix AlertDialog，不是 PopupWindow，
         // 单独一条入口，需要目标进程的 classLoader 才能定位 miuix 类。
-        runCatching { DynamicPopupMaterialHook.install(module, classLoader) }
+        runCatching { DynamicPopupMaterialHook.install(module, classLoader, prefs) }
             .onFailure { module.log(Log.WARN, TAG, "Dynamic popup material hook unavailable", it) }
+        runCatching { DynamicFloatingBarHook.install(module, classLoader, prefs) }
+            .onFailure { module.log(Log.WARN, TAG, "Dynamic floating bar hook unavailable", it) }
         module.log(
             Log.INFO, TAG,
             "Dynamic card routing installed: decorations=$discoveredDecorations",
@@ -73,7 +77,7 @@ internal object DynamicCardMaterialHook {
                 val width = chain.getArg(0) as? Int ?: 0
                 val height = chain.getArg(1) as? Int ?: 0
                 if (view != null && width > 0 && height > 0) {
-                    SettingsCardBackgroundHook.onViewLaidOut(view)
+                    DynamicCardBackgroundHook.onViewLaidOut(view)
                 }
                 result
             }
@@ -101,13 +105,13 @@ internal object DynamicCardMaterialHook {
 
     /**
      * 装饰器在 `RecyclerView` 初始化时注册，早于它的第一次绘制，所以这里挂它的绘制 / 裁剪方法
-     * 是来得及的。能不能接管由 [SettingsCardBackgroundHook.installDynamicDecoration] 决定——
+     * 是来得及的。能不能接管由 [DynamicCardBackgroundHook.installDynamicDecoration] 决定——
      * 那一关要求类里存在 `(Canvas, RectF, Path, Drawable)` 的裁剪方法，普通分隔线会在那里被排除。
      */
     private fun onDecorationAdded(decoration: Any) {
         val type = decoration.javaClass
         synchronized(processed) { if (!processed.add(type)) return }
-        if (SettingsCardBackgroundHook.installDynamicDecoration(type)) {
+        if (DynamicCardBackgroundHook.installDynamicDecoration(type)) {
             discoveredDecorations++
         } else {
             module.log(Log.DEBUG, TAG, "Dynamic decoration skipped: ${type.name}")

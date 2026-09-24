@@ -11,7 +11,7 @@ import android.view.View
 import android.graphics.drawable.Drawable
 import android.widget.ImageView
 import android.widget.TextView
-import com.ciallo.hyperbackground.dynamic.card.SettingsCardBackgroundHook
+import com.ciallo.hyperbackground.dynamic.card.DynamicCardBackgroundHook
 import io.github.libxposed.api.XposedInterface.ExceptionMode
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam
@@ -22,7 +22,7 @@ class SettingsDeviceModule : XposedModule() {
         if (!param.isFirstPackage || param.packageName != SETTINGS_PACKAGE) return
         val appearancePreferences = getRemotePreferences(SETTINGS_APPEARANCE_PREFERENCES)
         SettingsAppearanceSources.initialize(appearancePreferences)
-        runCatching { SettingsCardBackgroundHook.install(this, param.defaultClassLoader, appearancePreferences) }
+        runCatching { DynamicCardBackgroundHook.install(this, param.defaultClassLoader, appearancePreferences) }
             .onFailure { error -> log(Log.WARN, TAG, "Could not install Settings group card colors", error) }
         val preferences = getRemotePreferences(DEVICE_PROFILE_PREFERENCES)
         runCatching {

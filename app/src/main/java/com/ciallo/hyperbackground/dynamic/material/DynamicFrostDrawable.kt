@@ -1,4 +1,4 @@
-package com.ciallo.hyperbackground.dynamic.card
+package com.ciallo.hyperbackground.dynamic.material
 
 import android.content.Context
 import android.graphics.Canvas
@@ -23,10 +23,10 @@ import kotlin.math.roundToInt
  * Each visible group owns a RenderNode, so changing the next group's bounds never moves an
  * earlier group already recorded in RecyclerView's display list. No list item is reparented.
  */
-internal class SettingsCardFrostDrawable(
+internal class DynamicFrostDrawable(
     context: Context,
     private val onFailure: (Throwable) -> Unit,
-) : Drawable(), View.OnAttachStateChangeListener, SettingsGroupMaterial {
+) : Drawable(), View.OnAttachStateChangeListener, DynamicGroupMaterial {
     private val context = context.applicationContext
     private val tint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nodes = ArrayList<FrostNode>()

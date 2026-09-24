@@ -22,7 +22,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.ciallo.hyperbackground.dynamic.card.SettingsCardBackgroundHook
+import com.ciallo.hyperbackground.dynamic.card.DynamicCardBackgroundHook
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -76,7 +76,7 @@ class HarmonyUpdateCardView(
         val night = isNight()
         if (backgroundSource.exists) {
             // 自定义图盖满卡面：清掉材质状态，卡面保持透明让图直接可见。
-            SettingsCardBackgroundHook.clearCustomCardMaterial(this)
+            DynamicCardBackgroundHook.clearCustomCardMaterial(this)
             backgroundImage.setImageDrawable(runCatching {
                 ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.contentResolver, backgroundSource.uri))
             }.getOrNull())
@@ -99,7 +99,7 @@ class HarmonyUpdateCardView(
             backgroundImage.visibility = View.GONE
             backgroundImage.setRenderEffect(null)
             // 卡面材质：柔光玻璃 → 磨砂 → 纯色 → 透明（不支持时直接透明）。
-            SettingsCardBackgroundHook.applyCustomCardMaterial(this, dp(28).toFloat())
+            DynamicCardBackgroundHook.applyCustomCardMaterial(this, dp(28).toFloat())
         }
         val secondary = if (night) 0xB8E9ECF5.toInt() else 0x991B1D23.toInt()
         version.setTextColor(textColor(style.style2VersionColorMode, secondary))
@@ -276,8 +276,8 @@ class HarmonyInfoCardsView(
             shape = GradientDrawable.OVAL
         }
         // 两张小卡卡面走卡片样式材质（柔光玻璃 → 磨砂 → 纯色 → 透明）。
-        SettingsCardBackgroundHook.applyCustomCardMaterial(nameCard, dp(28).toFloat())
-        SettingsCardBackgroundHook.applyCustomCardMaterial(storageCard, dp(28).toFloat())
+        DynamicCardBackgroundHook.applyCustomCardMaterial(nameCard, dp(28).toFloat())
+        DynamicCardBackgroundHook.applyCustomCardMaterial(storageCard, dp(28).toFloat())
     }
 
     fun attach() {

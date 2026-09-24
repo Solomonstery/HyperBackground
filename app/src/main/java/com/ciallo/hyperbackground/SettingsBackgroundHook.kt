@@ -39,10 +39,8 @@ object SettingsBackgroundHook {
         TextColorOverride.install()
 
         if (settings) {
-            SettingsTopBarBlurHook.install(classLoader)
             // 「配置」栏目 - 设置页软件入口：往设置首页 Header 列表插入模块条目。
             SettingsHomeEntryHook.install(classLoader)
-            // 清除顶栏不再独立 hook，由 SettingsTopBarBlurHook 复用模糊管线（透明度归零）实现。
             hookHomeActivity(classLoader)
             hookHomeFragment(classLoader)
             hookDeviceFragment(classLoader)
@@ -65,10 +63,8 @@ object SettingsBackgroundHook {
         // 不依赖任何包名 / 资源名。为验证跨作用域可行性，对所有进程统一安装，
         // 由 CardSurfaceDetector / 色板开关自行决定要不要接管（匹配不上自然不动）。
         installSecurityCenterCardMaterial(classLoader)
-        if (!settings) {
-            runCatching { DynamicActionBarHook.install(HookRuntime.module(), classLoader) }
-                .onFailure { log("[HyperBackground] Dynamic action bar unavailable: $it") }
-        }
+        runCatching { DynamicActionBarHook.install(HookRuntime.module(), classLoader) }
+            .onFailure { log("[HyperBackground] Dynamic action bar unavailable: $it") }
     }
 
     /**
@@ -433,7 +429,6 @@ object SettingsBackgroundHook {
             ) {
                 val activity = thisObject!!.callMethod("getActivity")
                 if (activity is Activity && activity.javaClass.name == "com.android.settings.MiuiSettings") {
-                    SettingsTopBarBlurHook.markHomeFragment(thisObject)
                     BackgroundApplier.applyHome(activity)
                 }
             }

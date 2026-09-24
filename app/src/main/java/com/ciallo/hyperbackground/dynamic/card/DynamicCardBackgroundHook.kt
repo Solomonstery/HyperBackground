@@ -629,7 +629,8 @@ internal object DynamicCardBackgroundHook {
 
     /**
      * 动态路径用的分组绘制方法定位：**不看方法名**（R8 会改），只看签名——
-     * 非抽象、非静态，首参是 `Canvas`、次参是某个 `View` 子类（即 `RecyclerView`）。
+     * 非抽象、非静态，首参是 `Canvas`、次参是某个 `View` 子类（即 `RecyclerView`），
+     * 并且带有 adapter 参数；只包裹真正的分组绘制方法，不重复包裹其外层 onDraw。
      *
      * 这个形状把同一层里的 `onDraw(Canvas)` / `dispatchDraw(Canvas)` 这类无关重载排除在外，
      * 同时不依赖 `calculateGroupRectAndDraw` 这种会被压缩掉的名字。
@@ -642,7 +643,13 @@ internal object DynamicCardBackgroundHook {
                     !Modifier.isStatic(method.modifiers) &&
                     method.parameterCount >= 3 &&
                     method.parameterTypes[0] == Canvas::class.java &&
-                    View::class.java.isAssignableFrom(method.parameterTypes[1])
+                    View::class.java.isAssignableFrom(method.parameterTypes[1]) &&
+                    method.parameterTypes.any { parameter ->
+                        parameter.name == "androidx.recyclerview.widget.RecyclerView\$Adapter" ||
+                            generateSequence(parameter) { it.superclass }.any { ancestor ->
+                                ancestor.name == "androidx.recyclerview.widget.RecyclerView\$Adapter"
+                            }
+                    }
             }
             .distinctBy { it.parameterTypes.toList() }
             .toList()

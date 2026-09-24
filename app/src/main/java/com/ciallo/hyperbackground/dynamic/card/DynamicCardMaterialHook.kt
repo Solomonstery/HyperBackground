@@ -3,12 +3,15 @@ package com.ciallo.hyperbackground.dynamic.card
 import android.util.Log
 import android.view.View
 import android.content.SharedPreferences
+import android.graphics.Canvas
+import android.view.ViewGroup
 import com.ciallo.hyperbackground.dynamic.popup.DynamicPopupMaterialHook
 import com.ciallo.hyperbackground.dynamic.search.DynamicSearchMaterialHook
 import com.ciallo.hyperbackground.dynamic.bar.DynamicFloatingBarHook
 import io.github.libxposed.api.XposedInterface.ExceptionMode
 import io.github.libxposed.api.XposedModule
 import java.util.Collections
+import java.util.WeakHashMap
 
 /**
  * 纯动态路由的 hook 层：不认任何第三方类名 / 资源名，只认**结构**与**行为**。
@@ -35,6 +38,7 @@ internal object DynamicCardMaterialHook {
 
     /** 已经处理过的装饰器类，避免同一页多次注册时重复挂 hook。 */
     private val processed = Collections.synchronizedSet(HashSet<Class<*>>())
+    private val scanned = Collections.synchronizedMap(WeakHashMap<ViewGroup, Unit>())
 
     /** 成功接管的分组装饰器数量（诊断用）。 */
     @Volatile var discoveredDecorations: Int = 0
@@ -102,6 +106,25 @@ internal object DynamicCardMaterialHook {
                     result
                 }
         }
+        // Discover decorations that were registered before the add hook was installed.
+        // RecyclerView draws ItemDecorations in onDraw, so inspect before proceeding.
+        val countMethod = type.getMethod("getItemDecorationCount")
+        val getDecoration = type.getMethod("getItemDecorationAt", Int::class.javaPrimitiveType)
+        val onDraw = type.getDeclaredMethod("onDraw", Canvas::class.java)
+            .apply { isAccessible = true }
+        module.hook(onDraw).setExceptionMode(ExceptionMode.PROTECTIVE)
+            .setId("dynamic-cards:existing-decorations").intercept { chain ->
+                val recycler = chain.thisObject as? ViewGroup
+                if (recycler != null && scanned[recycler] == null) {
+                    runCatching {
+                        val count = countMethod.invoke(recycler) as Int
+                        for (index in 0 until count) {
+                            getDecoration.invoke(recycler, index)?.let(::onDecorationAdded)
+                        }
+                    }.onSuccess { scanned[recycler] = Unit }
+                }
+                chain.proceed()
+            }
         module.log(Log.INFO, TAG, "Dynamic ItemDecoration discovery installed: ${methods.size} overload(s)")
     }
 

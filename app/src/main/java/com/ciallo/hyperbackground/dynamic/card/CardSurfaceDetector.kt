@@ -80,6 +80,7 @@ internal object CardSurfaceDetector {
     const val REASON_NEGATIVE_NAME = "negative-name"
     const val REASON_NOT_CARD_SHAPED = "not-card-shaped"
     const val REASON_OUTER_CARD_SURFACE = "outer-card-surface"
+    const val REASON_GROUP_LIST_ROW = "group-list-row"
 
     /**
      * 半透明卡片被接管时的回调（诊断用，可能为 null）。宿主把它接到去重日志上，
@@ -101,10 +102,14 @@ internal object CardSurfaceDetector {
         ) {
             return REASON_TOO_SMALL
         }
+        // MIUIX preference cells and CardStateDrawable rows are recycled list items.
+        // Their background/foreground can look rounded, but applying a separate blur to
+        // each row makes the group flash as cells are rebound during scrolling.
+        if (isGroupedListRow(view)) return REASON_GROUP_LIST_ROW
         // 1) 没有自己的背景 → 它是外层分组卡上的普通行，材质由分组卡提供，绝不叠加。
         val background = view.background ?: return REASON_NO_BACKGROUND
         if (hasNegativeNameHint(view)) return REASON_NEGATIVE_NAME
-        // 2) 必须是卡片形状。先判形状再判不透明度：形状确认后，半透明的卡片底也应该被接管。
+        // 2) 必须是卡片形状。前景按压效果不能证明该行自身是一张卡片。
         if (!isCardShaped(view, background)) return REASON_NOT_CARD_SHAPED
         val alpha = strongestSurfaceAlpha(view, background)
         if (alpha < MIN_SHAPE_SURFACE_ALPHA) return REASON_TRANSPARENT_SURFACE
@@ -112,6 +117,26 @@ internal object CardSurfaceDetector {
         // 3) 同一条目内已经有更外层的卡片面 → 这一层是它的内容，不重复上材质。
         if (hasOuterCardSurface(view)) return REASON_OUTER_CARD_SURFACE
         return null
+    }
+
+    private fun isGroupedListRow(view: View): Boolean {
+        var node: View? = view
+        for (depth in 0 until MAX_ANCESTOR_DEPTH) {
+            val current = node ?: break
+            if (current.javaClass.name == "miuix.flexible.view.HyperCellLayout") return true
+            if (current.javaClass.name.contains("RecyclerView")) break
+            node = current.parent as? View
+        }
+        val stateRow = view.foreground?.javaClass?.name ==
+            "com.miui.support.drawable.CardStateDrawable"
+        if (!stateRow) return false
+        var parent = view.parent as? View
+        repeat(MAX_ANCESTOR_DEPTH) {
+            val current = parent ?: return false
+            if (current.javaClass.name.contains("RecyclerView")) return true
+            parent = current.parent as? View
+        }
+        return false
     }
 
     /**

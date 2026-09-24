@@ -827,7 +827,44 @@ object BackgroundApplier {
             return true
         }
 
-        return true
+        // 通用通道：以上「单独适配过规则」的进程之外，一律交给结构判定——只要当前窗口是
+        // 全屏且已承载内容的大页面就套用全局背景（见 isGenericFullScreenPage）。
+        // 这是 dynamic 那套「不看包名、只看结构」的思路在背景通道上的落地：新增一个应用
+        // 不必再往这里补关键词表，把它加进 LSPosed 作用域即可。
+        return !isGenericFullScreenPage(activity)
+    }
+
+    /**
+     * 通用页面判定：与 dynamic 的 CardSurfaceDetector 同源——不看包名、不看资源 id，
+     * 只看窗口结构本身。这里判的是「当前 Activity 是不是一个全屏、已承载内容的大页面」：
+     *
+     *  1. 窗口必须是不透明的全屏窗口（宽高均为 MATCH_PARENT）。浮窗、半透明、对话框形态
+     *     （权限 / 支付 / 登录 / 凭据 / 选择器）在 [isSensitiveTransientWindow] 里已排除，
+     *     这里再兜一次，保证本判定自成闭环、可独立复用。
+     *  2. 内容层 android.R.id.content 存在，且至少有一个可见子视图——空窗口、纯骨架、
+     *     无内容的中转 Activity 不挂。
+     *
+     * 刻意不卡「内容量出来多大」：onContentChanged 时尺寸还是 0，卡尺寸会让首帧挂不上、
+     * 退化成 post 异步补挂，于是先绘制原生底色再补背景、闪一下。宁可让空页面也挂上背景
+     * （随后 inflate 的内容会盖住它，无副作用），也不牺牲首帧无闪。
+     */
+    private fun isGenericFullScreenPage(activity: Activity?): Boolean {
+        if (activity == null) return false
+        try {
+            val lp = activity.window?.attributes ?: return false
+            if (lp.width != WindowManager.LayoutParams.MATCH_PARENT
+                || lp.height != WindowManager.LayoutParams.MATCH_PARENT
+            ) {
+                return false
+            }
+        } catch (_: Throwable) {
+            return false
+        }
+        val content = activity.findViewById<View>(android.R.id.content) as? ViewGroup ?: return false
+        for (i in 0 until content.childCount) {
+            if (content.getChildAt(i).visibility == View.VISIBLE) return true
+        }
+        return false
     }
 
     private fun isSensitiveTransientWindow(activity: Activity?): Boolean {

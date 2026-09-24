@@ -371,6 +371,23 @@ internal object DynamicCardBackgroundHook {
                     if (palette.enabledFor(HookRuntime.targetPackage) && view.isAttachedToWindow) {
                         view.post { applyStandalone(view) }
                     }
+                } else if (view != null &&
+                    CardSurfaceDetector.probe(view) == CardSurfaceDetector.REASON_GROUP_LIST_ROW
+                ) {
+                    // A recycled list item may have been treated as a standalone card
+                    // before its parent was attached. Keep the host's newly bound background.
+                    val state = synchronized(standaloneStates) { standaloneStates[view] }
+                    if (state != null) {
+                        clearStandaloneMaterial(view, state)
+                        val stillApplied = state.applied === view.background
+                        if (stillApplied) {
+                            withStandaloneWrite { view.background = state.original }
+                        }
+                        if (stillApplied) {
+                            view.clipToOutline = state.originalClipToOutline
+                        }
+                        synchronized(standaloneStates) { standaloneStates.remove(view) }
+                    }
                 }
                 result
             }
@@ -383,7 +400,13 @@ internal object DynamicCardBackgroundHook {
         if (target == null) {
             // 曾经接管过、但现在已经不是独立卡片的行（蓝牙可用设备行、列表中曾连接过的设备）：
             // 撤掉我们的材质，原生表面以系统最后一次绑定写入的状态为准。
-            if (tracked != null) releaseStandalone(view, tracked)
+            if (tracked != null &&
+                CardSurfaceDetector.probe(view) == CardSurfaceDetector.REASON_GROUP_LIST_ROW
+            ) {
+                if (tracked.applied === view.background) releaseStandalone(view, tracked)
+                else clearStandaloneMaterial(view, tracked)
+                synchronized(standaloneStates) { standaloneStates.remove(view) }
+            } else if (tracked != null) releaseStandalone(view, tracked)
             return
         }
         val state = tracked ?: standaloneState(view)
@@ -630,7 +653,9 @@ internal object DynamicCardBackgroundHook {
     /**
      * 动态路径用的分组绘制方法定位：**不看方法名**（R8 会改），只看签名——
      * 非抽象、非静态，首参是 `Canvas`、次参是某个 `View` 子类（即 `RecyclerView`），
-     * 并且带有 adapter 参数；只包裹真正的分组绘制方法，不重复包裹其外层 onDraw。
+     * 后面还有两个参数（State、Adapter）；只包裹真正的分组绘制方法，
+     * 不重复包裹其外层 onDraw。安全中心的 RecyclerView.Adapter 类名也被 R8 压缩，
+     * 因此不能按 `RecyclerView$Adapter` 字面名查找。
      *
      * 这个形状把同一层里的 `onDraw(Canvas)` / `dispatchDraw(Canvas)` 这类无关重载排除在外，
      * 同时不依赖 `calculateGroupRectAndDraw` 这种会被压缩掉的名字。
@@ -641,15 +666,9 @@ internal object DynamicCardBackgroundHook {
             .filter { method ->
                 !Modifier.isAbstract(method.modifiers) &&
                     !Modifier.isStatic(method.modifiers) &&
-                    method.parameterCount >= 3 &&
+                    method.parameterCount == 4 &&
                     method.parameterTypes[0] == Canvas::class.java &&
-                    View::class.java.isAssignableFrom(method.parameterTypes[1]) &&
-                    method.parameterTypes.any { parameter ->
-                        parameter.name == "androidx.recyclerview.widget.RecyclerView\$Adapter" ||
-                            generateSequence(parameter) { it.superclass }.any { ancestor ->
-                                ancestor.name == "androidx.recyclerview.widget.RecyclerView\$Adapter"
-                            }
-                    }
+                    View::class.java.isAssignableFrom(method.parameterTypes[1])
             }
             .distinctBy { it.parameterTypes.toList() }
             .toList()
@@ -851,8 +870,14 @@ internal object DynamicCardBackgroundHook {
     internal fun onViewLaidOut(view: View) {
         if (!palette.enabledFor(HookRuntime.targetPackage)) return
         if (view.width <= 0 || view.height <= 0) return
-        // 已经接管过的不再重复判定：尺寸变化不改变材质，后续 resize 交给重绘。
-        if (synchronized(standaloneStates) { standaloneStates[view] }?.applied != null) return
+        // Recheck tracked views as well: recycled rows can acquire a RecyclerView parent
+        // after their initial attach and must leave the standalone material route.
+        if (synchronized(standaloneStates) { standaloneStates[view] }?.applied != null) {
+            if (CardSurfaceDetector.probe(view) == CardSurfaceDetector.REASON_GROUP_LIST_ROW) {
+                view.post { applyStandalone(view) }
+            }
+            return
+        }
         if (standaloneTarget(view) == null) return
         view.post { applyStandalone(view) }
     }
@@ -909,7 +934,14 @@ internal object DynamicCardBackgroundHook {
         val drawableField =
             (drawableCandidates.firstOrNull { it.type == clipDrawableType } ?: drawableCandidates.firstOrNull())
                 ?.apply { isAccessible = true } ?: return null
-        val paintField = fields.firstOrNull { Paint::class.java.isAssignableFrom(it.type) }
+        // MIUIX PreferenceFragment's decoration has a second Paint in the subclass for
+        // checkable-row masks. The group fill for ColorDrawable is painted by the
+        // clip/draw base class (drawCardRect), so taking the first Paint from the
+        // subclass leaves the actual card at its original translucent color.
+        val clipOwner = clipMethodOf(type)?.declaringClass
+        val paintField = (clipOwner?.declaredFields?.firstOrNull {
+            Paint::class.java.isAssignableFrom(it.type)
+        } ?: fields.firstOrNull { Paint::class.java.isAssignableFrom(it.type) })
             ?.apply { isAccessible = true }
         val contextField = fields.firstOrNull { Context::class.java.isAssignableFrom(it.type) }
             ?.apply { isAccessible = true }

@@ -14,7 +14,7 @@
     <string name="background_device">My device</string>
     <string name="background_device_summary">Images, GIF, WebP, MP4 and WebM</string>
     <string name="background_global">Global settings</string>
-    <string name="background_global_summary">Background and colors for secondary system pages</string>
+    <string name="background_global_summary">Background and colors for all secondary pages</string>
     <string name="background_contacts">Contacts &amp; Dialer</string>
     <string name="background_contacts_summary">Background for the Contacts and Dialer main screen</string>
     <string name="background_mms">Messages</string>

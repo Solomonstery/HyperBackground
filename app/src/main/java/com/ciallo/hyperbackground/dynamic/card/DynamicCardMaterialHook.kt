@@ -93,6 +93,16 @@ internal object DynamicCardMaterialHook {
     /** `addItemDecoration` 有两个重载（带 / 不带 index），都要接。 */
     private fun installItemDecorationHook(classLoader: ClassLoader) {
         val type = classLoader.loadClass(RECYCLER_VIEW_CLASS)
+        // PreferenceFragment's FrameDecoration can be registered before the runtime
+        // addItemDecoration hook observes it. Discover its inner ItemDecoration by
+        // hierarchy rather than the R8-renamed inner class name (Settings and Security
+        // Center ship different MIUIX builds).
+        runCatching {
+            val preference = classLoader.loadClass("miuix.preference.PreferenceFragment")
+            val decoration = classLoader.loadClass("androidx.recyclerview.widget.RecyclerView\$ItemDecoration")
+            preference.declaredClasses.filter { decoration.isAssignableFrom(it) }
+                .forEach(::onDecorationAdded)
+        }.onFailure { module.log(Log.DEBUG, TAG, "Preference decoration discovery unavailable", it) }
         val methods = type.declaredMethods.filter {
             it.name == "addItemDecoration" && it.parameterCount >= 1
         }

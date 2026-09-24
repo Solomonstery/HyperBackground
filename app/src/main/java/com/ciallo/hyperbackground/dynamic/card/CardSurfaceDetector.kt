@@ -106,6 +106,7 @@ internal object CardSurfaceDetector {
         // Their background/foreground can look rounded, but applying a separate blur to
         // each row makes the group flash as cells are rebound during scrolling.
         if (isGroupedListRow(view)) return REASON_GROUP_LIST_ROW
+        if (isEmptyCardInGroup(view)) return REASON_GROUP_LIST_ROW
         // 1) 没有自己的背景 → 它是外层分组卡上的普通行，材质由分组卡提供，绝不叠加。
         val background = view.background ?: return REASON_NO_BACKGROUND
         if (hasNegativeNameHint(view)) return REASON_NEGATIVE_NAME
@@ -134,6 +135,61 @@ internal object CardSurfaceDetector {
         repeat(MAX_ANCESTOR_DEPTH) {
             val current = parent ?: return false
             if (current.javaClass.name.contains("RecyclerView")) return true
+            parent = current.parent as? View
+        }
+        return false
+    }
+
+    /** A transparent card shell (or its row root) inside a decorated list is not a second card.
+     * Wi-Fi retains a highlighted child even for disconnected rows; when the shell fills the
+     * entire row it still belongs to the group. Inset cards with their own bounds remain cards.
+     */
+    private fun isEmptyCardInGroup(view: View): Boolean {
+        val group = view as? ViewGroup ?: return false
+        fun groupShell(card: View, row: View): Boolean {
+            if (cardBackgroundAlpha(card) != 0) return false
+            val content = card as? ViewGroup ?: return false
+            val hasSurface = (0 until content.childCount).any { index ->
+                val background = content.getChildAt(index).background
+                background != null && surfaceAlpha(background) >= MIN_SHAPE_SURFACE_ALPHA
+            }
+            if (!hasSurface) return true
+            // A row-sized transparent CardView merely carries the row's connected-state
+            // drawable. Inset CardViews are independent surfaces even within a group list.
+            val params = card.layoutParams as? ViewGroup.MarginLayoutParams
+            if (params != null && (params.leftMargin > 0 || params.rightMargin > 0 ||
+                    params.topMargin > 0 || params.bottomMargin > 0)) return false
+            var left = 0
+            var top = 0
+            var node: View = card
+            while (node !== row) {
+                left += node.left
+                top += node.top
+                node = node.parent as? View ?: return false
+            }
+            return card.width > 0 && card.height > 0 &&
+                left == 0 && top == 0 && card.width == row.width && card.height == row.height
+        }
+        val row = generateSequence<View>(view) { it.parent as? View }
+            .take(MAX_ANCESTOR_DEPTH)
+            .firstOrNull { (it.parent as? View)?.javaClass?.name?.contains("RecyclerView") == true }
+            ?: return false
+        val isShell = groupShell(view, row)
+        val isRowWithShell = view === row && cardBackgroundAlpha(view) < 0 &&
+            (0 until group.childCount).any { index -> groupShell(group.getChildAt(index), row) }
+        // The stateful highlight is itself a full-bleed child of the transparent shell.
+        // Otherwise it can be picked up independently even when the shell was rejected.
+        val shell = view.parent as? View
+        val isShellContent = shell != null && groupShell(shell, row) &&
+            view.left == 0 && view.top == 0 &&
+            view.width == shell.width && view.height == shell.height
+        if (!isShell && !isRowWithShell && !isShellContent) return false
+        var parent: View? = view.parent as? View
+        repeat(MAX_ANCESTOR_DEPTH) {
+            val current = parent ?: return false
+            if (current.javaClass.name.contains("RecyclerView")) {
+                return DynamicCardMaterialHook.hasGroupDecoration(current)
+            }
             parent = current.parent as? View
         }
         return false

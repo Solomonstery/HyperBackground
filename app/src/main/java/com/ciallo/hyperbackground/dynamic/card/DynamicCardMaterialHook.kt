@@ -44,6 +44,21 @@ internal object DynamicCardMaterialHook {
     @Volatile var discoveredDecorations: Int = 0
         private set
 
+    /** Only reject empty nested card shells when their RecyclerView actually draws groups. */
+    internal fun hasGroupDecoration(view: View): Boolean {
+        val type = runCatching { view.javaClass.classLoader?.loadClass(RECYCLER_VIEW_CLASS) }.getOrNull()
+            ?: return false
+        if (!type.isInstance(view)) return false
+        return runCatching {
+            val count = type.getMethod("getItemDecorationCount").invoke(view) as Int
+            val at = type.getMethod("getItemDecorationAt", Int::class.javaPrimitiveType)
+            (0 until count).any { index ->
+                val decoration = at.invoke(view, index) ?: return@any false
+                DynamicCardBackgroundHook.isGroupDecoration(decoration.javaClass)
+            }
+        }.getOrDefault(false)
+    }
+
     fun install(value: XposedModule, classLoader: ClassLoader, prefs: SharedPreferences) {
         module = value
         CardSurfaceDetector.onTranslucentCard = { view, alpha ->

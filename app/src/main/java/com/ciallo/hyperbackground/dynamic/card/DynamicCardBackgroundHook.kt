@@ -1000,6 +1000,20 @@ internal object DynamicCardBackgroundHook {
 
     // ---------------------------------------------------------------- 动态路由（结构发现）
 
+    internal fun isGroupDecoration(type: Class<*>): Boolean = clipMethodOf(type) != null &&
+        generateSequence<Class<*>>(type) { it.superclass }
+            .flatMap { it.declaredMethods.asSequence() }
+            .any { method ->
+                !Modifier.isAbstract(method.modifiers) && !Modifier.isStatic(method.modifiers) &&
+                    (method.parameterCount == 3 || method.parameterCount == 4) &&
+                    method.parameterTypes[0] == Canvas::class.java &&
+                    View::class.java.isAssignableFrom(method.parameterTypes[1]) &&
+                    method.parameterTypes[1].methods.any { getter ->
+                        getter.name == "getAdapter" && getter.parameterCount == 0 &&
+                            getter.returnType.isAssignableFrom(method.parameterTypes.last())
+                    }
+            }
+
     /**
      * 布局完成时机。attach / inflate 阶段 `width == 0`，[CardSurfaceDetector.probe] 必然早退成
      * `too-small`，通用路由形同虚设；这里在真实尺寸写回的那一刻补判一次。

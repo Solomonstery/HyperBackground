@@ -20,12 +20,16 @@ import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
 import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_POPUP
 import com.ciallo.hyperbackground.appearance.KEY_CUSTOM_CARD_ENABLED
 import com.ciallo.hyperbackground.appearance.KEY_DARK_CARD_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_DARK_CARD_BLUR
 import com.ciallo.hyperbackground.appearance.KEY_DARK_FROST_COLOR
 import com.ciallo.hyperbackground.appearance.KEY_DARK_SOFT_GLASS
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_CARD_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_LIGHT_CARD_BLUR
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_FROST_COLOR
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_SOFT_GLASS
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
+import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_FROST
+import com.ciallo.hyperbackground.dynamic.material.DynamicFrostDrawable
 import com.ciallo.hyperbackground.dynamic.material.DynamicMaterialPalette
 import com.ciallo.hyperbackground.dynamic.material.DynamicSoftGlassDrawable
 import io.github.libxposed.api.XposedInterface.ExceptionMode
@@ -50,6 +54,7 @@ internal object DynamicPopupMaterialHook {
     private val originals = WeakHashMap<View, Drawable?>()
     private val replacements = WeakHashMap<View, Drawable>()
     private val glass = WeakHashMap<View, Boolean>()
+    private val frost = WeakHashMap<View, Boolean>()
     private val outlines = WeakHashMap<View, ViewOutlineProvider?>()
     private val originalClipping = WeakHashMap<View, Boolean>()
     private val outlineListeners = WeakHashMap<View, View.OnLayoutChangeListener>()
@@ -58,6 +63,7 @@ internal object DynamicPopupMaterialHook {
                 KEY_CUSTOM_CARD_ENABLED, KEY_COMPONENT_POPUP, KEY_LIGHT_CARD_COLOR,
                 KEY_DARK_CARD_COLOR, KEY_CARD_DARK_FOLLOWS_LIGHT, KEY_CARD_BACKGROUND_MODE,
                 KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR,
+                KEY_LIGHT_CARD_BLUR, KEY_DARK_CARD_BLUR,
                 KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS,
                 KEY_APP_SCOPE_DISABLED,
             )
@@ -249,6 +255,7 @@ internal object DynamicPopupMaterialHook {
         // Leave it native; the ClipLayout-hosted secondary menu retains its working glass.
         if (!packageEnabled || !config.popup || isUnsupportedContactsMenu(view)) {
             if (glass.remove(view) != null) DynamicSoftGlassDrawable.clearFromView(view)
+            if (frost.remove(view) != null) DynamicFrostDrawable.clearFromView(view)
             if (outlines.containsKey(view)) {
                 outlineListeners.remove(view)?.let(view::removeOnLayoutChangeListener)
                 view.outlineProvider = outlines.remove(view)
@@ -264,10 +271,12 @@ internal object DynamicPopupMaterialHook {
                 if (previous.alpha != 255) previous.alpha = 255
                 return
             }
-            if (!wantsGlass) return
+            if (frost[view] == true) return
+            if (!wantsGlass && config.mode != CARD_BACKGROUND_FROST) return
             if (!view.isAttachedToWindow || !view.isHardwareAccelerated) return
         }
         if (glass.remove(view) != null) DynamicSoftGlassDrawable.clearFromView(view)
+        if (frost.remove(view) != null) DynamicFrostDrawable.clearFromView(view)
         if (outlines.containsKey(view)) {
             outlineListeners.remove(view)?.let(view::removeOnLayoutChangeListener)
             view.outlineProvider = outlines.remove(view)
@@ -280,6 +289,20 @@ internal object DynamicPopupMaterialHook {
         }
         replacements[view] = replacement
         view.background = replacement
+        if (config.mode == CARD_BACKGROUND_FROST && view.isAttachedToWindow && view.isHardwareAccelerated) {
+            val night = view.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+                Configuration.UI_MODE_NIGHT_YES
+            val dark = night && !config.darkFollowsLight
+            if (DynamicFrostDrawable.applyToView(
+                    view, if (dark) config.darkBlur else config.lightBlur,
+                    view.resources.displayMetrics.density,
+                )
+            ) {
+                frost[view] = true
+                return
+            }
+            DynamicFrostDrawable.clearFromView(view)
+        }
         if (wantsGlass) {
             if (!view.isAttachedToWindow || !view.isHardwareAccelerated) return
             val night = view.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==

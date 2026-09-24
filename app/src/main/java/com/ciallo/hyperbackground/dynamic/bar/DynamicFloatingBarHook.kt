@@ -18,7 +18,9 @@ import com.ciallo.hyperbackground.appearance.KEY_DARK_SOFT_GLASS
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_CARD_BLUR
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_CARD_COLOR
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_FROST_COLOR
+import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_COLOR
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_SOFT_GLASS
+import com.ciallo.hyperbackground.HookRuntime
 import com.ciallo.hyperbackground.dynamic.material.DynamicMaterialPalette
 import io.github.libxposed.api.XposedInterface.ExceptionMode
 import io.github.libxposed.api.XposedModule
@@ -63,8 +65,10 @@ internal object DynamicFloatingBarHook {
                 val view = chain.thisObject as? View ?: return@intercept result
                 if (suspend.invoke(view) == true) {
                     views[view] = Unit
-                    // An already blurred native bar owns its appearance; don't cover it with a fill.
-                    if (blur.invoke(view) != true) {
+                    // Keep the native blur unless the user explicitly selected a solid color.
+                    if (blur.invoke(view) != true || palette.mode == CARD_BACKGROUND_COLOR &&
+                        palette.enabledFor(HookRuntime.targetPackage) && palette.floatingBar
+                    ) {
                         val original = source.get(view) as? Drawable
                         FloatingBarMaterial.background(original, view.context, palette)
                             ?.let { view.background = it }

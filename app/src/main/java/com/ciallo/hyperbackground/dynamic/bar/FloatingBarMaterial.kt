@@ -16,7 +16,7 @@ import com.ciallo.hyperbackground.dynamic.material.DynamicSoftGlassDrawable
 
 internal object FloatingBarMaterial {
     fun signature(view: View, palette: DynamicMaterialPalette): Int {
-        if (!palette.enabledFor(HookRuntime.targetPackage) || !palette.floatingBar || palette.mode == CARD_BACKGROUND_COLOR) return 0
+        if (!palette.enabledFor(HookRuntime.targetPackage) || !palette.floatingBar) return 0
         return 31 * palette.hashCode() +
             (view.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK)
     }

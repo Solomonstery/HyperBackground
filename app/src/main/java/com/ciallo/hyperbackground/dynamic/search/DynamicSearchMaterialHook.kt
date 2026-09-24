@@ -2,6 +2,9 @@ package com.ciallo.hyperbackground.dynamic.search
 
 import android.content.SharedPreferences
 import android.content.res.Configuration
+import android.graphics.PorterDuff
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -10,14 +13,21 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import com.ciallo.hyperbackground.HookRuntime
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
+import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_COLOR
+import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_FROST
 import com.ciallo.hyperbackground.appearance.KEY_APP_SCOPE_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
 import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
 import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_SEARCH
 import com.ciallo.hyperbackground.appearance.KEY_CUSTOM_CARD_ENABLED
 import com.ciallo.hyperbackground.appearance.KEY_DARK_FROST_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_DARK_CARD_BLUR
+import com.ciallo.hyperbackground.appearance.KEY_DARK_CARD_COLOR
 import com.ciallo.hyperbackground.appearance.KEY_DARK_SOFT_GLASS
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_FROST_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_LIGHT_CARD_BLUR
+import com.ciallo.hyperbackground.appearance.KEY_LIGHT_CARD_COLOR
+import com.ciallo.hyperbackground.dynamic.material.DynamicFrostDrawable
 import com.ciallo.hyperbackground.appearance.KEY_LIGHT_SOFT_GLASS
 import com.ciallo.hyperbackground.dynamic.material.DynamicMaterialPalette
 import com.ciallo.hyperbackground.dynamic.material.DynamicSoftGlassDrawable
@@ -34,7 +44,8 @@ internal object DynamicSearchMaterialHook {
     private const val ACTION = "miuix.appcompat.internal.app.widget.SearchActionModeView"
     private const val MATERIAL = "miuix.appcompat.app.SearchViewMaterialImpl"
 
-    private val tracked = Collections.synchronizedMap(WeakHashMap<View, Unit>())
+    private data class Surface(val original: Drawable, var replacement: Drawable? = null, var mode: Int = -1)
+    private val tracked = Collections.synchronizedMap(WeakHashMap<View, Surface>())
     private val owners = Collections.synchronizedMap(WeakHashMap<View, Unit>())
     private val nativeMaterials = Collections.synchronizedMap(WeakHashMap<View, Pair<WeakReference<Any>, WeakReference<View>>>())
     private val restoringNative = ThreadLocal<Boolean>()
@@ -44,6 +55,7 @@ internal object DynamicSearchMaterialHook {
     private val keys = setOf(
         KEY_CUSTOM_CARD_ENABLED, KEY_CARD_BACKGROUND_MODE, KEY_COMPONENT_SEARCH,
         KEY_CARD_DARK_FOLLOWS_LIGHT, KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR,
+        KEY_LIGHT_CARD_COLOR, KEY_DARK_CARD_COLOR, KEY_LIGHT_CARD_BLUR, KEY_DARK_CARD_BLUR,
         KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS,
         KEY_APP_SCOPE_DISABLED,
     )
@@ -191,27 +203,81 @@ internal object DynamicSearchMaterialHook {
 
     private fun apply(view: View) {
         val config = palette
-        if (!config.enabledFor(HookRuntime.targetPackage) || !config.search || config.mode != CARD_BACKGROUND_SOFT_GLASS) {
+        if (!config.enabledFor(HookRuntime.targetPackage) || !config.search) {
             restore(view)
             return
         }
-        if (!view.isAttachedToWindow || !view.isHardwareAccelerated) return
+        if (!view.isAttachedToWindow) return
         val night = view.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
             Configuration.UI_MODE_NIGHT_YES
         val dark = night && !config.darkFollowsLight
-        if (view.background == null) return
+        val current = view.background ?: return
+        val previous = tracked[view]
+        val state = if (previous == null || current !== previous.replacement && current !== previous.original) {
+            if (previous != null) clearEffects(view, previous.mode)
+            Surface(current).also { tracked[view] = it }
+        } else previous
+        if (state.mode != config.mode) {
+            clearEffects(view, state.mode)
+            if (state.mode == CARD_BACKGROUND_SOFT_GLASS) state.original.setTintList(null)
+        }
         val color = if (dark) config.darkFrost else config.lightFrost
-        val params = if (dark) config.darkGlass else config.lightGlass
-        if (DynamicSoftGlassDrawable.applyToView(
-                view, color, params, view.resources.displayMetrics.density,
-            )
-        ) tracked[view] = Unit
+        val density = view.resources.displayMetrics.density
+        when (config.mode) {
+            CARD_BACKGROUND_SOFT_GLASS -> {
+                if (view.background === state.replacement) view.background = state.original
+                state.replacement = null
+                if (view.isHardwareAccelerated && DynamicSoftGlassDrawable.applyToView(
+                        view, color, if (dark) config.darkGlass else config.lightGlass, density,
+                    )
+                ) state.mode = config.mode else {
+                    DynamicSoftGlassDrawable.clearFromView(view)
+                    state.mode = -1
+                }
+            }
+            CARD_BACKGROUND_FROST, CARD_BACKGROUND_COLOR -> {
+                val fill = if (config.mode == CARD_BACKGROUND_COLOR) {
+                    if (dark) config.dark else config.light
+                } else color
+                val replacement = tintedBackground(state.original, view, fill)
+                view.background = replacement
+                state.replacement = replacement
+                state.mode = config.mode
+                if (config.mode == CARD_BACKGROUND_FROST &&
+                    (!view.isHardwareAccelerated || !DynamicFrostDrawable.applyToView(
+                        view, if (dark) config.darkBlur else config.lightBlur, density,
+                    ))
+                ) DynamicFrostDrawable.clearFromView(view)
+            }
+        }
+    }
+
+    private fun tintedBackground(original: Drawable, view: View, color: Int): Drawable {
+        val copy = runCatching {
+            original.constantState?.newDrawable(view.resources, view.context.theme)?.mutate()
+        }.getOrNull() ?: return ColorDrawable(color)
+        val childSet = runCatching {
+            if (copy.javaClass.name != "miuix.smooth.SmoothContainerDrawable2") return@runCatching false
+            copy.javaClass.getMethod("setChildDrawable", Drawable::class.java)
+                .invoke(copy, ColorDrawable(color))
+            true
+        }.getOrDefault(false)
+        if (!childSet) copy.setColorFilter(color, PorterDuff.Mode.SRC_IN)
+        return copy
+    }
+
+    private fun clearEffects(view: View, mode: Int) {
+        when (mode) {
+            CARD_BACKGROUND_SOFT_GLASS -> DynamicSoftGlassDrawable.clearFromView(view)
+            CARD_BACKGROUND_FROST -> DynamicFrostDrawable.clearFromView(view)
+        }
     }
 
     private fun restore(view: View, restoreNative: Boolean = true) {
-        if (tracked.remove(view) == null) return
-        DynamicSoftGlassDrawable.clearFromView(view)
-        view.background?.setTintList(null)
+        val state = tracked.remove(view) ?: return
+        clearEffects(view, state.mode)
+        if (view.background === state.replacement) view.background = state.original
+        if (state.mode == CARD_BACKGROUND_SOFT_GLASS) state.original.setTintList(null)
         if (restoreNative && view.isAttachedToWindow) {
             runCatching { reapplyNative?.invoke(view) }
         }

@@ -91,6 +91,7 @@ fun BackgroundDetailPage(
             item { SectionTitle(stringResource(R.string.blur)) }
             item { TopBlurCard(activity) }
             item { TopClearCard(activity) }
+            item { TopButtonBackgroundCard(activity) }
         }
         if (slot == BackgroundContract.CONTACTS) {
             item { SectionTitle(stringResource(R.string.contacts_surface_title)) }
@@ -227,6 +228,35 @@ private fun TopClearCard(activity: MainActivity) {
                     enabled = it
                     config.edit()
                         .putBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, it)
+                        .apply()
+                },
+            )
+        }
+    }
+}
+
+/**
+ * 顶栏按钮背景常驻。MIUIX 默认只在列表下拉、顶栏浮层遮罩出现时才把右侧按钮切到「浮动」态
+ * （胶囊材质底）；开启后 hook 把 ActionBarContainer 的按钮浮动状态钉在常显，与顶部模糊/清除无关。
+ */
+@Composable
+private fun TopButtonBackgroundCard(activity: MainActivity) {
+    val config = activity.config
+    var enabled by remember {
+        mutableStateOf(
+            config.getBoolean(BackgroundContract.UI_TOP_BUTTON_BACKGROUND_ENABLED, true),
+        )
+    }
+    UiCard(activity, Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            SwitchPreference(
+                title = stringResource(R.string.top_button_background),
+                summary = stringResource(R.string.top_button_background_summary),
+                checked = enabled,
+                onCheckedChange = {
+                    enabled = it
+                    config.edit()
+                        .putBoolean(BackgroundContract.UI_TOP_BUTTON_BACKGROUND_ENABLED, it)
                         .apply()
                 },
             )

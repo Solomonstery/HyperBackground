@@ -94,6 +94,10 @@ object BackgroundContract {
     // 清除设置主页顶栏遮罩。只作用于 MiuiSettings 首页；开启时首页清除优先，
     // 其它设置二级页仍可继续使用全局顶栏模糊。
     const val UI_TOP_CLEAR_ENABLED = "ui_top_clear_enabled"
+    // 顶栏右侧按钮背景常驻。MIUIX 默认只在列表下拉、顶栏浮层遮罩出现时才把按钮切到
+    // 「浮动」态（胶囊材质底）。开启后把 ActionBarContainer 的按钮浮动状态钉在 1，
+    // 与顶栏模糊/清除互不影响。
+    const val UI_TOP_BUTTON_BACKGROUND_ENABLED = "ui_top_button_background_enabled"
     // 「配置」栏目 - 设置页软件入口：hook HyperOS 设置首页（MiuiSettings.updateHeaderList）插入一条
     // 指向模块 MainActivity 的 Header。位置决定锚点条目，同组决定是否继承相邻条目的 groupId（同一张卡片）。
     const val UI_SETTINGS_ENTRY_ENABLED = "ui_settings_entry_enabled"

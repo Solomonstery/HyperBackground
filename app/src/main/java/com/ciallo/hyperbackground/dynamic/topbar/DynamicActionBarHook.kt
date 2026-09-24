@@ -23,9 +23,20 @@ import kotlin.math.min
 internal object DynamicActionBarHook {
     private const val TAG = "HyperBackgroundTopBar"
     private const val BAR = "miuix.appcompat.internal.app.widget.ActionBarContainer"
+
+    // 顶栏按钮「浮动态」控制位。MIUIX 里它是 ActionBarView.mFloatingMode 的公开写入口：
+    // 1 = 按钮常显胶囊底（原厂只在列表下拉、遮罩出现时才置 1），-1 = 交还给原厂自动判定。
+    // 该方法是 MIUIX 公开 API，短信 / 设置两个 APK 都保留了名字，不需要 dex 反混淆。
+    private const val FLOATING_ON = 1
+    private const val FLOATING_AUTO = -1
+
     private val owned = Collections.synchronizedMap(WeakHashMap<ViewGroup, State>())
     private data class State(val blur: View, var original: Drawable? = null, var cleared: Boolean = false,
                              var lastRadius: Float = -1f, var lastHeight: Int = -1, var lastAlpha: Float = 0f)
+
+    /** 每个 ActionBarContainer 的按钮浮动钉住状态；failed 后不再重试，避免每帧刷日志。 */
+    private class FloatingPin { var applied: Boolean? = null; var failed = false }
+    private val floatingPins = Collections.synchronizedMap(WeakHashMap<ViewGroup, FloatingPin>())
 
     private lateinit var module: XposedModule
     private var maskAlpha: Field? = null
@@ -35,6 +46,7 @@ internal object DynamicActionBarHook {
     private var setGradient: Method? = null
     private var setPrimary: Method? = null
     private var getPrimary: Method? = null
+    private var setButtonFloating: Method? = null
     private var scope: SharedPreferences? = null
 
     fun install(value: XposedModule, loader: ClassLoader) {
@@ -47,6 +59,15 @@ internal object DynamicActionBarHook {
         getPrimary = type.getMethod("getPrimaryBackground")
         setPrimary = type.getMethod("setPrimaryBackground", Drawable::class.java)
         scope = HookRuntime.remotePreferences(SETTINGS_APPEARANCE_PREFERENCES)
+        setButtonFloating = runCatching {
+            type.getMethod("setActionButtonFloatingState", Int::class.javaPrimitiveType)
+        }.getOrNull()
+
+        // 「顶栏按钮背景常驻」与顶栏遮罩是两条互不依赖的通道：即使遮罩反混淆失败（非 MIUIX
+        // 布局 / 结构变化），按钮浮动这一条也必须照常生效，所以先装它，再装遮罩相关的 hook。
+        hookButtonFloating()
+        // onFinishInflate / onLayout 同时服务两个功能：遮罩层尺寸跟随 + 按钮浮动状态钉住。
+        hookLifecycle(type)
 
         // Scan only the class we will hook. Both the painter and the alpha field are discovered
         // through framework calls; do not rely on JADX's R8-renamed method/field identifiers.
@@ -58,11 +79,73 @@ internal object DynamicActionBarHook {
             return
         }
 
+        val painterIsOnDraw = painter.name == "onDraw" && painter.parameterTypes.contentEquals(arrayOf(Canvas::class.java))
+        type.getDeclaredMethod("onDraw", Canvas::class.java).apply { isAccessible = true }.let { method ->
+            module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
+                .setId("dynamic-topbar:draw").intercept { chain ->
+                    val bar = chain.thisObject as? ViewGroup
+                    bar?.takeIf { owned.containsKey(it) }?.let(::update)
+                    // Some MIUIX builds inline the mask painter into onDraw. Keep the rest of
+                    // their drawing intact and suppress only the mask's animated alpha here.
+                    if (painterIsOnDraw && bar != null && enabled() && owned.containsKey(bar)) {
+                        val alpha = maskAlpha!!
+                        val original = alpha.getFloat(bar)
+                        try {
+                            alpha.setFloat(bar, 0f)
+                            chain.proceed()
+                        } finally {
+                            alpha.setFloat(bar, original)
+                        }
+                    } else {
+                        chain.proceed()
+                    }
+                }
+        }
+        if (!painterIsOnDraw) {
+            module.hook(painter).setExceptionMode(ExceptionMode.PROTECTIVE)
+                .setId("dynamic-topbar:mask").intercept { chain ->
+                    val bar = chain.thisObject as? ViewGroup
+                    if (bar != null && enabled() && owned.containsKey(bar)) null else chain.proceed()
+                }
+        }
+        module.log(Log.INFO, TAG, "Action bar installed mask=${painter.name} alpha=${maskAlpha?.name} inline=$painterIsOnDraw")
+    }
+
+    /**
+     * 顶栏按钮背景常驻。原厂只有列表下拉、顶栏遮罩出现时才会把按钮切到浮动（胶囊材质底），
+     * 这里把 ActionBarContainer 的按钮浮动状态钉死为 1：
+     * - 拦截 `setActionButtonFloatingState(int)` 本身，应用后续任何一次写状态都被改写成 1；
+     * - 钉住后原厂内部 `mActionButtonFloatingState != -1` 的分支会自动跳过自动判定，
+     *   所以滚动状态变化不会再把它改回 0。
+     */
+    private fun hookButtonFloating() {
+        val method = setButtonFloating
+        if (method == null) {
+            module.log(Log.WARN, TAG, "ActionButtonFloatingState unavailable; keeping native button state")
+            return
+        }
+        module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
+            .setId("dynamic-topbar:button-floating").intercept { chain ->
+                if (buttonBackgroundEnabled()) {
+                    // 参数是 int，必须按 Array<Any?> 装箱传入，直接用 arrayOf(1) 会因数组不变型编译失败。
+                    chain.proceed(arrayOf<Any?>(FLOATING_ON))
+                } else {
+                    chain.proceed()
+                }
+            }
+        module.log(Log.INFO, TAG, "Top bar button background hook installed")
+    }
+
+    private fun hookLifecycle(type: Class<*>) {
         type.getDeclaredMethod("onFinishInflate").apply { isAccessible = true }.let { method ->
             module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
                 .setId("dynamic-topbar:inflate").intercept { chain ->
                     val result = chain.proceed()
-                    (chain.thisObject as? ViewGroup)?.let(::ensure)
+                    (chain.thisObject as? ViewGroup)?.let { bar ->
+                        // 遮罩层只在反混淆成功后才有意义，避免给非 MIUIX 结构多挂一个子 View。
+                        if (maskAlpha != null) ensure(bar)
+                        syncButtonBackground(bar)
+                    }
                     result
                 }
         }
@@ -75,23 +158,32 @@ internal object DynamicActionBarHook {
                         val result = chain.proceed()
                         (chain.thisObject as? ViewGroup)?.let { bar ->
                             owned[bar]?.blur?.layout(0, 0, bar.width, bar.height)
+                            syncButtonBackground(bar)
                         }
                         result
                     }
             }
-        type.getDeclaredMethod("onDraw", Canvas::class.java).apply { isAccessible = true }.let { method ->
-            module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
-                .setId("dynamic-topbar:draw").intercept { chain ->
-                    (chain.thisObject as? ViewGroup)?.takeIf { owned.containsKey(it) }?.let(::update)
-                    chain.proceed()
-                }
+    }
+
+    /**
+     * 按当前开关把按钮浮动状态推到 [bar]。开关切换后下一帧布局即生效：开启 → 钉 1，
+     * 关闭 → 交还 -1 让原厂重新接管（原厂会在下次展开/滚动事件里把按钮收回非浮动）。
+     */
+    private fun syncButtonBackground(bar: ViewGroup) {
+        val method = setButtonFloating ?: return
+        val pin = synchronized(floatingPins) {
+            floatingPins[bar] ?: FloatingPin().also { floatingPins[bar] = it }
         }
-        module.hook(painter).setExceptionMode(ExceptionMode.PROTECTIVE)
-            .setId("dynamic-topbar:mask").intercept { chain ->
-                val bar = chain.thisObject as? ViewGroup
-                if (bar != null && enabled() && owned.containsKey(bar)) null else chain.proceed()
-            }
-        module.log(Log.INFO, TAG, "Action bar installed mask=${painter.name} alpha=${maskAlpha?.name}")
+        if (pin.failed) return
+        val wanted = buttonBackgroundEnabled()
+        if (pin.applied == wanted) return
+        try {
+            method.invoke(bar, if (wanted) FLOATING_ON else FLOATING_AUTO)
+            pin.applied = wanted
+        } catch (error: Throwable) {
+            pin.failed = true
+            module.log(Log.WARN, TAG, "Button floating state unavailable on ${bar.javaClass.name}", error)
+        }
     }
 
     private fun discoverMask(type: Class<*>, loader: ClassLoader): Method? {
@@ -105,12 +197,13 @@ internal object DynamicActionBarHook {
             }
             if (painters.size != 1) return null
             val painter = painters.single()
-            val animatedWriters = data.methods.filter { method ->
-                method.invokes.any { it.className == "android.animation.ValueAnimator" && it.name == "getAnimatedValue" }
-            }.map { it.descriptor }.toSet()
             val fields = painter.usingFields.map { it.field }.filter { field ->
                 field.className == BAR && field.typeName == "float" &&
-                    field.writers.any { it.descriptor in animatedWriters }
+                    field.writers.any { writer ->
+                        writer.invokes.any {
+                            it.className == "android.animation.ValueAnimator" && it.name == "getAnimatedValue"
+                        }
+                    }
             }.distinctBy { it.descriptor }
             if (fields.size != 1) return null
             maskAlpha = fields.single().getFieldInstance(loader).apply { isAccessible = true }
@@ -118,12 +211,20 @@ internal object DynamicActionBarHook {
         }
     }
 
-    private fun enabled(): Boolean {
+    /** 软件作用域：被用户排除的包不接管（与其它动态通道一致）。 */
+    private fun scoped(): Boolean {
         val disabled = scope?.getStringSet(KEY_APP_SCOPE_DISABLED, emptySet())
-        return HookRuntime.targetPackage !in (disabled ?: emptySet()) &&
-            (HookRuntime.preferences().getBoolean(BackgroundContract.UI_TOP_BLUR_ENABLED, true) ||
-                HookRuntime.preferences().getBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, false))
+        return HookRuntime.targetPackage !in (disabled ?: emptySet())
     }
+
+    private fun enabled(): Boolean =
+        scoped() && (HookRuntime.preferences().getBoolean(BackgroundContract.UI_TOP_BLUR_ENABLED, true) ||
+            HookRuntime.preferences().getBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, false))
+
+    /** 顶栏按钮背景常驻：默认开，只受软件作用域与本开关控制，与顶栏模糊/清除无关。 */
+    private fun buttonBackgroundEnabled(): Boolean =
+        scoped() && HookRuntime.preferences()
+            .getBoolean(BackgroundContract.UI_TOP_BUTTON_BACKGROUND_ENABLED, true)
 
     private fun ensure(bar: ViewGroup): State {
         owned[bar]?.let { return it }

@@ -367,7 +367,7 @@ night → luminance ≤ 0.40 ; day → luminance ≥ 0.62
 
 `SettingsCardBackgroundHook.install(..., packageName, settingsSpecific = false)` 可以整体装到别的
 作用域应用：分组路由（`CardItemDecoration` / `PreferenceFragment$FrameDecoration`）本来就是包无关的，
-独立卡片走上面的通用判定。`SettingsBackgroundHook.install()` 在 `CARD_MATERIAL_PACKAGES`
+独立卡片走上面的通用判定。`HookEntry.installHooks()` 在 `CARD_MATERIAL_PACKAGES`
 （米联、电话、小米账号、主题商店、安全中心、电量与性能、小米设置）里安装这条通用路由，
 设置进程仍由 `SettingsDeviceModule` 单独安装，避免同一个 object 重复 hook。
 
@@ -378,7 +378,7 @@ night → luminance ≤ 0.40 ; day → luminance ≥ 0.62
 所以覆盖范围是两层的乘积：
 
 1. **用户勾选**决定哪些进程会被注入（想全量测试就在管理器里把作用域勾成「全部应用」，改完重启设备）；
-2. **模块侧**决定「被注入的进程里装不装」：`SettingsBackgroundHook.installCardMaterial()`。
+2. **模块侧**决定「被注入的进程里装不装」：`HookEntry.installCardMaterial()`。
 
 `CARD_MATERIAL_ALL_APPLICATIONS = true` 时第 2 层放开到全部应用，但仍排除
 `CARD_MATERIAL_EXCLUDED_PACKAGES`：
@@ -391,7 +391,7 @@ night → luminance ≤ 0.40 ; day → luminance ≥ 0.62
 
 清单之外的应用只装**卡片 + 弹窗材质**两条通用路由，不装背景 / 主题 / 文字色等与应用强绑定的管线
 （那些管线在没适配过的应用里没有意义，还可能改坏界面）：入口是 `HookEntry.onPackageLoaded()` →
-`SettingsBackgroundHook.installCardMaterialOnly()`。
+`HookEntry.installHooks()` → `HookEntry.installCardMaterial()`。
 日志里出现 `Installed generic standalone card material routing for <pkg>` 即表示该进程已接入。
 
 置 `false` 即回到只覆盖 `CARD_MATERIAL_PACKAGES` 的保守行为。

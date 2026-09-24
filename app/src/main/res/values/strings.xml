@@ -379,4 +379,9 @@
     <string name="app_scope_apps_title">Scoped apps</string>
     <string name="app_scope_inactive">Module inactive: enable HyperBackground in LSPosed and select the scopes it should apply to.</string>
     <string name="app_scope_empty">No enabled scope apps were found. Select the scopes for HyperBackground in LSPosed, then come back to this page.</string>
+    <string name="component_global_wallpaper">Global wallpaper</string>
+    <string name="component_global_wallpaper_summary">Apply the global background image to large pages of scoped apps</string>
+    <string name="component_global_wallpaper_unset">Configure a wallpaper in Global settings first</string>
+    <string name="app_scope_detail_components_title">Components</string>
+    <string name="app_scope_detail_hint">Only component types enabled globally are listed here.</string>
 </resources>

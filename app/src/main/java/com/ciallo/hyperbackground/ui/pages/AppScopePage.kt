@@ -10,10 +10,13 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -24,6 +27,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
@@ -41,23 +45,30 @@ import com.ciallo.hyperbackground.ui.components.UiCard
 import io.github.libxposed.service.XposedService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.preference.SwitchPreference
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.roundToInt
 
 /**
  * 「软件作用域」二级页：从 LSPosed service 动态读取当前模块启用的作用域包名，
- * 逐个开关控制该应用是否套用材质。
+ * 逐行控制该应用是否套用动态适配。
  *
- * 开关状态存在外观配置的「被关闭包名集合」里（默认空 = 全部启用），随外观配置一起
- * 同步到 hook 进程；hook 侧用 `DynamicMaterialPalette.enabledFor` 按当前进程包名过滤。
+ * 每行是「整包开关 + 箭头」：点开关切换整包开关（存进外观配置的「被关闭包名集合」，
+ * 默认空 = 全部启用，随外观配置同步到 hook 进程）；点行内其它区域（含箭头）进入该应用的
+ * 详情页，逐组件控制它启用哪些动态适配。hook 侧用
+ * `DynamicMaterialPalette.enabledFor(packageName, component)` 同时按包与组件过滤。
  */
 @Composable
 fun AppScopePage(
     activity: MainActivity,
     modifier: Modifier = Modifier,
     padding: PaddingValues = PaddingValues(0.dp),
+    onOpenApp: (packageName: String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val appearance = activity.appearance
@@ -105,16 +116,27 @@ fun AppScopePage(
                 UiCard(activity, Modifier.fillMaxWidth()) {
                     Column {
                         apps.forEach { app ->
-                            SwitchPreference(
+                            val enabled = app.packageName !in appearance.disabledAppScopes
+                            BasicComponent(
                                 title = app.label,
                                 summary = app.packageName,
-                                checked = app.packageName !in appearance.disabledAppScopes,
                                 startAction = { AppScopeIcon(app) },
-                                onCheckedChange = { enabled ->
-                                    activity.updateAppearance {
-                                        it.withAppScopeEnabled(app.packageName, enabled)
-                                    }
+                                endActions = {
+                                    Switch(
+                                        checked = enabled,
+                                        onCheckedChange = { value ->
+                                            activity.updateAppearance {
+                                                it.withAppScopeEnabled(app.packageName, value)
+                                            }
+                                        },
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Icon(
+                                        imageVector = MiuixIcons.Basic.ArrowRight,
+                                        contentDescription = null,
+                                    )
                                 },
+                                onClick = { onOpenApp(app.packageName) },
                             )
                         }
                     }
@@ -145,7 +167,7 @@ private fun AppScopeHint(activity: MainActivity, text: String) {
     }
 }
 
-private class ScopedApp(
+internal class ScopedApp(
     val packageName: String,
     val label: String,
     val icon: ImageBitmap?,
@@ -161,7 +183,7 @@ private class ScopedApp(
  * 早期版本在这里直接丢弃解析失败的包，结果在 Android 11+ 的包可见性限制下会静默少一截，
  * 列表数量和作用域对不上，用户也没法再单独关闭这些包。
  */
-private fun loadScopedApps(context: Context, packages: List<String>): List<ScopedApp> {
+internal fun loadScopedApps(context: Context, packages: List<String>): List<ScopedApp> {
     val manager = context.packageManager
     val self = context.packageName
     val iconSize = (40 * context.resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
@@ -189,6 +211,14 @@ private fun loadScopedApps(context: Context, packages: List<String>): List<Scope
         .sortedBy { it.label.lowercase() }
         .toList()
 }
+
+/** 单个作用域包的可展示标题：解析不到应用名时退回包名。 */
+internal fun scopedAppLabel(context: Context, packageName: String): String =
+    runCatching {
+        val manager = context.packageManager
+        val info = manager.getApplicationInfo(packageName, PackageManager.ApplicationInfoFlags.of(0))
+        manager.getApplicationLabel(info).toString()
+    }.getOrNull()?.takeIf { it.isNotBlank() } ?: packageName
 
 /**
  * 自适应图标的图层画布是 108dp，可见内容只占中央 72dp，直接绘制会带一圈留白；

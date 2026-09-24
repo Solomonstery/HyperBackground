@@ -14,6 +14,8 @@ import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.widget.ListView
 import com.ciallo.hyperbackground.HookRuntime
+import com.ciallo.hyperbackground.appearance.ComponentKeys
+import com.ciallo.hyperbackground.appearance.KEY_APP_COMPONENT_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_APP_SCOPE_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
 import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
@@ -65,7 +67,7 @@ internal object DynamicPopupMaterialHook {
                 KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR,
                 KEY_LIGHT_CARD_BLUR, KEY_DARK_CARD_BLUR,
                 KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS,
-                KEY_APP_SCOPE_DISABLED,
+                KEY_APP_SCOPE_DISABLED, KEY_APP_COMPONENT_DISABLED,
             )
         ) {
             palette = DynamicMaterialPalette.read(prefs)
@@ -163,7 +165,7 @@ internal object DynamicPopupMaterialHook {
                 val config = palette
                 val surface = runCatching { content.get(chain.thisObject) as? View }.getOrNull()
                 if (surface != null && isListPopup(surface) &&
-                    config.enabledFor(HookRuntime.targetPackage) && config.popup &&
+                    config.enabledFor(HookRuntime.targetPackage, ComponentKeys.POPUP) &&
                     config.mode == CARD_BACKGROUND_SOFT_GLASS
                 ) true else result
             }
@@ -249,11 +251,11 @@ internal object DynamicPopupMaterialHook {
         if (!originals.containsKey(view)) originals[view] = null
         val original = originals[view]
         val config = palette
-        val packageEnabled = config.enabledFor(HookRuntime.targetPackage)
-        val wantsGlass = packageEnabled && config.popup && config.mode == CARD_BACKGROUND_SOFT_GLASS
+        val popupEnabled = config.enabledFor(HookRuntime.targetPackage, ComponentKeys.POPUP)
+        val wantsGlass = popupEnabled && config.mode == CARD_BACKGROUND_SOFT_GLASS
         // The primary HyperPopupWindow menu cannot sample the backdrop on this Contacts build.
         // Leave it native; the ClipLayout-hosted secondary menu retains its working glass.
-        if (!packageEnabled || !config.popup || isUnsupportedContactsMenu(view)) {
+        if (!popupEnabled || isUnsupportedContactsMenu(view)) {
             if (glass.remove(view) != null) DynamicSoftGlassDrawable.clearFromView(view)
             if (frost.remove(view) != null) DynamicFrostDrawable.clearFromView(view)
             if (outlines.containsKey(view)) {

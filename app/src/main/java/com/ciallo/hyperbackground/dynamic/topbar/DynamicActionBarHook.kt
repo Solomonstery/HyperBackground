@@ -13,6 +13,8 @@ import android.view.View
 import android.view.ViewGroup
 import com.ciallo.hyperbackground.BackgroundContract
 import com.ciallo.hyperbackground.HookRuntime
+import com.ciallo.hyperbackground.appearance.ComponentKeys
+import com.ciallo.hyperbackground.appearance.KEY_APP_COMPONENT_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_APP_SCOPE_DISABLED
 import com.ciallo.hyperbackground.appearance.SETTINGS_APPEARANCE_PREFERENCES
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_FROST
@@ -71,7 +73,7 @@ internal object DynamicActionBarHook {
         KEY_CUSTOM_CARD_ENABLED, KEY_COMPONENT_TOP_BAR_BUTTON, KEY_CARD_BACKGROUND_MODE,
         KEY_CARD_DARK_FOLLOWS_LIGHT, KEY_LIGHT_CARD_COLOR, KEY_DARK_CARD_COLOR,
         KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR, KEY_LIGHT_CARD_BLUR, KEY_DARK_CARD_BLUR,
-        KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS, KEY_APP_SCOPE_DISABLED,
+        KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS, KEY_APP_SCOPE_DISABLED, KEY_APP_COMPONENT_DISABLED,
     )
     private val materialListener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
         if (key == null || key in materialKeys) {
@@ -275,15 +277,16 @@ internal object DynamicActionBarHook {
         scoped() && (HookRuntime.preferences().getBoolean(BackgroundContract.UI_TOP_BLUR_ENABLED, true) ||
             HookRuntime.preferences().getBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, false))
 
-    /** 顶栏按钮背景常驻只在顶栏按钮组件启用时生效。 */
+    /** 顶栏按钮背景常驻只在顶栏按钮组件启用时生效（含软件作用域的整包/按组件开关）。 */
     private fun buttonBackgroundEnabled(): Boolean =
-        scoped() && palette.topBarButton && HookRuntime.preferences()
-            .getBoolean(BackgroundContract.UI_TOP_BUTTON_BACKGROUND_ENABLED, false)
+        palette.enabledFor(HookRuntime.targetPackage, ComponentKeys.TOP_BAR_BUTTON) &&
+            HookRuntime.preferences()
+                .getBoolean(BackgroundContract.UI_TOP_BUTTON_BACKGROUND_ENABLED, false)
 
     /** Only MIUIX's floating button surfaces inside this ActionBarContainer are replaced. */
     private fun syncButtons(bar: ViewGroup) {
         val config = palette
-        val active = config.enabledFor(HookRuntime.targetPackage) && config.topBarButton
+        val active = config.enabledFor(HookRuntime.targetPackage, ComponentKeys.TOP_BAR_BUTTON)
         fun visit(view: View) {
             if (view !== bar && isTopBarButton(view)) {
                 applyButton(view, config, active)

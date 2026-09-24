@@ -66,8 +66,13 @@ internal const val KEY_COMPONENT_POPUP = "component_popup"
 internal const val KEY_COMPONENT_SEARCH = "component_search"
 internal const val KEY_COMPONENT_FLOATING_BAR = "component_floating_bar"
 internal const val KEY_COMPONENT_TOP_BAR_BUTTON = "component_top_bar_button"
+// 全局壁纸：把 GLOBAL 槽位的背景图套用到作用域内各应用的大页面（默认开启；未配置壁纸时由 UI 提示）。
+internal const val KEY_COMPONENT_GLOBAL_WALLPAPER = "component_global_wallpaper"
 // 软件作用域：被单独关闭材质的包名集合（默认空 = 全部启用，新装应用无需写默认值）。
 internal const val KEY_APP_SCOPE_DISABLED = "app_scope_disabled"
+// 软件作用域 × 组件类型：被单独关闭的「组件|包名」集合（默认空 = 该包跟随全局组件开关），
+// 见 [ComponentKeys]。「整包关闭」仍走上面的 KEY_APP_SCOPE_DISABLED，两者是父子关系。
+internal const val KEY_APP_COMPONENT_DISABLED = "app_component_disabled"
 const val CARD_BACKGROUND_COLOR = 0
 const val CARD_BACKGROUND_FROST = 1
 const val CARD_BACKGROUND_SOFT_GLASS = 2
@@ -259,7 +264,9 @@ data class SettingsAppearanceSettings(
     val componentSearch: Boolean = true,
     val componentFloatingBar: Boolean = true,
     val componentTopBarButton: Boolean = false,
+    val componentGlobalWallpaper: Boolean = true,
     val disabledAppScopes: Set<String> = emptySet(),
+    val disabledAppComponents: Set<String> = emptySet(),
     val tutorialCardEnabled: Boolean = false,
     val tutorialCardTitle: String = "",
     val tutorialCardSlogan: String = "",
@@ -410,7 +417,9 @@ internal fun SharedPreferences.toSettingsAppearance() = SettingsAppearanceSettin
     componentSearch = getBoolean(KEY_COMPONENT_SEARCH, true),
     componentFloatingBar = getBoolean(KEY_COMPONENT_FLOATING_BAR, true),
     componentTopBarButton = getBoolean(KEY_COMPONENT_TOP_BAR_BUTTON, false),
+    componentGlobalWallpaper = getBoolean(KEY_COMPONENT_GLOBAL_WALLPAPER, true),
     disabledAppScopes = getStringSet(KEY_APP_SCOPE_DISABLED, emptySet())?.toSet().orEmpty(),
+    disabledAppComponents = getStringSet(KEY_APP_COMPONENT_DISABLED, emptySet())?.toSet().orEmpty(),
     tutorialCardEnabled = getBoolean(KEY_TUTORIAL_CARD_ENABLED, false),
     tutorialCardTitle = getString(KEY_TUTORIAL_CARD_TITLE, "").orEmpty(),
     tutorialCardSlogan = getString(KEY_TUTORIAL_CARD_SLOGAN, "").orEmpty(),
@@ -537,6 +546,9 @@ private fun SettingsAppearanceSettings.normalized() = copy(
     style2BackgroundHorizontalOffset = style2BackgroundHorizontalOffset.coerceIn(-120, 120),
     style2BackgroundScale = style2BackgroundScale.coerceIn(40, 200),
     disabledAppScopes = disabledAppScopes.filterTo(mutableSetOf()) { it.isNotBlank() },
+    disabledAppComponents = disabledAppComponents.filterTo(mutableSetOf()) {
+        it.isNotBlank() && ComponentKeys.packageOf(it).isNotBlank()
+    },
 )
 
 private fun SharedPreferences.writeSettingsAppearance(value: SettingsAppearanceSettings) {
@@ -576,7 +588,9 @@ private fun SharedPreferences.writeSettingsAppearance(value: SettingsAppearanceS
         .putBoolean(KEY_COMPONENT_SEARCH, value.componentSearch)
         .putBoolean(KEY_COMPONENT_FLOATING_BAR, value.componentFloatingBar)
         .putBoolean(KEY_COMPONENT_TOP_BAR_BUTTON, value.componentTopBarButton)
+        .putBoolean(KEY_COMPONENT_GLOBAL_WALLPAPER, value.componentGlobalWallpaper)
         .putStringSet(KEY_APP_SCOPE_DISABLED, value.disabledAppScopes.toMutableSet())
+        .putStringSet(KEY_APP_COMPONENT_DISABLED, value.disabledAppComponents.toMutableSet())
         .putBoolean(KEY_TUTORIAL_CARD_ENABLED, value.tutorialCardEnabled)
         .putString(KEY_TUTORIAL_CARD_TITLE, value.tutorialCardTitle)
         .putString(KEY_TUTORIAL_CARD_SLOGAN, value.tutorialCardSlogan)
@@ -660,6 +674,42 @@ fun SettingsAppearanceSettings.withAppScopeEnabled(packageName: String, enabled:
             disabledAppScopes + packageName
         },
     )
+
+/** 「组件作用域」页里某个组件类型的全局开关值。未知键按启用处理（新组件默认跟随）。 */
+fun SettingsAppearanceSettings.componentEnabled(component: String): Boolean = when (component) {
+    ComponentKeys.GROUP_CARD -> componentGroupCard
+    ComponentKeys.STANDALONE_CARD -> componentStandaloneCard
+    ComponentKeys.POPUP -> componentPopup
+    ComponentKeys.SEARCH -> componentSearch
+    ComponentKeys.FLOATING_BAR -> componentFloatingBar
+    ComponentKeys.TOP_BAR_BUTTON -> componentTopBarButton
+    ComponentKeys.GLOBAL_WALLPAPER -> componentGlobalWallpaper
+    else -> true
+}
+
+/** 该包是否套用了某个组件：整包开关与全局组件开关都为开，且该包该组件没被单独关掉。 */
+fun SettingsAppearanceSettings.isComponentEnabledFor(packageName: String?, component: String): Boolean {
+    if (!componentEnabled(component)) return false
+    val pkg = packageName ?: return true
+    if (pkg in disabledAppScopes) return false
+    return ComponentKeys.encode(component, pkg) !in disabledAppComponents
+}
+
+/** 单独开关「某包的某组件」；开启 = 从禁用集合移除，关闭 = 加入。 */
+fun SettingsAppearanceSettings.withAppComponentEnabled(
+    packageName: String,
+    component: String,
+    enabled: Boolean,
+): SettingsAppearanceSettings {
+    val entry = ComponentKeys.encode(component, packageName)
+    return copy(
+        disabledAppComponents = if (enabled) {
+            disabledAppComponents - entry
+        } else {
+            disabledAppComponents + entry
+        },
+    )
+}
 
 fun SettingsAppearanceSettings.style2LogoHorizontalOffsetForAlignment(alignment: Int = style2LogoAlignment): Int = when (alignment.coerceIn(0, 2)) {
     0 -> style2LogoHorizontalOffsetLeft

@@ -137,4 +137,9 @@
     <string name="app_scope_apps_title">作用域应用</string>
     <string name="app_scope_inactive">模块未激活：请先在 LSPosed 中启用 HyperBackground，并勾选需要生效的作用域。</string>
     <string name="app_scope_empty">未读取到已启用的作用域应用，请在 LSPosed 中为 HyperBackground 勾选作用域后返回本页。</string>
+    <string name="component_global_wallpaper">全局壁纸</string>
+    <string name="component_global_wallpaper_summary">将全局背景图套用到作用域应用的大页面</string>
+    <string name="component_global_wallpaper_unset">请先到全局设置配置壁纸</string>
+    <string name="app_scope_detail_components_title">组件</string>
+    <string name="app_scope_detail_hint">只列出全局已开启的组件。</string>
 </resources>

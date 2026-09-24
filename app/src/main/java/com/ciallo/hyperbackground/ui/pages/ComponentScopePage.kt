@@ -47,6 +47,10 @@ fun ComponentScopePage(
     var persistentButtons by remember {
         mutableStateOf(activity.config.getBoolean(BackgroundContract.UI_TOP_BUTTON_BACKGROUND_ENABLED, false))
     }
+    // 全局壁纸是否已有可用的图：没配过就把副标题换成引导文案，而不是让开关显得「开了也没反应」。
+    val globalWallpaperReady = remember {
+        activity.config.currentBackgroundFile(BackgroundContract.GLOBAL).isFile
+    }
     LazyColumn(
         modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -130,6 +134,20 @@ fun ComponentScopePage(
                             },
                         )
                     }
+                    // 全局壁纸：把「全局」槽位的背景图套到作用域内应用的大页面。它是一类与材质
+                    // 并列的独立能力，所以放在材质组件之后单独成组，不参与上面的材质开关。
+                    SwitchPreference(
+                        title = stringResource(R.string.component_global_wallpaper),
+                        summary = if (globalWallpaperReady) {
+                            stringResource(R.string.component_global_wallpaper_summary)
+                        } else {
+                            stringResource(R.string.component_global_wallpaper_unset)
+                        },
+                        checked = appearance.componentGlobalWallpaper,
+                        onCheckedChange = { value ->
+                            activity.updateAppearance { it.copy(componentGlobalWallpaper = value) }
+                        },
+                    )
                 }
             }
         }

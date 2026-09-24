@@ -6,6 +6,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.View
+import com.ciallo.hyperbackground.appearance.ComponentKeys
+import com.ciallo.hyperbackground.appearance.KEY_APP_COMPONENT_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_APP_SCOPE_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
 import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
@@ -43,7 +45,7 @@ internal object DynamicFloatingBarHook {
         KEY_CARD_DARK_FOLLOWS_LIGHT, KEY_LIGHT_CARD_COLOR, KEY_DARK_CARD_COLOR,
         KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR, KEY_LIGHT_CARD_BLUR, KEY_DARK_CARD_BLUR,
         KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS,
-        KEY_APP_SCOPE_DISABLED,
+        KEY_APP_SCOPE_DISABLED, KEY_APP_COMPONENT_DISABLED,
     )
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
         if (key == null || key in keys) {
@@ -67,7 +69,7 @@ internal object DynamicFloatingBarHook {
                     views[view] = Unit
                     // Keep the native blur unless the user explicitly selected a solid color.
                     if (blur.invoke(view) != true || palette.mode == CARD_BACKGROUND_COLOR &&
-                        palette.enabledFor(HookRuntime.targetPackage) && palette.floatingBar
+                        palette.enabledFor(HookRuntime.targetPackage, ComponentKeys.FLOATING_BAR)
                     ) {
                         val original = source.get(view) as? Drawable
                         FloatingBarMaterial.background(original, view.context, palette)

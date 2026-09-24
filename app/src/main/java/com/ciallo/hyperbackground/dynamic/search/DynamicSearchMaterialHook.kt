@@ -15,6 +15,8 @@ import com.ciallo.hyperbackground.HookRuntime
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_COLOR
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_FROST
+import com.ciallo.hyperbackground.appearance.ComponentKeys
+import com.ciallo.hyperbackground.appearance.KEY_APP_COMPONENT_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_APP_SCOPE_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
 import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
@@ -57,7 +59,7 @@ internal object DynamicSearchMaterialHook {
         KEY_CARD_DARK_FOLLOWS_LIGHT, KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR,
         KEY_LIGHT_CARD_COLOR, KEY_DARK_CARD_COLOR, KEY_LIGHT_CARD_BLUR, KEY_DARK_CARD_BLUR,
         KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS,
-        KEY_APP_SCOPE_DISABLED,
+        KEY_APP_SCOPE_DISABLED, KEY_APP_COMPONENT_DISABLED,
     )
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
         if (key == null || key in keys) {
@@ -203,7 +205,7 @@ internal object DynamicSearchMaterialHook {
 
     private fun apply(view: View) {
         val config = palette
-        if (!config.enabledFor(HookRuntime.targetPackage) || !config.search) {
+        if (!config.enabledFor(HookRuntime.targetPackage, ComponentKeys.SEARCH)) {
             restore(view)
             return
         }

@@ -2,6 +2,7 @@ package com.ciallo.hyperbackground
 
 import android.app.Activity
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.res.TypedArray
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -17,6 +18,11 @@ import android.view.Window
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.TextView
+import com.ciallo.hyperbackground.appearance.ComponentKeys
+import com.ciallo.hyperbackground.appearance.KEY_APP_COMPONENT_DISABLED
+import com.ciallo.hyperbackground.appearance.KEY_APP_SCOPE_DISABLED
+import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_GLOBAL_WALLPAPER
+import com.ciallo.hyperbackground.appearance.SETTINGS_APPEARANCE_PREFERENCES
 import com.ciallo.hyperbackground.util.callMethod
 import com.ciallo.hyperbackground.util.getAdditionalInstanceField
 import com.ciallo.hyperbackground.util.getObjectField
@@ -53,6 +59,63 @@ object BackgroundApplier {
     private val DEVICE_ACTIVE = FIELD_PREFIX + "device.active"
     private val ORIGINAL_TEXT_COLOR = FIELD_PREFIX + "original.text.color"
     private val GLOBAL_DIAGNOSTIC = FIELD_PREFIX + "global.diagnostic"
+
+    /**
+     * 「全局壁纸」通道的开关快照：组件作用域的总开关 + 软件作用域的整包/按组件禁用集合。
+     * 读的是 settings_appearance 的远端 SharedPreferences，跨进程读取开销大，所以进程内缓存，
+     * 并挂变更监听刷新（与动态材质同一套键）。
+     */
+    private data class GlobalWallpaperConfig(
+        val enabled: Boolean = true,
+        val disabledPackages: Set<String> = emptySet(),
+        val disabledComponents: Set<String> = emptySet(),
+    )
+
+    @Volatile
+    private var globalWallpaperCache: GlobalWallpaperConfig? = null
+    private var globalWallpaperPrefs: SharedPreferences? = null
+
+    private val globalWallpaperListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+            if (key == null || key == KEY_COMPONENT_GLOBAL_WALLPAPER ||
+                key == KEY_APP_SCOPE_DISABLED || key == KEY_APP_COMPONENT_DISABLED
+            ) {
+                globalWallpaperCache = readGlobalWallpaper(prefs)
+            }
+        }
+
+    private fun readGlobalWallpaper(prefs: SharedPreferences) = GlobalWallpaperConfig(
+        enabled = prefs.getBoolean(KEY_COMPONENT_GLOBAL_WALLPAPER, true),
+        disabledPackages = prefs.getStringSet(KEY_APP_SCOPE_DISABLED, emptySet())
+            ?.toSet().orEmpty(),
+        disabledComponents = prefs.getStringSet(KEY_APP_COMPONENT_DISABLED, emptySet())
+            ?.toSet().orEmpty(),
+    )
+
+    private fun globalWallpaperConfig(): GlobalWallpaperConfig {
+        globalWallpaperCache?.let { return it }
+        val prefs = HookRuntime.remotePreferences(SETTINGS_APPEARANCE_PREFERENCES)
+            ?: return GlobalWallpaperConfig()
+        val loaded = readGlobalWallpaper(prefs)
+        if (globalWallpaperPrefs == null) {
+            globalWallpaperPrefs = prefs
+            prefs.registerOnSharedPreferenceChangeListener(globalWallpaperListener)
+        }
+        globalWallpaperCache = loaded
+        return loaded
+    }
+
+    /**
+     * 「全局壁纸」是否对该进程生效：组件作用域总开关 → 软件作用域整包开关 → 该包该组件的单独开关。
+     * 包名为空（框架进程未上报）时只受总开关约束。
+     */
+    private fun globalWallpaperAllowedFor(packageName: String?): Boolean {
+        val config = globalWallpaperConfig()
+        if (!config.enabled) return false
+        val pkg = packageName ?: return true
+        if (pkg in config.disabledPackages) return false
+        return ComponentKeys.encode(ComponentKeys.GLOBAL_WALLPAPER, pkg) !in config.disabledComponents
+    }
 
     fun applyHome(activity: Activity?) {
         if (activity == null) return
@@ -774,6 +837,10 @@ object BackgroundApplier {
 
         // Keep permission / authorization / transient confirmation windows fully native.
         if (isSensitiveTransientActivity(className) || isSensitiveTransientWindow(activity)) return true
+
+        // 「全局壁纸」总控整条 GLOBAL 通道：组件作用域一处（全局）、软件作用域每包一处。
+        // 关闭即该包所有大页面退回原生底；默认开启，所以默认行为与之前一致。
+        if (!globalWallpaperAllowedFor(packageName)) return true
 
         if (BackgroundContract.PACKAGE_SETTINGS == packageName) {
             if ("com.android.settings.MiuiSettings" == className) return true

@@ -6,6 +6,7 @@ import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -18,11 +19,14 @@ import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import com.ciallo.hyperbackground.HookRuntime
 import com.ciallo.hyperbackground.dynamic.popup.DynamicPopupMaterialHook
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_COLOR
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_FROST
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
+import com.ciallo.hyperbackground.appearance.ComponentKeys
+import com.ciallo.hyperbackground.appearance.KEY_APP_COMPONENT_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_APP_SCOPE_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
 import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
@@ -64,7 +68,7 @@ internal object DynamicCardBackgroundHook {
         KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR, KEY_LIGHT_CARD_BLUR, KEY_DARK_CARD_BLUR,
         KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS, KEY_CARD_DARK_FOLLOWS_LIGHT,
         KEY_COMPONENT_GROUP_CARD, KEY_COMPONENT_STANDALONE_CARD, KEY_COMPONENT_POPUP,
-        KEY_APP_SCOPE_DISABLED,
+        KEY_APP_SCOPE_DISABLED, KEY_APP_COMPONENT_DISABLED,
     )
     private var groupClipAvailable = false
     /** 分组路由是否在该进程成功接管（Miuix 分组工厂 hook 至少一个成功）。 */
@@ -120,6 +124,9 @@ internal object DynamicCardBackgroundHook {
         val originalClipToOutline: Boolean,
         var originalCardColor: ColorStateList?,
     ) {
+        var outlineProvider: ViewOutlineProvider? = null
+        var outlineInstalled = false
+        var outlineListener: View.OnLayoutChangeListener? = null
         var applied: Drawable? = null
         var signature: StandaloneSignature? = null
         var material = STANDALONE_MATERIAL_NONE
@@ -206,6 +213,10 @@ internal object DynamicCardBackgroundHook {
         var cornerRadiusPx: Float,
         var rippleColor: Int?,
     ) {
+        var outlineProvider: ViewOutlineProvider? = null
+        var originalClipping = false
+        var outlineInstalled = false
+        var outlineListener: View.OnLayoutChangeListener? = null
         var material = CUSTOM_MATERIAL_NONE
         var signature = -1
         var attachPending = false
@@ -224,6 +235,7 @@ internal object DynamicCardBackgroundHook {
             Configuration.UI_MODE_NIGHT_YES
         val spec = synchronized(customCards) {
             customCards.getOrPut(view) { CustomCardSpec(cornerRadiusPx, rippleColor) }.apply {
+                if (this.cornerRadiusPx != cornerRadiusPx || this.rippleColor != rippleColor) signature = -1
                 this.cornerRadiusPx = cornerRadiusPx
                 this.rippleColor = rippleColor
             }
@@ -235,6 +247,7 @@ internal object DynamicCardBackgroundHook {
         if (!view.isAttachedToWindow) {
             // enforce/addView 先于挂载：先保持透明，attach 后重新走一遍。
             if (!spec.attachPending) {
+                restoreCardOutline(view, spec)
                 spec.attachPending = true
                 spec.material = CUSTOM_MATERIAL_TRANSPARENT
                 spec.signature = -1
@@ -275,6 +288,7 @@ internal object DynamicCardBackgroundHook {
                 ),
             )
             if (withStandaloneWrite { DynamicSoftGlassDrawable.applyToView(view, config, density) }) {
+                installCardOutline(view, spec, cornerRadiusPx)
                 spec.material = CUSTOM_MATERIAL_GLASS
                 return
             }
@@ -291,12 +305,14 @@ internal object DynamicCardBackgroundHook {
                     )
                 }
             ) {
+                installCardOutline(view, spec, cornerRadiusPx)
                 spec.material = CUSTOM_MATERIAL_FROST
                 return
             }
             DynamicFrostDrawable.clearFromView(view)
         }
         // 3) 纯色
+        restoreCardOutline(view, spec)
         setCustomCardBackground(
             view,
             roundedCardFill(if (dark) colors.dark else colors.light, cornerRadiusPx, rippleColor),
@@ -307,6 +323,7 @@ internal object DynamicCardBackgroundHook {
     /** 清掉模糊状态并把卡面置透明（开关关闭、切回自定义图、或材质不可用时）。幂等。 */
     fun clearCustomCardMaterial(view: View) {
         val spec = synchronized(customCards) { customCards[view] } ?: return
+        restoreCardOutline(view, spec)
         if (spec.material == CUSTOM_MATERIAL_TRANSPARENT) return
         spec.material = CUSTOM_MATERIAL_TRANSPARENT
         spec.signature = -1
@@ -365,6 +382,7 @@ internal object DynamicCardBackgroundHook {
                 val result = chain.proceed()
                 if (view != null && standaloneTarget(view) != null) {
                     val state = standaloneState(view)
+                    restoreCardOutline(view, state)
                     state.original = view.background
                     state.applied = null
                     state.signature = null
@@ -404,7 +422,10 @@ internal object DynamicCardBackgroundHook {
                 CardSurfaceDetector.probe(view) == CardSurfaceDetector.REASON_GROUP_LIST_ROW
             ) {
                 if (tracked.applied === view.background) releaseStandalone(view, tracked)
-                else clearStandaloneMaterial(view, tracked)
+                else {
+                    clearStandaloneMaterial(view, tracked)
+                    restoreCardOutline(view, tracked)
+                }
                 synchronized(standaloneStates) { standaloneStates.remove(view) }
             } else if (tracked != null) releaseStandalone(view, tracked)
             return
@@ -427,6 +448,7 @@ internal object DynamicCardBackgroundHook {
         if (state.signature == signature && state.applied === view.background) return
 
         clearStandaloneMaterial(view, state)
+        restoreCardOutline(view, state)
         val dark = night && !colors.darkFollowsLight
         val density = view.resources.displayMetrics.density
         val applied = when (colors.mode) {
@@ -445,6 +467,7 @@ internal object DynamicCardBackgroundHook {
                         )
                     }
                     if (ready) state.material = STANDALONE_MATERIAL_FROST
+                    if (ready) installCardOutline(view, state)
                     ready
                 }
             }
@@ -461,6 +484,7 @@ internal object DynamicCardBackgroundHook {
                         )
                     }
                     if (ready) state.material = STANDALONE_MATERIAL_GLASS
+                    if (ready) installCardOutline(view, state)
                     ready
                 }
             }
@@ -491,6 +515,7 @@ internal object DynamicCardBackgroundHook {
     private fun restoreStandalone(view: View, state: StandaloneState) {
         if (state.applied == null && state.material == STANDALONE_MATERIAL_NONE) return
         clearStandaloneMaterial(view, state)
+        restoreCardOutline(view, state)
         withStandaloneWrite {
             view.background = state.original
             restoreCardBackgroundColor(view, state.originalCardColor)
@@ -510,6 +535,7 @@ internal object DynamicCardBackgroundHook {
     private fun releaseStandalone(view: View, state: StandaloneState) {
         if (state.applied == null && state.material == STANDALONE_MATERIAL_NONE) return
         clearStandaloneMaterial(view, state)
+        restoreCardOutline(view, state)
         withStandaloneWrite {
             // CardView rows keep the very same background object, so skip the setter: writing it
             // back would only re-enter the host's background hooks for a no-op change.
@@ -544,8 +570,7 @@ internal object DynamicCardBackgroundHook {
      * （[CardSurfaceDetector]），因此换页面、换 apk、换机型都不需要再适配。
      */
     private fun standaloneTarget(view: View): String? {
-        if (!palette.enabledFor(HookRuntime.targetPackage)) return null
-        if (!palette.standaloneCard) return null
+        if (!palette.enabledFor(HookRuntime.targetPackage, ComponentKeys.STANDALONE_CARD)) return null
         if (DynamicPopupMaterialHook.owns(view)) return null
         // The suspended action menu has its own material route and scope switch.
         if (view.javaClass.name == "miuix.appcompat.internal.view.menu.action.ResponsiveActionMenuView") return null
@@ -583,7 +608,7 @@ internal object DynamicCardBackgroundHook {
     }
 
     private fun cloneAndTint(view: View, source: Drawable?, color: Int): Drawable? =
-        cloneDrawable(view, source)?.let { drawable ->
+        (cloneDrawable(view, source) ?: nativeRoundedFill(view, source))?.let { drawable ->
             runCatching {
                 // The legacy light-card hook may already have lowered the source alpha.
                 // A selected card style owns its complete ARGB value, so do not multiply
@@ -593,6 +618,116 @@ internal object DynamicCardBackgroundHook {
                 drawable
             }.getOrNull()
         }
+
+    /** HyperCardView's RoundRectDrawable has no ConstantState; reconstruct its native radius. */
+    private fun nativeRoundedFill(view: View, source: Drawable?): Drawable? {
+        val radius = originalCardRadius(view, source) ?: return null
+        return GradientDrawable().apply {
+            // cloneAndTint applies the full ARGB tint; an already-tinted fill would square alpha.
+            setColor(Color.WHITE)
+            cornerRadius = radius
+        }
+    }
+
+    private fun originalCardRadius(view: View, source: Drawable?): Float? {
+        val fromDrawable = source?.let { drawable ->
+            runCatching {
+                val outline = Outline()
+                drawable.getOutline(outline)
+                outline.radius.takeIf { it > 0f }
+            }.getOrNull()
+        }
+        if (fromDrawable != null) return fromDrawable
+        return runCatching {
+            (view.javaClass.getMethod("getRadius").invoke(view) as Number).toFloat()
+                .takeIf { it > 0f }
+        }.getOrNull()
+    }
+
+    private fun installCardOutline(view: View, state: StandaloneState) {
+        val radius = originalCardRadius(view, state.original) ?: return
+        if (!state.outlineInstalled) {
+            state.outlineProvider = view.outlineProvider
+            state.outlineInstalled = true
+        }
+        setCardOutline(view, radius, state.outlineListener) { state.outlineListener = it }
+    }
+
+    private fun installCardOutline(view: View, spec: CustomCardSpec, radius: Float) {
+        if (radius <= 0f) return
+        if (!spec.outlineInstalled) {
+            spec.outlineProvider = view.outlineProvider
+            spec.originalClipping = view.clipToOutline
+            spec.outlineInstalled = true
+        }
+        setCardOutline(view, radius, spec.outlineListener) { spec.outlineListener = it }
+    }
+
+    private fun setCardOutline(
+        view: View, radius: Float, previous: View.OnLayoutChangeListener?,
+        saveListener: (View.OnLayoutChangeListener) -> Unit,
+    ) {
+        previous?.let(view::removeOnLayoutChangeListener)
+        view.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(v: View, outline: Outline) {
+                outline.setRoundRect(0, 0, v.width, v.height, radius)
+            }
+        }
+        view.clipToOutline = true
+        val update = {
+            view.invalidateOutline()
+            // Bionics can keep a stale RenderNode outline even after the View provider changes.
+            runCatching {
+                val node = View::class.java.getDeclaredField("mRenderNode")
+                    .apply { isAccessible = true }.get(view) as android.graphics.RenderNode
+                node.setOutline(Outline().apply {
+                    setRoundRect(0, 0, view.width, view.height, radius)
+                    alpha = 1f
+                })
+                node.setClipToOutline(true)
+            }
+        }
+        val listener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> update() }
+        view.addOnLayoutChangeListener(listener)
+        saveListener(listener)
+        if (view.width > 0 && view.height > 0) update()
+    }
+
+    private fun restoreCardOutline(view: View, state: StandaloneState) {
+        if (!state.outlineInstalled) return
+        state.outlineListener?.let(view::removeOnLayoutChangeListener)
+        state.outlineListener = null
+        view.outlineProvider = state.outlineProvider
+        view.clipToOutline = state.originalClipToOutline
+        view.invalidateOutline()
+        runCatching {
+            val node = View::class.java.getDeclaredField("mRenderNode")
+                .apply { isAccessible = true }.get(view) as android.graphics.RenderNode
+            val outline = Outline()
+            view.outlineProvider?.getOutline(view, outline)
+            node.setOutline(outline)
+            node.setClipToOutline(state.originalClipToOutline)
+        }
+        state.outlineInstalled = false
+    }
+
+    private fun restoreCardOutline(view: View, spec: CustomCardSpec) {
+        if (!spec.outlineInstalled) return
+        spec.outlineListener?.let(view::removeOnLayoutChangeListener)
+        spec.outlineListener = null
+        view.outlineProvider = spec.outlineProvider
+        view.clipToOutline = spec.originalClipping
+        view.invalidateOutline()
+        runCatching {
+            val node = View::class.java.getDeclaredField("mRenderNode")
+                .apply { isAccessible = true }.get(view) as android.graphics.RenderNode
+            val outline = Outline()
+            view.outlineProvider?.getOutline(view, outline)
+            node.setOutline(outline)
+            node.setClipToOutline(spec.originalClipping)
+        }
+        spec.outlineInstalled = false
+    }
 
     private fun prepareStandaloneBackground(
         view: View,
@@ -749,7 +884,7 @@ internal object DynamicCardBackgroundHook {
                 }
             }
             val colors = palette
-            if (!colors.enabledFor(HookRuntime.targetPackage) || !colors.groupCard) {
+            if (!colors.enabledFor(HookRuntime.targetPackage, ComponentKeys.GROUP_CARD)) {
                 if (state.applied) {
                     state.applied = false
                     state.frost?.dispose()

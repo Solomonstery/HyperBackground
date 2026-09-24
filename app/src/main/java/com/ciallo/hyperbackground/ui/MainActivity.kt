@@ -68,6 +68,7 @@ import com.ciallo.hyperbackground.appearance.SettingsAppearanceSettings
 import com.ciallo.hyperbackground.ui.pages.BackgroundDetailPage
 import com.ciallo.hyperbackground.ui.pages.AboutPage
 import com.ciallo.hyperbackground.ui.pages.AppScopePage
+import com.ciallo.hyperbackground.ui.pages.AppScopeDetailPage
 import com.ciallo.hyperbackground.ui.pages.ChangelogPage
 import com.ciallo.hyperbackground.ui.pages.ComponentScopePage
 import com.ciallo.hyperbackground.ui.pages.DonatePage
@@ -81,6 +82,7 @@ import com.ciallo.hyperbackground.ui.pages.SettingsCardMaterialPage
 import com.ciallo.hyperbackground.ui.pages.RandomBackgroundPage
 import com.ciallo.hyperbackground.ui.pages.RestartScopesDialog
 import com.ciallo.hyperbackground.ui.pages.readScopePackages
+import com.ciallo.hyperbackground.ui.pages.scopedAppLabel
 import com.ciallo.hyperbackground.ui.pages.UpdateAvailableDialog
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
@@ -499,11 +501,23 @@ class MainActivity : ComponentActivity() {
                     ROUTE_RANDOM_BG -> RandomBackgroundScreen(onBack = popRoute)
                     ROUTE_CARD_MATERIAL -> CardMaterialScreen(onBack = popRoute)
                     ROUTE_COMPONENT_SCOPE -> ComponentScopeScreen(onBack = popRoute)
-                    ROUTE_APP_SCOPE -> AppScopeScreen(onBack = popRoute)
-                    else -> BackgroundDetailScreen(
-                        slot = slot,
+                    ROUTE_APP_SCOPE -> AppScopeScreen(
                         onBack = popRoute,
+                        onOpenApp = { packageName ->
+                            openRoute(ROUTE_APP_SCOPE_DETAIL_PREFIX + packageName)
+                        },
                     )
+                    else -> if (slot.startsWith(ROUTE_APP_SCOPE_DETAIL_PREFIX)) {
+                        AppScopeDetailScreen(
+                            packageName = slot.removePrefix(ROUTE_APP_SCOPE_DETAIL_PREFIX),
+                            onBack = popRoute,
+                        )
+                    } else {
+                        BackgroundDetailScreen(
+                            slot = slot,
+                            onBack = popRoute,
+                        )
+                    }
                 }
             }
         }
@@ -827,7 +841,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun AppScopeScreen(onBack: () -> Unit) {
+    private fun AppScopeScreen(onBack: () -> Unit, onOpenApp: (String) -> Unit) {
         val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
         val hasUiBackground = remember(revision) { currentUiBackgroundFile().isFile }
         val topBarColor = if (hasUiBackground) {
@@ -854,6 +868,43 @@ class MainActivity : ComponentActivity() {
         ) { padding ->
             AppScopePage(
                 activity = this@MainActivity,
+                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                padding = padding,
+                onOpenApp = onOpenApp,
+            )
+        }
+    }
+
+    /** 软件作用域详情页：顶栏标题取该应用名，解析不到时退回包名。 */
+    @Composable
+    private fun AppScopeDetailScreen(packageName: String, onBack: () -> Unit) {
+        val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+        val hasUiBackground = remember(revision) { currentUiBackgroundFile().isFile }
+        val topBarColor = if (hasUiBackground) {
+            Color.Transparent
+        } else {
+            MiuixTheme.colorScheme.surface.copy(alpha = cardOpacity)
+        }
+        val title = remember(packageName) { scopedAppLabel(this@MainActivity, packageName) }
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    color = topBarColor,
+                    title = title,
+                    largeTitle = title,
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(MiuixIcons.Back, contentDescription = getString(R.string.back))
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            AppScopeDetailPage(
+                activity = this@MainActivity,
+                packageName = packageName,
                 modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
                 padding = padding,
             )
@@ -1200,5 +1251,7 @@ class MainActivity : ComponentActivity() {
         const val ROUTE_CARD_MATERIAL = "__card_material__"
         const val ROUTE_COMPONENT_SCOPE = "__component_scope__"
         const val ROUTE_APP_SCOPE = "__app_scope__"
+        // 软件作用域详情页：路由 = 前缀 + 包名（包名不含 '|'，前缀本身以 '|' 结尾，无歧义）。
+        const val ROUTE_APP_SCOPE_DETAIL_PREFIX = "__app_scope_detail__|"
     }
 }

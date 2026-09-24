@@ -10,19 +10,20 @@ import com.ciallo.hyperbackground.HookRuntime
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_COLOR
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_FROST
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
+import com.ciallo.hyperbackground.appearance.ComponentKeys
 import com.ciallo.hyperbackground.dynamic.material.DynamicFrostDrawable
 import com.ciallo.hyperbackground.dynamic.material.DynamicMaterialPalette
 import com.ciallo.hyperbackground.dynamic.material.DynamicSoftGlassDrawable
 
 internal object FloatingBarMaterial {
     fun signature(view: View, palette: DynamicMaterialPalette): Int {
-        if (!palette.enabledFor(HookRuntime.targetPackage) || !palette.floatingBar) return 0
+        if (!palette.enabledFor(HookRuntime.targetPackage, ComponentKeys.FLOATING_BAR)) return 0
         return 31 * palette.hashCode() +
             (view.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK)
     }
 
     fun background(original: Drawable?, context: Context, palette: DynamicMaterialPalette): Drawable? {
-        if (!palette.enabledFor(HookRuntime.targetPackage) || !palette.floatingBar || original == null) return null
+        if (!palette.enabledFor(HookRuntime.targetPackage, ComponentKeys.FLOATING_BAR) || original == null) return null
         val color = color(context, palette)
         return runCatching {
             val copy = original.constantState?.newDrawable(context.resources, context.theme)?.mutate()
@@ -39,7 +40,7 @@ internal object FloatingBarMaterial {
     }
 
     fun apply(view: View, palette: DynamicMaterialPalette): Boolean {
-        if (!palette.enabledFor(HookRuntime.targetPackage) || !palette.floatingBar) return false
+        if (!palette.enabledFor(HookRuntime.targetPackage, ComponentKeys.FLOATING_BAR)) return false
         val dark = isDark(view.context, palette)
         return when (palette.mode) {
             CARD_BACKGROUND_FROST -> DynamicFrostDrawable.applyToView(

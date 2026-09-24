@@ -65,6 +65,7 @@ internal const val KEY_COMPONENT_STANDALONE_CARD = "component_standalone_card"
 internal const val KEY_COMPONENT_POPUP = "component_popup"
 internal const val KEY_COMPONENT_SEARCH = "component_search"
 internal const val KEY_COMPONENT_FLOATING_BAR = "component_floating_bar"
+internal const val KEY_COMPONENT_TOP_BAR_BUTTON = "component_top_bar_button"
 // 软件作用域：被单独关闭材质的包名集合（默认空 = 全部启用，新装应用无需写默认值）。
 internal const val KEY_APP_SCOPE_DISABLED = "app_scope_disabled"
 const val CARD_BACKGROUND_COLOR = 0
@@ -257,6 +258,7 @@ data class SettingsAppearanceSettings(
     val componentPopup: Boolean = true,
     val componentSearch: Boolean = true,
     val componentFloatingBar: Boolean = true,
+    val componentTopBarButton: Boolean = false,
     val disabledAppScopes: Set<String> = emptySet(),
     val tutorialCardEnabled: Boolean = false,
     val tutorialCardTitle: String = "",
@@ -407,6 +409,7 @@ internal fun SharedPreferences.toSettingsAppearance() = SettingsAppearanceSettin
     componentPopup = getBoolean(KEY_COMPONENT_POPUP, true),
     componentSearch = getBoolean(KEY_COMPONENT_SEARCH, true),
     componentFloatingBar = getBoolean(KEY_COMPONENT_FLOATING_BAR, true),
+    componentTopBarButton = getBoolean(KEY_COMPONENT_TOP_BAR_BUTTON, false),
     disabledAppScopes = getStringSet(KEY_APP_SCOPE_DISABLED, emptySet())?.toSet().orEmpty(),
     tutorialCardEnabled = getBoolean(KEY_TUTORIAL_CARD_ENABLED, false),
     tutorialCardTitle = getString(KEY_TUTORIAL_CARD_TITLE, "").orEmpty(),
@@ -572,6 +575,7 @@ private fun SharedPreferences.writeSettingsAppearance(value: SettingsAppearanceS
         .putBoolean(KEY_COMPONENT_POPUP, value.componentPopup)
         .putBoolean(KEY_COMPONENT_SEARCH, value.componentSearch)
         .putBoolean(KEY_COMPONENT_FLOATING_BAR, value.componentFloatingBar)
+        .putBoolean(KEY_COMPONENT_TOP_BAR_BUTTON, value.componentTopBarButton)
         .putStringSet(KEY_APP_SCOPE_DISABLED, value.disabledAppScopes.toMutableSet())
         .putBoolean(KEY_TUTORIAL_CARD_ENABLED, value.tutorialCardEnabled)
         .putString(KEY_TUTORIAL_CARD_TITLE, value.tutorialCardTitle)

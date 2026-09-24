@@ -133,10 +133,6 @@ fun SettingsCardColors(activity: MainActivity, onOpenMaterial: () -> Unit) {
                         )
                     }
                 }
-                BasicComponent(
-                    title = stringResource(R.string.restore_default),
-                    onClick = { activity.updateAppearance { it.copy(customCardEnabled = false) } },
-                )
             }
         }
     }

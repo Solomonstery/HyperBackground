@@ -369,6 +369,8 @@
     <string name="component_standalone_card">Standalone cards</string>
     <string name="component_standalone_card_summary">Views that draw their own rounded surface, e.g. battery cards</string>
     <string name="component_popup">Popups</string>
+    <string name="component_top_bar_button">Top bar buttons</string>
+    <string name="component_top_bar_button_summary">Apply the selected material and transparency to top bar buttons</string>
     <string name="component_popup_summary">Overflow menus and dropdown dialogs</string>
     <string name="component_floating_bar">Floating action bar</string>
     <string name="component_floating_bar_summary">Suspended MIUIX action menus, such as the actions on app details pages</string>

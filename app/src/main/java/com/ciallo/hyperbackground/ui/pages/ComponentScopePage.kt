@@ -1,5 +1,11 @@
 package com.ciallo.hyperbackground.ui.pages
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -7,11 +13,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.ciallo.hyperbackground.R
+import com.ciallo.hyperbackground.BackgroundContract
 import com.ciallo.hyperbackground.ui.MainActivity
 import com.ciallo.hyperbackground.ui.components.SectionTitle
 import com.ciallo.hyperbackground.ui.components.UiCard
@@ -32,6 +44,9 @@ fun ComponentScopePage(
     padding: PaddingValues = PaddingValues(0.dp),
 ) {
     val appearance = activity.appearance
+    var persistentButtons by remember {
+        mutableStateOf(activity.config.getBoolean(BackgroundContract.UI_TOP_BUTTON_BACKGROUND_ENABLED, false))
+    }
     LazyColumn(
         modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -86,6 +101,35 @@ fun ComponentScopePage(
                             activity.updateAppearance { it.copy(componentSearch = value) }
                         },
                     )
+                    SwitchPreference(
+                        title = stringResource(R.string.component_top_bar_button),
+                        summary = stringResource(R.string.component_top_bar_button_summary),
+                        checked = appearance.componentTopBarButton,
+                        onCheckedChange = { value ->
+                            activity.updateAppearance { it.copy(componentTopBarButton = value) }
+                            if (!value) {
+                                persistentButtons = false
+                                activity.config.edit()
+                                    .putBoolean(BackgroundContract.UI_TOP_BUTTON_BACKGROUND_ENABLED, false).apply()
+                            }
+                        },
+                    )
+                    AnimatedVisibility(
+                        visible = appearance.componentTopBarButton,
+                        enter = expandVertically(animationSpec = spring<IntSize>(dampingRatio = 0.82f, stiffness = 420f)) + fadeIn(),
+                        exit = shrinkVertically(animationSpec = spring<IntSize>(dampingRatio = 0.82f, stiffness = 420f)) + fadeOut(),
+                    ) {
+                        SwitchPreference(
+                            title = stringResource(R.string.top_button_background),
+                            summary = stringResource(R.string.top_button_background_summary),
+                            checked = persistentButtons,
+                            onCheckedChange = { value ->
+                                persistentButtons = value
+                                activity.config.edit()
+                                    .putBoolean(BackgroundContract.UI_TOP_BUTTON_BACKGROUND_ENABLED, value).apply()
+                            },
+                        )
+                    }
                 }
             }
         }

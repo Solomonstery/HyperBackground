@@ -127,6 +127,8 @@
     <string name="component_standalone_card">独立卡片</string>
     <string name="component_standalone_card_summary">自带圆角卡面的视图，例如省电与电池卡片</string>
     <string name="component_popup">弹窗</string>
+    <string name="component_top_bar_button">顶栏按钮</string>
+    <string name="component_top_bar_button_summary">使用自定义材质参数覆盖顶栏按钮的背景与折射</string>
     <string name="component_popup_summary">右上角菜单与下拉选择框</string>
     <string name="component_floating_bar">悬浮操作底栏</string>
     <string name="component_floating_bar_summary">应用详情等页面的 MIUIX 悬浮操作菜单，不影响普通底部导航栏</string>

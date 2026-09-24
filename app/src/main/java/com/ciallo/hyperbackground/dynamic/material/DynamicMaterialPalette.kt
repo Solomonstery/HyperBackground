@@ -15,6 +15,7 @@ import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_GROUP_CARD
 import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_POPUP
 import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_SEARCH
 import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_STANDALONE_CARD
+import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_TOP_BAR_BUTTON
 import com.ciallo.hyperbackground.appearance.KEY_CUSTOM_CARD_ENABLED
 import com.ciallo.hyperbackground.appearance.KEY_DARK_CARD_BLUR
 import com.ciallo.hyperbackground.appearance.KEY_DARK_CARD_COLOR
@@ -44,6 +45,7 @@ internal data class DynamicMaterialPalette(
     val popup: Boolean = true,
     val search: Boolean = true,
     val floatingBar: Boolean = true,
+    val topBarButton: Boolean = false,
     val disabledPackages: Set<String> = emptySet(),
 ) {
     /**
@@ -73,6 +75,7 @@ internal data class DynamicMaterialPalette(
                 popup = values[KEY_COMPONENT_POPUP] as? Boolean ?: true,
                 search = values[KEY_COMPONENT_SEARCH] as? Boolean ?: true,
                 floatingBar = values[KEY_COMPONENT_FLOATING_BAR] as? Boolean ?: true,
+                topBarButton = values[KEY_COMPONENT_TOP_BAR_BUTTON] as? Boolean ?: false,
                 disabledPackages = (values[KEY_APP_SCOPE_DISABLED] as? Set<*>)
                     ?.filterIsInstance<String>()?.toSet() ?: emptySet(),
             )

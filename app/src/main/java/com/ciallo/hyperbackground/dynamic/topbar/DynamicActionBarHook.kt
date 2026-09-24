@@ -1,8 +1,13 @@
 package com.ciallo.hyperbackground.dynamic.topbar
 
 import android.content.SharedPreferences
+import android.content.res.Configuration
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.PorterDuff
 import android.graphics.drawable.Drawable
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -10,6 +15,23 @@ import com.ciallo.hyperbackground.BackgroundContract
 import com.ciallo.hyperbackground.HookRuntime
 import com.ciallo.hyperbackground.appearance.KEY_APP_SCOPE_DISABLED
 import com.ciallo.hyperbackground.appearance.SETTINGS_APPEARANCE_PREFERENCES
+import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_FROST
+import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
+import com.ciallo.hyperbackground.appearance.KEY_CARD_BACKGROUND_MODE
+import com.ciallo.hyperbackground.appearance.KEY_CARD_DARK_FOLLOWS_LIGHT
+import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_TOP_BAR_BUTTON
+import com.ciallo.hyperbackground.appearance.KEY_CUSTOM_CARD_ENABLED
+import com.ciallo.hyperbackground.appearance.KEY_DARK_CARD_BLUR
+import com.ciallo.hyperbackground.appearance.KEY_DARK_CARD_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_DARK_FROST_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_DARK_SOFT_GLASS
+import com.ciallo.hyperbackground.appearance.KEY_LIGHT_CARD_BLUR
+import com.ciallo.hyperbackground.appearance.KEY_LIGHT_CARD_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_LIGHT_FROST_COLOR
+import com.ciallo.hyperbackground.appearance.KEY_LIGHT_SOFT_GLASS
+import com.ciallo.hyperbackground.dynamic.material.DynamicFrostDrawable
+import com.ciallo.hyperbackground.dynamic.material.DynamicMaterialPalette
+import com.ciallo.hyperbackground.dynamic.material.DynamicSoftGlassDrawable
 import io.github.libxposed.api.XposedInterface.ExceptionMode
 import io.github.libxposed.api.XposedModule
 import org.luckypray.dexkit.DexKitBridge
@@ -37,6 +59,31 @@ internal object DynamicActionBarHook {
     /** 每个 ActionBarContainer 的按钮浮动钉住状态；failed 后不再重试，避免每帧刷日志。 */
     private class FloatingPin { var applied: Boolean? = null; var failed = false }
     private val floatingPins = Collections.synchronizedMap(WeakHashMap<ViewGroup, FloatingPin>())
+    private data class ButtonSurface(
+        val original: Drawable, val replacement: Drawable, val signature: Int,
+        var materialApplied: Boolean = false,
+    )
+    private val buttons = Collections.synchronizedMap(WeakHashMap<View, ButtonSurface>())
+    private val bars = Collections.synchronizedMap(WeakHashMap<ViewGroup, Unit>())
+    private val main = Handler(Looper.getMainLooper())
+    @Volatile private var palette = DynamicMaterialPalette()
+    private val materialKeys = setOf(
+        KEY_CUSTOM_CARD_ENABLED, KEY_COMPONENT_TOP_BAR_BUTTON, KEY_CARD_BACKGROUND_MODE,
+        KEY_CARD_DARK_FOLLOWS_LIGHT, KEY_LIGHT_CARD_COLOR, KEY_DARK_CARD_COLOR,
+        KEY_LIGHT_FROST_COLOR, KEY_DARK_FROST_COLOR, KEY_LIGHT_CARD_BLUR, KEY_DARK_CARD_BLUR,
+        KEY_LIGHT_SOFT_GLASS, KEY_DARK_SOFT_GLASS, KEY_APP_SCOPE_DISABLED,
+    )
+    private val materialListener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+        if (key == null || key in materialKeys) {
+            palette = DynamicMaterialPalette.read(prefs)
+            main.post {
+                synchronized(bars) { bars.keys.toList() }.forEach { bar ->
+                    syncButtonBackground(bar)
+                    syncButtons(bar)
+                }
+            }
+        }
+    }
 
     private lateinit var module: XposedModule
     private var maskAlpha: Field? = null
@@ -59,6 +106,8 @@ internal object DynamicActionBarHook {
         getPrimary = type.getMethod("getPrimaryBackground")
         setPrimary = type.getMethod("setPrimaryBackground", Drawable::class.java)
         scope = HookRuntime.remotePreferences(SETTINGS_APPEARANCE_PREFERENCES)
+        scope?.registerOnSharedPreferenceChangeListener(materialListener)
+        scope?.let { palette = DynamicMaterialPalette.read(it) }
         setButtonFloating = runCatching {
             type.getMethod("setActionButtonFloatingState", Int::class.javaPrimitiveType)
         }.getOrNull()
@@ -126,12 +175,14 @@ internal object DynamicActionBarHook {
         }
         module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
             .setId("dynamic-topbar:button-floating").intercept { chain ->
-                if (buttonBackgroundEnabled()) {
+                val result = if (buttonBackgroundEnabled()) {
                     // 参数是 int，必须按 Array<Any?> 装箱传入，直接用 arrayOf(1) 会因数组不变型编译失败。
                     chain.proceed(arrayOf<Any?>(FLOATING_ON))
                 } else {
                     chain.proceed()
                 }
+                (chain.thisObject as? ViewGroup)?.let(::syncButtons)
+                result
             }
         module.log(Log.INFO, TAG, "Top bar button background hook installed")
     }
@@ -142,9 +193,11 @@ internal object DynamicActionBarHook {
                 .setId("dynamic-topbar:inflate").intercept { chain ->
                     val result = chain.proceed()
                     (chain.thisObject as? ViewGroup)?.let { bar ->
+                        bars[bar] = Unit
                         // 遮罩层只在反混淆成功后才有意义，避免给非 MIUIX 结构多挂一个子 View。
                         if (maskAlpha != null) ensure(bar)
                         syncButtonBackground(bar)
+                        syncButtons(bar)
                     }
                     result
                 }
@@ -159,6 +212,7 @@ internal object DynamicActionBarHook {
                         (chain.thisObject as? ViewGroup)?.let { bar ->
                             owned[bar]?.blur?.layout(0, 0, bar.width, bar.height)
                             syncButtonBackground(bar)
+                            syncButtons(bar)
                         }
                         result
                     }
@@ -176,7 +230,7 @@ internal object DynamicActionBarHook {
         }
         if (pin.failed) return
         val wanted = buttonBackgroundEnabled()
-        if (pin.applied == wanted) return
+        if (pin.applied == wanted || pin.applied == null && !wanted) return
         try {
             method.invoke(bar, if (wanted) FLOATING_ON else FLOATING_AUTO)
             pin.applied = wanted
@@ -221,10 +275,111 @@ internal object DynamicActionBarHook {
         scoped() && (HookRuntime.preferences().getBoolean(BackgroundContract.UI_TOP_BLUR_ENABLED, true) ||
             HookRuntime.preferences().getBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, false))
 
-    /** 顶栏按钮背景常驻：默认开，只受软件作用域与本开关控制，与顶栏模糊/清除无关。 */
+    /** 顶栏按钮背景常驻只在顶栏按钮组件启用时生效。 */
     private fun buttonBackgroundEnabled(): Boolean =
-        scoped() && HookRuntime.preferences()
-            .getBoolean(BackgroundContract.UI_TOP_BUTTON_BACKGROUND_ENABLED, true)
+        scoped() && palette.topBarButton && HookRuntime.preferences()
+            .getBoolean(BackgroundContract.UI_TOP_BUTTON_BACKGROUND_ENABLED, false)
+
+    /** Only MIUIX's floating button surfaces inside this ActionBarContainer are replaced. */
+    private fun syncButtons(bar: ViewGroup) {
+        val config = palette
+        val active = config.enabledFor(HookRuntime.targetPackage) && config.topBarButton
+        fun visit(view: View) {
+            if (view !== bar && isTopBarButton(view)) {
+                applyButton(view, config, active)
+                return
+            }
+            if (view is ViewGroup) for (index in 0 until view.childCount) visit(view.getChildAt(index))
+        }
+        visit(bar)
+    }
+
+    private fun isTopBarButton(view: View): Boolean {
+        val name = view.javaClass.name
+        if (name == "miuix.appcompat.internal.view.menu.action.EndActionMenuItemView") return true
+        // MIUIX draws floating backgrounds on the icon ImageViews in the action bar's
+        // HomeView / ActionBarView / ActionBarContextView, but not on unrelated nested icons.
+        return view is android.widget.ImageView && (view.parent as? View)?.javaClass?.name in setOf(
+            "miuix.appcompat.internal.app.widget.ActionBarView\$HomeView",
+            "miuix.appcompat.internal.app.widget.ActionBarView",
+            "miuix.appcompat.internal.app.widget.ActionBarContextView",
+        )
+    }
+
+    private fun applyButton(view: View, config: DynamicMaterialPalette, active: Boolean) {
+        val previous = buttons[view]
+        val current = view.background
+        if (!active || current == null) {
+            if (previous != null) restoreButton(view, previous)
+            return
+        }
+        val signature = 31 * config.hashCode() +
+            (view.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK)
+        if (previous != null && current === previous.replacement && previous.signature == signature) {
+            if (!previous.materialApplied && view.isAttachedToWindow) {
+                previous.materialApplied = applyButtonMaterial(view, config)
+            }
+            return
+        }
+        if (previous != null) restoreButton(view, previous)
+        val original = if (current === previous?.replacement) previous.original else current
+        val dark = !config.darkFollowsLight && view.resources.configuration.uiMode and
+            Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        val tint = when (config.mode) {
+            CARD_BACKGROUND_FROST, CARD_BACKGROUND_SOFT_GLASS ->
+                if (dark) config.darkFrost else config.lightFrost
+            else -> if (dark) config.dark else config.light
+        }
+        val replacement = runCatching {
+            if (original.javaClass.name == "miuix.appcompat.internal.graphics.drawable.RoundStateDrawable") {
+                val radius = original.javaClass.getMethod("getCornerRadius").invoke(original) as Float
+                original.javaClass.getConstructor(Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
+                    Float::class.javaPrimitiveType).newInstance(tint, dark, radius) as Drawable
+            } else original.constantState?.newDrawable(view.resources, view.context.theme)?.mutate()
+        }.getOrNull() ?: return
+        val prepared = runCatching { if (config.mode == CARD_BACKGROUND_SOFT_GLASS) {
+            // The shader owns both refraction and transparency; keep the native rounded outline.
+            if (replacement.javaClass.name == "miuix.smooth.SmoothContainerDrawable2") {
+                replacement.javaClass.getMethod("setChildDrawable", Drawable::class.java)
+                    .invoke(replacement, android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            } else if (replacement.javaClass.name == "miuix.appcompat.internal.graphics.drawable.RoundStateDrawable") {
+                replacement.javaClass.getMethod("setColor", Int::class.javaPrimitiveType)
+                    .invoke(replacement, Color.TRANSPARENT)
+            } else replacement.setColorFilter(Color.TRANSPARENT, PorterDuff.Mode.SRC_IN)
+        } else if (replacement.javaClass.name == "miuix.appcompat.internal.graphics.drawable.RoundStateDrawable") {
+            replacement.javaClass.getMethod("setColor", Int::class.javaPrimitiveType).invoke(replacement, tint)
+        } else replacement.setColorFilter(tint, PorterDuff.Mode.SRC_IN)
+        }.isSuccess
+        if (!prepared) return
+        view.background = replacement
+        val surface = ButtonSurface(original, replacement, signature)
+        buttons[view] = surface
+        surface.materialApplied = applyButtonMaterial(view, config)
+    }
+
+    private fun applyButtonMaterial(view: View, config: DynamicMaterialPalette): Boolean {
+        if (!view.isAttachedToWindow || !view.isHardwareAccelerated) return false
+        val dark = !config.darkFollowsLight && view.resources.configuration.uiMode and
+            Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        val density = view.resources.displayMetrics.density
+        return when (config.mode) {
+            CARD_BACKGROUND_SOFT_GLASS -> DynamicSoftGlassDrawable.applyToView(
+                view, if (dark) config.darkFrost else config.lightFrost,
+                if (dark) config.darkGlass else config.lightGlass, density,
+            )
+            CARD_BACKGROUND_FROST -> DynamicFrostDrawable.applyToView(
+                view, if (dark) config.darkBlur else config.lightBlur, density,
+            )
+            else -> true
+        }
+    }
+
+    private fun restoreButton(view: View, surface: ButtonSurface) {
+        DynamicSoftGlassDrawable.clearFromView(view)
+        DynamicFrostDrawable.clearFromView(view)
+        if (view.background === surface.replacement) view.background = surface.original
+        buttons.remove(view)
+    }
 
     private fun ensure(bar: ViewGroup): State {
         owned[bar]?.let { return it }

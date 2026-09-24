@@ -318,7 +318,7 @@
     <string name="settings_card_light">Light mode card color</string>
     <string name="settings_card_dark">Dark mode card color</string>
     <string name="settings_card_opacity">Card opacity</string>
-    <string name="settings_card_material_title">Card material</string>
+    <string name="settings_card_material_title">Soft light parameters</string>
     <string name="settings_card_soft_glass_customize">Customize soft glass</string>
     <string name="settings_card_soft_glass_customize_summary">Frost tint, blur strength and all Bionics soft-glass parameters, separately for light and dark modes.</string>
     <string name="settings_card_tab_light">Light</string>

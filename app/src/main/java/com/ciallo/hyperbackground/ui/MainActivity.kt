@@ -439,6 +439,10 @@ class MainActivity : ComponentActivity() {
             if (detailStack.isNotEmpty()) detailStack = ArrayList(detailStack.dropLast(1))
         }
         BackHandler(enabled = detailStack.isNotEmpty()) { popRoute() }
+        // 底部 Tab 分页状态提升到导航层：进入二级页时 MainTabs 会离屏，
+        // 返回后需保持原 tab 位置（如从动态适配页进入二级页，返回仍回到动态适配页）。
+        val pagerState = rememberPagerState(pageCount = { 4 })
+        val scope = rememberCoroutineScope()
         // 共享背景层放在 AnimatedContent 之外：页面切换时只有内容滑动，背景保持不动。
         Box(Modifier.fillMaxSize()) {
             ModuleBackground(revision)
@@ -471,6 +475,8 @@ class MainActivity : ComponentActivity() {
             ) { stack ->
                 when (val slot = stack.lastOrNull()) {
                     null -> MainTabs(
+                    pagerState = pagerState,
+                    scope = scope,
                     themeMode = themeMode,
                     themeColorEnabled = themeColorEnabled,
                     monet = monet,
@@ -503,6 +509,8 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun MainTabs(
+        pagerState: androidx.compose.foundation.pager.PagerState,
+        scope: kotlinx.coroutines.CoroutineScope,
         themeMode: Int,
         themeColorEnabled: Boolean,
         monet: Boolean,
@@ -516,8 +524,6 @@ class MainActivity : ComponentActivity() {
         onOpenChangelog: () -> Unit,
         onOpenDonate: () -> Unit,
     ) {
-        val pagerState = rememberPagerState(pageCount = { 4 })
-        val scope = rememberCoroutineScope()
         val backgroundColor = MiuixTheme.colorScheme.surface
         val backdrop = if (bottomBarBlurEnabled) {
             rememberLayerBackdrop {

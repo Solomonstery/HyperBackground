@@ -78,7 +78,7 @@
     <string name="settings_card_light">浅色模式卡片颜色</string>
     <string name="settings_card_dark">深色模式卡片颜色</string>
     <string name="settings_card_opacity">卡片不透明度</string>
-    <string name="settings_card_material_title">卡片材质</string>
+    <string name="settings_card_material_title">柔光参数</string>
     <string name="settings_card_soft_glass_customize">柔光参数自定义</string>
     <string name="settings_card_soft_glass_customize_summary">浅色、深色分别调节磨砂底色、模糊强度与全部柔光玻璃参数。</string>
     <string name="settings_card_tab_light">浅色</string>

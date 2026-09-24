@@ -4,6 +4,7 @@ import android.util.Log
 import android.view.View
 import android.content.SharedPreferences
 import com.ciallo.hyperbackground.dynamic.popup.DynamicPopupMaterialHook
+import com.ciallo.hyperbackground.dynamic.search.DynamicSearchMaterialHook
 import com.ciallo.hyperbackground.dynamic.bar.DynamicFloatingBarHook
 import io.github.libxposed.api.XposedInterface.ExceptionMode
 import io.github.libxposed.api.XposedModule
@@ -54,6 +55,8 @@ internal object DynamicCardMaterialHook {
             .onFailure { module.log(Log.WARN, TAG, "Dynamic popup material hook unavailable", it) }
         runCatching { DynamicFloatingBarHook.install(module, classLoader, prefs) }
             .onFailure { module.log(Log.WARN, TAG, "Dynamic floating bar hook unavailable", it) }
+        runCatching { DynamicSearchMaterialHook.install(module, classLoader, prefs) }
+            .onFailure { module.log(Log.WARN, TAG, "Dynamic search material hook unavailable", it) }
         module.log(
             Log.INFO, TAG,
             "Dynamic card routing installed: decorations=$discoveredDecorations",

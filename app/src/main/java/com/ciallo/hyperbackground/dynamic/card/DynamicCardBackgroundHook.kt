@@ -521,6 +521,8 @@ internal object DynamicCardBackgroundHook {
         if (!palette.standaloneCard) return null
         // The suspended action menu has its own material route and scope switch.
         if (view.javaClass.name == "miuix.appcompat.internal.view.menu.action.ResponsiveActionMenuView") return null
+        // MIUIX search owns its material and alpha animation; do not repaint it as a card on resize.
+        if (isSearchSurface(view)) return null
         val reason = CardSurfaceDetector.probe(view)
         if (reason != null) {
             // 尺寸不足 / 没有自己的背景是正常行为，不打日志；其余「自己有面却被拦下」
@@ -531,6 +533,25 @@ internal object DynamicCardBackgroundHook {
         val key = CardSurfaceDetector.key(view)
         logCandidate(view, "matched key=$key")
         return key
+    }
+
+    private fun isSearchSurface(view: View): Boolean {
+        var current: View? = view
+        repeat(6) {
+            val node = current ?: return false
+            val type = node.javaClass.name
+            if (type.contains("SearchModeStubView") || type.contains("SearchActionModeView") ||
+                type.contains("SearchView")) return true
+            val name = runCatching {
+                if (node.id == View.NO_ID || node.id == 0) null
+                else node.resources.getResourceEntryName(node.id)
+            }.getOrNull()
+            if (name == "search_mode_stub" || name == "search_container" ||
+                name == "search_panel" || name == "search_view" || name == "search_bar"
+            ) return true
+            current = node.parent as? View
+        }
+        return false
     }
 
     private fun cloneAndTint(view: View, source: Drawable?, color: Int): Drawable? =

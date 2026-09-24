@@ -38,8 +38,6 @@ object SettingsBackgroundHook {
         TextColorOverride.install()
 
         if (settings) {
-            // 临时禁用搜索框适配（测试效果用，验证组件作用域外的搜索框软玻璃/遮罩清除原貌）
-            // SettingsSearchMaskOverride.install(classLoader)
             SettingsTopBarBlurHook.install(classLoader)
             // 「配置」栏目 - 设置页软件入口：往设置首页 Header 列表插入模块条目。
             SettingsHomeEntryHook.install(classLoader)

@@ -1,11 +1,9 @@
-package com.ciallo.hyperbackground.appearance
+package com.ciallo.hyperbackground.mydevice
 
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -14,8 +12,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.ciallo.hyperbackground.dynamic.card.DynamicCardBackgroundHook
-import java.util.Locale
-import kotlin.math.roundToInt
 
 /** Runtime recreation of the tutorial's device_info_item_kashi and storage_info_item_kashi. */
 class DeviceInfoCardsView(
@@ -71,7 +67,7 @@ class DeviceInfoCardsView(
             topMargin = dp(16)
         })
         card.addView(nameTitle, textParams(top = 12))
-        card.addView(nameSummary, textParams(top = 4, summary = true))
+        card.addView(nameSummary, textParams(top = 4))
         return card
     }
 
@@ -87,7 +83,7 @@ class DeviceInfoCardsView(
             topMargin = dp(16)
         })
         card.addView(storageTitle, textParams(top = 12))
-        card.addView(storageSummary, textParams(top = 4, summary = true))
+        card.addView(storageSummary, textParams(top = 4))
         return card
     }
 
@@ -99,15 +95,15 @@ class DeviceInfoCardsView(
         isFocusable = true
     }
 
-    private fun textParams(top: Int, summary: Boolean = false): LinearLayout.LayoutParams {
+    private fun textParams(top: Int): LinearLayout.LayoutParams {
         return LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(top) }
     }
 
     private fun refresh() {
-        nameTitle.text = sourceText(nameSource, "title").ifBlank { "设备名称" }
-        nameSummary.text = sourceText(nameSource, "summary")
-        storageTitle.text = sourceText(storageSource, "title").ifBlank { "存储空间" }
-        storageSummary.text = sourceText(storageSource, "summary")
+        nameTitle.text = childText(nameSource, "title").ifBlank { "设备名称" }
+        nameSummary.text = childText(nameSource, "summary")
+        storageTitle.text = childText(storageSource, "title").ifBlank { "存储空间" }
+        storageSummary.text = childText(storageSource, "summary")
         storageProgress.progress = storageFraction(storageSummary.text?.toString().orEmpty())
 
         val primary = themedColor(android.R.attr.textColorPrimary, if (isNight()) 0xFFFFFFFF.toInt() else 0xFF1B1B1B.toInt())
@@ -127,41 +123,6 @@ class DeviceInfoCardsView(
         view.maxLines = if (size >= 16f) 1 else 2
         view.ellipsize = android.text.TextUtils.TruncateAt.END
     }
-
-    private fun sourceText(source: View, idName: String): String {
-        val id = resources.getIdentifier(idName, "id", context.packageName)
-        return (source.findViewById<View>(id) as? TextView)?.text?.toString().orEmpty()
-    }
-
-    private fun storageFraction(summary: String): Int {
-        val values = STORAGE_VALUE.findAll(summary).take(2).mapNotNull { match ->
-            val raw = match.groupValues[1].replace(',', '.').toFloatOrNull() ?: return@mapNotNull null
-            val multiplier = when (match.groupValues[2].uppercase(Locale.ROOT).firstOrNull()) {
-                'T' -> 1024f * 1024f
-                'G' -> 1024f
-                'M' -> 1f
-                'K' -> 1f / 1024f
-                else -> 1f
-            }
-            raw * multiplier
-        }.toList()
-        if (values.size < 2 || values[1] <= 0f) return 0
-        return (values[0] / values[1] * 1000f).roundToInt().coerceIn(0, 1000)
-    }
-
-    private fun accentColor(): Int {
-        val id = resources.getIdentifier("system_accent1_200", "color", "android")
-        return if (id != 0) runCatching { resources.getColor(id, context.theme) }.getOrDefault(0xFF8CB8FF.toInt()) else 0xFF8CB8FF.toInt()
-    }
-
-    private fun themedColor(attribute: Int, fallback: Int): Int = TypedValue().let { value ->
-        if (context.theme.resolveAttribute(attribute, value, true)) {
-            if (value.resourceId != 0) runCatching { context.getColor(value.resourceId) }.getOrDefault(value.data) else value.data
-        } else fallback
-    }
-
-    private fun isNight() = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-    private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
 
     private class DeviceSymbolView(context: Context) : View(context) {
         private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF8CB8FF.toInt() }
@@ -200,9 +161,5 @@ class DeviceInfoCardsView(
                 canvas.drawRoundRect(fillBounds, radius, radius, fill)
             }
         }
-    }
-
-    private companion object {
-        val STORAGE_VALUE = Regex("(\\d+(?:[.,]\\d+)?)\\s*([KMGTkmgt])?[Bb]?")
     }
 }

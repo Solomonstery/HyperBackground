@@ -6,18 +6,15 @@ import android.content.res.Resources
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.util.Log
-import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
-import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.TextView
+import com.ciallo.hyperbackground.mydevice.MyDeviceCardApplier
 import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.WeakHashMap
-import kotlin.math.roundToInt
 
 object SettingsAppearanceApplier {
     @Volatile private var applicationContext: android.content.Context? = null
@@ -27,12 +24,6 @@ object SettingsAppearanceApplier {
     private val textModes = Collections.synchronizedMap(WeakHashMap<TextView, Int>())
     private val appliedFontModes = Collections.synchronizedMap(WeakHashMap<Activity, Int>())
     private val logoSessions = Collections.synchronizedMap(WeakHashMap<Any, LogoSession>())
-    private val tutorialCards = Collections.synchronizedMap(WeakHashMap<Any, TutorialCardSession>())
-    private val deviceInfoCards = Collections.synchronizedMap(WeakHashMap<Any, DeviceInfoCardsSession>())
-    private val harmonyCards = Collections.synchronizedMap(WeakHashMap<Any, HarmonyCardSession>())
-    private val harmonyInfoCards = Collections.synchronizedMap(WeakHashMap<Any, HarmonyInfoCardsSession>())
-    private val cosTopCards = Collections.synchronizedMap(WeakHashMap<Any, CosTopCardSession>())
-    private val cosQuickCards = Collections.synchronizedMap(WeakHashMap<Any, CosQuickCardsSession>())
     private val internalTextColor = ThreadLocal<Boolean>()
     private val internalLogo = ThreadLocal<Boolean>()
 
@@ -54,7 +45,7 @@ object SettingsAppearanceApplier {
                 old?.remove()
                 deviceLayers.remove(fragment)
                 fragmentActivity(fragment)?.let { applyFontMode(it, source.fontMode) }
-                applyTutorialCard(fragment)
+                MyDeviceCardApplier.apply(fragment)
                 return
             }
             if (old != null && !old.view.loadFailed && old.view.sourceKey() == source.cacheKey() && old.view.parent === old.parent) {
@@ -65,12 +56,12 @@ object SettingsAppearanceApplier {
                 old.view.onHostResume()
                 old.refresh(context)
                 fragmentActivity(fragment)?.let { applyFontMode(it, source.fontMode) }
-                applyTutorialCard(fragment)
+                MyDeviceCardApplier.apply(fragment)
                 return
             }
             val background = findDeviceBackground(fragment, context) ?: run {
                 Log.w(TAG, "device fragment has no mBgEffectView class=${fragment.javaClass.name}")
-                applyTutorialCard(fragment)
+                MyDeviceCardApplier.apply(fragment)
                 return
             }
             val parent = background.parent as? ViewGroup ?: return
@@ -91,7 +82,7 @@ object SettingsAppearanceApplier {
             }
             Log.i(TAG, "device attached media=${media.javaClass.name} parent=${media.parent?.javaClass?.name}")
             fragmentActivity(fragment)?.let { applyFontMode(it, source.fontMode) }
-            applyTutorialCard(fragment)
+            MyDeviceCardApplier.apply(fragment)
         }.onFailure { error -> Log.e(TAG, "device apply failed", error) }
     }
 
@@ -138,12 +129,7 @@ object SettingsAppearanceApplier {
     fun destroyDevice(fragment: Any?) {
         if (fragment == null) return
         deviceLayers.remove(fragment)?.remove()
-        tutorialCards.remove(fragment)?.remove()
-        deviceInfoCards.remove(fragment)?.remove()
-        harmonyCards.remove(fragment)?.remove()
-        harmonyInfoCards.remove(fragment)?.remove()
-        cosTopCards.remove(fragment)?.remove()
-        cosQuickCards.remove(fragment)?.remove()
+        MyDeviceCardApplier.clear(fragment)
     }
     fun stop(activity: Activity?) { activity?.let { layers[it]?.view?.onHostStop() } }
     fun destroy(activity: Activity?) {
@@ -157,213 +143,6 @@ object SettingsAppearanceApplier {
         if (fragment == null) return
         logoSessions.remove(fragment)?.restore()
     }
-
-    fun applyTutorialCard(fragment: Any) {
-        runCatching {
-            val context = fragment.javaClass.getMethod("getContext").invoke(fragment) as? android.content.Context ?: return
-            val root = fragment.javaClass.getMethod("getView").invoke(fragment) as? View ?: return
-            val targetId = context.resources.getIdentifier("miui_version_card_view", "id", context.packageName)
-            // MiuiVersionCard is the scroll-aware host. The tutorial replaces its
-            // layout content, rather than creating a root-level sibling, so its
-            // translation remains coupled to the My Device scroll position.
-            val target = root.findViewById<View>(targetId) as? FrameLayout ?: return
-            val spacerId = context.resources.getIdentifier("version_card_click_view", "id", context.packageName)
-            val spacer = root.findViewById<View>(spacerId)
-            val animationLayoutId = context.resources.getIdentifier("version_layout", "id", context.packageName)
-            // MiuiVersionCard animates this view on every scroll. Capture it
-            // before adding our independent replacement card.
-            val animationSource = target.findViewById<View>(animationLayoutId)
-            val style = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_DEVICE_IMAGE).deviceInterfaceStyle
-            when (style) {
-                DEVICE_INTERFACE_STYLE_ONE -> {
-                    harmonyCards.remove(fragment)?.remove()
-                    harmonyInfoCards.remove(fragment)?.remove()
-                    cosTopCards.remove(fragment)?.remove()
-                    cosQuickCards.remove(fragment)?.remove()
-                    val source = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_DEVICE_IMAGE)
-                    val logo = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_CUSTOM_DEVICE_LOGO)
-                    applyDeviceInfoCards(fragment, context, root, source.copy(tutorialCardInfoCardsEnabled = true))
-                    val old = tutorialCards[fragment]
-                    val background = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_STYLE1_UPDATE_BACKGROUND)
-                    val key = source.cacheKey() + logo.cacheKey() + background.cacheKey()
-                    if (old != null && old.matches(target, spacer) && old.key == key) {
-                        old.enforceTutorialLayout(context)
-                        old.view.refresh(context, source.tutorialCardImageScale, source.tutorialCardAuthor, source.tutorialCardLogoScale, source.tutorialCardLogoVerticalOffset, source.tutorialCardImageLogoSpacing, source.tutorialCardTextSpacing, source.tutorialCardBackgroundBlur, source.tutorialCardBackgroundHorizontalOffset, source.tutorialCardBackgroundVerticalOffset, source.tutorialCardBackgroundScale)
-                    } else {
-                        old?.remove()
-                        val card = TutorialDeviceCardView(context, source, logo, background, root.findViewById<View>(context.resources.getIdentifier("miui_version_text", "id", context.packageName)))
-                        target.addView(card, tutorialCardLayoutParams(context))
-                        val session = TutorialCardSession(target, spacer, spacer?.layoutParams, animationSource, card, key)
-                        session.enforceTutorialLayout(context)
-                        tutorialCards[fragment] = session
-                        card.refresh(context, source.tutorialCardImageScale, source.tutorialCardAuthor, source.tutorialCardLogoScale, source.tutorialCardLogoVerticalOffset, source.tutorialCardImageLogoSpacing, source.tutorialCardTextSpacing, source.tutorialCardBackgroundBlur, source.tutorialCardBackgroundHorizontalOffset, source.tutorialCardBackgroundVerticalOffset, source.tutorialCardBackgroundScale)
-                    }
-                }
-                DEVICE_INTERFACE_STYLE_TWO -> {
-                    tutorialCards.remove(fragment)?.remove()
-                    deviceInfoCards.remove(fragment)?.remove()
-                    harmonyCards.remove(fragment)?.remove()
-                    harmonyInfoCards.remove(fragment)?.remove()
-                    val source = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_DEVICE_IMAGE)
-                    val old = cosTopCards[fragment]
-                    val key = source.cacheKey()
-                    if (old != null && old.matches(target, spacer) && old.key == key) {
-                        old.enforce(context)
-                        old.view.refresh(source)
-                    } else {
-                        old?.remove()
-                        val card = CosTopCardView(context, target, source)
-                        target.addView(card, tutorialCardLayoutParams(context))
-                        val session = CosTopCardSession(target, spacer, spacer?.layoutParams, animationSource, card, key)
-                        session.enforce(context)
-                        cosTopCards[fragment] = session
-                    }
-                    applyCosQuickCards(fragment, context, root)
-                }
-                DEVICE_INTERFACE_STYLE_THREE -> {
-                    tutorialCards.remove(fragment)?.remove()
-                    deviceInfoCards.remove(fragment)?.remove()
-                    cosTopCards.remove(fragment)?.remove()
-                    cosQuickCards.remove(fragment)?.remove()
-                    val image = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_STYLE2_DEVICE_IMAGE)
-                    val logo = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_STYLE2_CUSTOM_DEVICE_LOGO)
-                    val background = SettingsAppearanceSources.query(context, APPEARANCE_SLOT_STYLE2_UPDATE_BACKGROUND)
-                    val old = harmonyCards[fragment]
-                    val key = image.cacheKey() + logo.cacheKey() + background.cacheKey()
-                    val updateSource = root.findViewById<View>(context.resources.getIdentifier("miui_version_text", "id", context.packageName))
-                    if (old != null && old.matches(target, spacer) && old.key == key) {
-                        old.enforce(context)
-                        old.view.refresh(image)
-                    } else {
-                        old?.remove()
-                        val card = HarmonyUpdateCardView(context, logo, updateSource, background)
-                        target.addView(card, harmonyCardLayoutParams(context))
-                        val session = HarmonyCardSession(target, spacer, spacer?.layoutParams, animationSource, card, key)
-                        session.enforce(context)
-                        harmonyCards[fragment] = session
-                        card.refresh(image)
-                    }
-                    applyHarmonyInfoCards(fragment, context, root, image)
-                }
-                else -> {
-                    tutorialCards.remove(fragment)?.remove()
-                    deviceInfoCards.remove(fragment)?.remove()
-                    harmonyCards.remove(fragment)?.remove()
-                    harmonyInfoCards.remove(fragment)?.remove()
-                    cosTopCards.remove(fragment)?.remove()
-                    cosQuickCards.remove(fragment)?.remove()
-                }
-            }
-        }.onFailure { error -> Log.e(TAG, "tutorial card apply failed", error) }
-    }
-
-    private fun applyHarmonyInfoCards(fragment: Any, context: android.content.Context, root: View, image: SettingsAppearanceSource) {
-        val old = harmonyInfoCards[fragment]
-        val nameId = context.resources.getIdentifier("device_name_card_view", "id", context.packageName)
-        val storageId = context.resources.getIdentifier("device_memory_card_view", "id", context.packageName)
-        val name = root.findViewById<View>(nameId) ?: return
-        val storage = root.findViewById<View>(storageId) ?: return
-        val parent = name.parent as? LinearLayout ?: return
-        if (parent !== storage.parent) return
-        if (old != null && old.matches(parent, name, storage, image.cacheKey())) {
-            old.enforce()
-            old.view.refresh(image.style2ImageScale)
-            return
-        }
-        old?.remove()
-        val row = HarmonyInfoCardsView(context, name, storage, image)
-        val index = parent.indexOfChild(name).coerceAtLeast(0)
-        // The stock parameter card adds a 12dp top margin. Reduce this
-        // replacement row's contribution from 10dp to 5dp so the combined
-        // gap is approximately 75% of the previous spacing.
-        parent.addView(row, index, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, tutorialDp(context, 182)).apply { bottomMargin = tutorialDp(context, 4.88f) })
-        val session = HarmonyInfoCardsSession(parent, name, storage, row, image.cacheKey())
-        session.enforce()
-        harmonyInfoCards[fragment] = session
-    }
-
-    private fun applyDeviceInfoCards(
-        fragment: Any,
-        context: android.content.Context,
-        root: View,
-        source: SettingsAppearanceSource,
-    ) {
-        val old = deviceInfoCards[fragment]
-        if (!source.tutorialCardInfoCardsEnabled) {
-            old?.remove()
-            deviceInfoCards.remove(fragment)
-            return
-        }
-        val nameId = context.resources.getIdentifier("device_name_card_view", "id", context.packageName)
-        val storageId = context.resources.getIdentifier("device_memory_card_view", "id", context.packageName)
-        val name = root.findViewById<View>(nameId) ?: return
-        val storage = root.findViewById<View>(storageId) ?: return
-        val parent = name.parent as? LinearLayout ?: return
-        if (parent !== storage.parent) return
-        if (old != null && old.matches(parent, name, storage)) {
-            old.enforce()
-            return
-        }
-        old?.remove()
-        val row = DeviceInfoCardsView(context, name, storage)
-        val index = parent.indexOfChild(name).coerceAtLeast(0)
-        parent.addView(row, index, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            tutorialDp(context, 148),
-        ).apply {
-            bottomMargin = tutorialDp(context, 6)
-        })
-        val session = DeviceInfoCardsSession(parent, name, storage, row)
-        session.enforce()
-        deviceInfoCards[fragment] = session
-    }
-
-    private fun applyCosQuickCards(fragment: Any, context: android.content.Context, root: View) {
-        val old = cosQuickCards[fragment]
-        val nameId = context.resources.getIdentifier("device_name_card_view", "id", context.packageName)
-        val storageId = context.resources.getIdentifier("device_memory_card_view", "id", context.packageName)
-        val name = root.findViewById<View>(nameId) ?: return
-        val storage = root.findViewById<View>(storageId) ?: return
-        val parent = name.parent as? LinearLayout ?: return
-        if (parent !== storage.parent) return
-        if (old != null && old.matches(parent, name, storage)) {
-            old.enforce()
-            return
-        }
-        old?.remove()
-        val row = CosQuickCardsView(context, name, storage)
-        val index = parent.indexOfChild(name).coerceAtLeast(0)
-        parent.addView(row, index, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            tutorialDp(context, 130),
-        ))
-        val session = CosQuickCardsSession(parent, name, storage, row)
-        session.enforce()
-        cosQuickCards[fragment] = session
-    }
-
-    private fun tutorialCardLayoutParams(context: android.content.Context) = FrameLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        tutorialDp(context, 180),
-        Gravity.TOP,
-    ).apply {
-        leftMargin = tutorialDp(context, 12)
-        rightMargin = tutorialDp(context, 12)
-        topMargin = tutorialDp(context, 18)
-    }
-
-    private fun compactVersionCardSpacer(params: ViewGroup.LayoutParams, height: Int): ViewGroup.LayoutParams = when (params) {
-        is LinearLayout.LayoutParams -> LinearLayout.LayoutParams(params).apply { this.height = height }
-        is FrameLayout.LayoutParams -> FrameLayout.LayoutParams(params).apply { this.height = height }
-        is ViewGroup.MarginLayoutParams -> ViewGroup.MarginLayoutParams(params).apply { this.height = height }
-        else -> ViewGroup.LayoutParams(params).apply { this.height = height }
-    }
-
-    private fun tutorialDp(context: android.content.Context, value: Int): Int =
-        (value * context.resources.displayMetrics.density).toInt()
-
-    private fun tutorialDp(context: android.content.Context, value: Float): Int =
-        (value * context.resources.displayMetrics.density).roundToInt()
 
     private fun fragmentActivity(fragment: Any): Activity? = runCatching {
         fragment.javaClass.getMethod("getActivity").invoke(fragment) as? Activity
@@ -489,16 +268,6 @@ object SettingsAppearanceApplier {
 
     private fun isCustomDeviceCardEnabled(context: android.content.Context): Boolean =
         SettingsAppearanceSources.query(context, APPEARANCE_SLOT_DEVICE_IMAGE).deviceInterfaceStyle != DEVICE_INTERFACE_STYLE_SYSTEM
-
-    private fun harmonyCardLayoutParams(context: android.content.Context) = FrameLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        tutorialDp(context, 243),
-        Gravity.TOP,
-    ).apply {
-        leftMargin = tutorialDp(context, 12)
-        rightMargin = tutorialDp(context, 12)
-        topMargin = tutorialDp(context, 18)
-    }
 
     fun applyLogoDrawable(view: ImageView, drawable: Drawable) {
         internalLogo.set(true)
@@ -700,304 +469,6 @@ object SettingsAppearanceApplier {
             view.scaleX = originalScaleX
             view.scaleY = originalScaleY
             restoreMaterial()
-        }
-    }
-
-    private class TutorialCardSession(
-        private val host: FrameLayout,
-        private val spacer: View?,
-        private val spacerLayoutParams: ViewGroup.LayoutParams?,
-        private val animationSource: View?,
-        val view: TutorialDeviceCardView,
-        val key: String,
-    ) {
-        private val originalHostBackground = host.background
-        private val originalChildVisibility = List(host.childCount) { index ->
-            host.getChildAt(index)
-        }.filter { it !== view }.map { it to it.visibility }
-        private val animationSync = ViewTreeObserver.OnPreDrawListener {
-            syncCardAnimation()
-            true
-        }
-        private var animationListenerAttached = false
-
-        fun matches(host: FrameLayout, spacer: View?): Boolean =
-            this.host === host && this.spacer === spacer && view.parent === host
-
-        fun enforceTutorialLayout(context: android.content.Context) {
-            // Keep MiuiVersionCard itself alive: Settings moves it while scrolling.
-            // Only its stock children are hidden, so the imported logo and card are
-            // the sole visible content while all presenter references stay valid.
-            host.background = null
-            view.visibility = View.VISIBLE
-            originalChildVisibility.forEach { (child, _) -> child.visibility = View.INVISIBLE }
-            attachAnimationSync()
-            syncCardAnimation()
-            val original = spacerLayoutParams ?: return
-            spacer?.layoutParams = SettingsAppearanceApplier.compactVersionCardSpacer(
-                original,
-                SettingsAppearanceApplier.tutorialDp(context, 211),
-            )
-        }
-
-        fun remove() {
-            if (animationListenerAttached) {
-                runCatching { host.viewTreeObserver.removeOnPreDrawListener(animationSync) }
-                animationListenerAttached = false
-            }
-            host.removeView(view)
-            host.background = originalHostBackground
-            originalChildVisibility.forEach { (child, visibility) -> child.visibility = visibility }
-            spacer?.let { view -> spacerLayoutParams?.let { view.layoutParams = it } }
-        }
-
-        private fun attachAnimationSync() {
-            if (animationListenerAttached) return
-            host.viewTreeObserver.addOnPreDrawListener(animationSync)
-            animationListenerAttached = true
-        }
-
-        private fun syncCardAnimation() {
-            val source = animationSource ?: return
-            view.translationX = source.translationX
-            view.translationY = source.translationY
-            view.scaleX = source.scaleX
-            view.scaleY = source.scaleY
-            view.alpha = source.alpha
-        }
-    }
-
-    private class HarmonyCardSession(
-        private val host: FrameLayout,
-        private val spacer: View?,
-        private val spacerLayoutParams: ViewGroup.LayoutParams?,
-        private val animationSource: View?,
-        val view: HarmonyUpdateCardView,
-        val key: String,
-    ) {
-        private val originalHostBackground = host.background
-        private val originalChildVisibility = List(host.childCount) { index -> host.getChildAt(index) }
-            .filter { it !== view }
-            .map { it to it.visibility }
-        private val animationSync = ViewTreeObserver.OnPreDrawListener { sync(); true }
-        private var attached = false
-
-        fun matches(host: FrameLayout, spacer: View?): Boolean = this.host === host && this.spacer === spacer && view.parent === host
-
-        fun enforce(context: android.content.Context) {
-            host.background = null
-            view.visibility = View.VISIBLE
-            view.attach()
-            originalChildVisibility.forEach { (child, _) -> child.visibility = View.INVISIBLE }
-            if (!attached) {
-                host.viewTreeObserver.addOnPreDrawListener(animationSync)
-                attached = true
-            }
-            sync()
-            val original = spacerLayoutParams ?: return
-            spacer?.layoutParams = SettingsAppearanceApplier.compactVersionCardSpacer(original, SettingsAppearanceApplier.tutorialDp(context, 274))
-        }
-
-        fun remove() {
-            view.dispose()
-            if (attached) runCatching { host.viewTreeObserver.removeOnPreDrawListener(animationSync) }
-            attached = false
-            host.removeView(view)
-            host.background = originalHostBackground
-            originalChildVisibility.forEach { (child, visibility) -> child.visibility = visibility }
-            spacer?.let { spacerLayoutParams?.let { params -> it.layoutParams = params } }
-        }
-
-        private fun sync() {
-            val source = animationSource ?: return
-            view.translationX = source.translationX
-            view.translationY = source.translationY
-            view.scaleX = source.scaleX
-            view.scaleY = source.scaleY
-            view.alpha = source.alpha
-        }
-    }
-
-    private class CosTopCardSession(
-        private val host: FrameLayout,
-        private val spacer: View?,
-        private val spacerLayoutParams: ViewGroup.LayoutParams?,
-        private val animationSource: View?,
-        val view: CosTopCardView,
-        val key: String,
-    ) {
-        private val originalHostBackground = host.background
-        private val originalChildVisibility = List(host.childCount) { index -> host.getChildAt(index) }
-            .filter { it !== view }
-            .map { it to it.visibility }
-        private val animationSync = ViewTreeObserver.OnPreDrawListener {
-            syncCardAnimation()
-            true
-        }
-        private var animationListenerAttached = false
-
-        fun matches(host: FrameLayout, spacer: View?): Boolean =
-            this.host === host && this.spacer === spacer && view.parent === host
-
-        fun enforce(context: android.content.Context) {
-            host.background = null
-            view.visibility = View.VISIBLE
-            originalChildVisibility.forEach { (child, _) -> child.visibility = View.INVISIBLE }
-            if (!animationListenerAttached) {
-                host.viewTreeObserver.addOnPreDrawListener(animationSync)
-                animationListenerAttached = true
-            }
-            syncCardAnimation()
-            val original = spacerLayoutParams ?: return
-            spacer?.layoutParams = SettingsAppearanceApplier.compactVersionCardSpacer(
-                original,
-                SettingsAppearanceApplier.tutorialDp(context, 211),
-            )
-        }
-
-        fun remove() {
-            if (animationListenerAttached) {
-                runCatching { host.viewTreeObserver.removeOnPreDrawListener(animationSync) }
-                animationListenerAttached = false
-            }
-            host.removeView(view)
-            host.background = originalHostBackground
-            originalChildVisibility.forEach { (child, visibility) -> child.visibility = visibility }
-            spacer?.let { spacerView -> spacerLayoutParams?.let { spacerView.layoutParams = it } }
-        }
-
-        private fun syncCardAnimation() {
-            val source = animationSource ?: return
-            view.translationX = source.translationX
-            view.translationY = source.translationY
-            view.scaleX = source.scaleX
-            view.scaleY = source.scaleY
-            view.alpha = source.alpha
-        }
-    }
-
-    private class CosQuickCardsSession(
-        private val parent: LinearLayout,
-        private val name: View,
-        private val storage: View,
-        private val view: CosQuickCardsView,
-    ) {
-        private val originalBackground = parent.background
-        private val originalChildVisibility = List(parent.childCount) { index ->
-            parent.getChildAt(index)
-        }.filter { child -> child !== view }.map { child -> child to child.visibility }
-        // 参数大卡（device_params）由动态卡面路由（CardSurfaceDetector）接管，
-        // 与页面内其它原生卡片一致走「卡片样式」三种材质，这里不再写死玻璃色。
-
-        fun matches(parent: LinearLayout, name: View, storage: View): Boolean =
-            this.parent === parent && this.name === name && this.storage === storage && view.parent === parent
-
-        fun enforce() {
-            parent.background = null
-            originalChildVisibility.forEach { (child, _) -> child.visibility = View.GONE }
-            view.attach()
-        }
-
-        fun remove() {
-            view.dispose()
-            (view.parent as? ViewGroup)?.removeView(view)
-            parent.background = originalBackground
-            originalChildVisibility.forEach { (child, visibility) -> child.visibility = visibility }
-        }
-    }
-
-    private class DeviceInfoCardsSession(
-        private val parent: LinearLayout,
-        private val name: View,
-        private val storage: View,
-        private val view: DeviceInfoCardsView,
-    ) {
-        private val originalBackground = parent.background
-        private val originalChildVisibility = List(parent.childCount) { index ->
-            parent.getChildAt(index)
-        }.filter { child -> child !== view }.map { child -> child to child.visibility }
-
-        fun matches(parent: LinearLayout, name: View, storage: View): Boolean =
-            this.parent === parent && this.name === name && this.storage === storage && view.parent === parent
-
-        fun enforce() {
-            // The stock container also owns the OS/guarantee rows and a shared
-            // background. Hide all of it while retaining the name/storage views
-            // as live data sources for the replacement cards.
-            parent.background = null
-            originalChildVisibility.forEach { (child, _) -> child.visibility = View.GONE }
-            view.attach()
-        }
-
-        fun remove() {
-            view.dispose()
-            (view.parent as? ViewGroup)?.removeView(view)
-            parent.background = originalBackground
-            originalChildVisibility.forEach { (child, visibility) -> child.visibility = visibility }
-        }
-    }
-
-    private class HarmonyInfoCardsSession(
-        private val parent: LinearLayout,
-        private val name: View,
-        private val storage: View,
-        val view: HarmonyInfoCardsView,
-        private val key: String,
-    ) {
-        private val scrollbarStates = HashMap<View, Pair<Boolean, Boolean>>()
-        private val originalBackground = parent.background
-        private val originalChildVisibility = List(parent.childCount) { index -> parent.getChildAt(index) }
-            .filter { it !== view }
-            .map { it to it.visibility }
-
-        init {
-            // The replacement row lives inside the page's NestedScrollView.
-            // Hide scrollbars on that ancestor as well as on the original
-            // card subtree; otherwise the first layout can flash the stock
-            // scrollbar when the row is inserted.
-            captureAndHideScrollbars(parent)
-            var ancestor = parent.parent
-            while (ancestor is View) {
-                captureAndHideScrollbars(ancestor)
-                ancestor = ancestor.parent
-            }
-        }
-
-        fun matches(parent: LinearLayout, name: View, storage: View, key: String): Boolean =
-            this.parent === parent && this.name === name && this.storage === storage && this.key == key && view.parent === parent
-
-        fun enforce() {
-            parent.background = null
-            originalChildVisibility.forEach { (child, _) -> child.visibility = View.GONE }
-            hideScrollbars(parent)
-            view.attach()
-        }
-
-        fun remove() {
-            view.dispose()
-            (view.parent as? ViewGroup)?.removeView(view)
-            parent.background = originalBackground
-            originalChildVisibility.forEach { (child, visibility) -> child.visibility = visibility }
-            scrollbarStates.forEach { (child, state) ->
-                child.isVerticalScrollBarEnabled = state.first
-                child.isHorizontalScrollBarEnabled = state.second
-            }
-        }
-
-        private fun captureAndHideScrollbars(target: View) {
-            scrollbarStates.putIfAbsent(target, target.isVerticalScrollBarEnabled to target.isHorizontalScrollBarEnabled)
-            hideScrollbars(target)
-            if (target is ViewGroup) {
-                for (index in 0 until target.childCount) captureAndHideScrollbars(target.getChildAt(index))
-            }
-        }
-
-        private fun hideScrollbars(target: View) {
-            target.isVerticalScrollBarEnabled = false
-            target.isHorizontalScrollBarEnabled = false
-            if (target is ViewGroup) {
-                for (index in 0 until target.childCount) hideScrollbars(target.getChildAt(index))
-            }
         }
     }
 

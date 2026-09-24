@@ -1,19 +1,14 @@
-package com.ciallo.hyperbackground.appearance
+package com.ciallo.hyperbackground.mydevice
 
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.Paint
-import android.graphics.RenderEffect
 import android.graphics.RectF
+import android.graphics.RenderEffect
 import android.graphics.Shader
-import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.Drawable
-import android.graphics.ImageDecoder
-import android.util.TypedValue
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -22,8 +17,10 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.ciallo.hyperbackground.appearance.LogoDrawableLoader
+import com.ciallo.hyperbackground.appearance.SettingsAppearanceSource
 import com.ciallo.hyperbackground.dynamic.card.DynamicCardBackgroundHook
-import java.util.Locale
+import android.graphics.ImageDecoder
 import kotlin.math.roundToInt
 
 /** HarmonyOS-like replacement cards used by the independent style 2 mode. */
@@ -39,7 +36,7 @@ class HarmonyUpdateCardView(
     private val customText = TextView(context)
     private val content = LinearLayout(context)
     private val versionListener = android.view.ViewTreeObserver.OnPreDrawListener {
-        val current = sourceText(updateSource, "miui_version_text")
+        val current = textOrSelf(updateSource, "miui_version_text")
         if (version.text?.toString() != current) version.text = current
         true
     }
@@ -104,7 +101,7 @@ class HarmonyUpdateCardView(
         val secondary = if (night) 0xB8E9ECF5.toInt() else 0x991B1D23.toInt()
         version.setTextColor(textColor(style.style2VersionColorMode, secondary))
         version.textSize = 14f
-        version.text = sourceText(updateSource, "miui_version_text")
+        version.text = textOrSelf(updateSource, "miui_version_text")
         logo.setImageDrawable(
             logoSource.takeIf { it.exists }?.let { LogoDrawableLoader.load(context, it) }
                 ?: loadBuiltInLogo(),
@@ -195,12 +192,6 @@ class HarmonyUpdateCardView(
         versionListenerAttached = false
     }
 
-    private fun sourceText(source: View?, idName: String): String {
-        val id = resources.getIdentifier(idName, "id", context.packageName)
-        val target = source?.findViewById<View>(id) ?: source
-        return (target as? TextView)?.text?.toString().orEmpty()
-    }
-
     private fun loadBuiltInLogo(): Drawable? {
         val names = listOf("xiaomi_os_logo", "xiaomi_os_logo_new", "provision_os_logo", "provision_os_logo_big")
         return names.asSequence()
@@ -210,10 +201,6 @@ class HarmonyUpdateCardView(
             }
             .firstOrNull()
     }
-
-    private fun isNight() = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
-    private fun dp(value: Float): Float = value * resources.displayMetrics.density
 }
 
 class HarmonyInfoCardsView(
@@ -258,10 +245,10 @@ class HarmonyInfoCardsView(
         background = null
         listOf(nameTitle, storageTitle).forEach { styleText(it, primary, 16f) }
         listOf(nameSummary, storageSummary).forEach { styleText(it, secondary, 14f) }
-        nameTitle.text = sourceText(nameSource, "title").ifBlank { "设备名称" }
-        nameSummary.text = sourceText(nameSource, "summary")
-        storageTitle.text = sourceText(storageSource, "title").ifBlank { "存储空间" }
-        storageSummary.text = sourceText(storageSource, "summary")
+        nameTitle.text = childText(nameSource, "title").ifBlank { "设备名称" }
+        nameSummary.text = childText(nameSource, "summary")
+        storageTitle.text = childText(storageSource, "title").ifBlank { "存储空间" }
+        storageSummary.text = childText(storageSource, "summary")
         ring.progress = storageFraction(storageSummary.text?.toString().orEmpty())
         val imageKey = imageSource.cacheKey()
         if (imageKey != decodedImageKey) {
@@ -346,33 +333,9 @@ class HarmonyInfoCardsView(
         view.ellipsize = android.text.TextUtils.TruncateAt.END
     }
 
-    private fun sourceText(source: View, idName: String): String {
-        val id = resources.getIdentifier(idName, "id", context.packageName)
-        return (source.findViewById<View>(id) as? TextView)?.text?.toString().orEmpty()
-    }
-
-    private fun storageFraction(summary: String): Int {
-        val values = STORAGE_VALUE.findAll(summary).take(2).mapNotNull { match ->
-            val raw = match.groupValues[1].replace(',', '.').toFloatOrNull() ?: return@mapNotNull null
-            val multiplier = when (match.groupValues[2].uppercase(Locale.ROOT).firstOrNull()) {
-                'T' -> 1024f * 1024f
-                'G' -> 1024f
-                'M' -> 1f
-                'K' -> 1f / 1024f
-                else -> 1f
-            }
-            raw * multiplier
-        }.toList()
-        if (values.size < 2 || values[1] <= 0f) return 0
-        return (values[0] / values[1] * 1000f).roundToInt().coerceIn(0, 1000)
-    }
-
     private fun decode(source: SettingsAppearanceSource): Drawable? = runCatching {
         ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.contentResolver, source.uri))
     }.getOrNull()
-
-    private fun isNight() = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
 
     private class StorageRingView(context: Context) : View(context) {
         var progress: Int = 0
@@ -386,10 +349,5 @@ class HarmonyInfoCardsView(
             stroke.color = if (isNight()) 0xFFB9D4FF.toInt() else 0xFF4D83E8.toInt()
             canvas.drawArc(bounds, -90f, 360f * progress / 1000f, false, stroke)
         }
-        private fun isNight() = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-    }
-
-    private companion object {
-        val STORAGE_VALUE = Regex("(\\d+(?:[.,]\\d+)?)\\s*([KMGTkmgt])?[Bb]?")
     }
 }

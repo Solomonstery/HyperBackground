@@ -1,12 +1,7 @@
-package com.ciallo.hyperbackground.appearance
+package com.ciallo.hyperbackground.mydevice
 
 import android.app.WallpaperManager
 import android.content.Context
-import android.content.res.Configuration
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Outline
-import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -19,13 +14,15 @@ import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
-import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextClock
 import android.widget.TextView
+import com.ciallo.hyperbackground.appearance.COS_CARD_DEFAULT_SIGNATURE
+import com.ciallo.hyperbackground.appearance.COS_CARD_DEFAULT_SUBTITLE
+import com.ciallo.hyperbackground.appearance.COS_CARD_DEFAULT_TITLE
+import com.ciallo.hyperbackground.appearance.SettingsAppearanceSource
 import com.ciallo.hyperbackground.dynamic.card.DynamicCardBackgroundHook
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -103,7 +100,7 @@ class CosTopCardView(
         phone.addView(buildClock(12.6f, "EEE", "EEE"), frameWrap(Gravity.TOP or Gravity.START, 7, 44))
 
         val border = GradientDrawable().apply {
-            setColor(Color.TRANSPARENT)
+            setColor(android.graphics.Color.TRANSPARENT)
             cornerRadius = dp(14).toFloat()
             setStroke(dp(3), 0xccffffff.toInt())
         }
@@ -168,26 +165,6 @@ class CosTopCardView(
             drawable.constantState?.newDrawable()?.mutate() ?: drawable
         }
     }.getOrNull()
-
-    private fun isNight() =
-        resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-
-    private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
-
-    companion object {
-        internal fun monetAccent(context: Context): Int = runCatching {
-            context.getColor(android.R.color.system_accent1_500)
-        }.getOrDefault(0xff7183aa.toInt())
-    }
-}
-
-internal fun View.clipRounded(radius: Float) {
-    clipToOutline = true
-    outlineProvider = object : ViewOutlineProvider() {
-        override fun getOutline(view: View, outline: Outline) {
-            outline.setRoundRect(0, 0, view.width, view.height, radius)
-        }
-    }
 }
 
 /**
@@ -317,33 +294,28 @@ class CosQuickCardsView(
             it.maxLines = 2
             it.ellipsize = android.text.TextUtils.TruncateAt.END
         }
-        val accent = CosTopCardView.monetAccent(context)
+        val accent = monetAccent(context)
         glyph.setAccent(accent)
         storageBar.setAccent(accent)
     }
 
     /** 每帧只更新文本与进度，零对象分配。 */
     private fun updateData() {
-        nameTitle.text = sourceText(nameSource, "title").ifBlank { "设备名称" }
+        nameTitle.text = childText(nameSource, "title").ifBlank { "设备名称" }
         nameValue.text = resolveDeviceName()
-        storageTitle.text = sourceText(storageSource, "title").ifBlank { "存储空间" }
-        val stockStorage = sourceText(storageSource, "summary")
+        storageTitle.text = childText(storageSource, "title").ifBlank { "存储空间" }
+        val stockStorage = childText(storageSource, "summary")
         storageValue.text = if (stockStorage.contains("GB")) stockStorage else computeStorageText()
         storageBar.ratio = computeStorageRatio()
     }
 
     private fun resolveDeviceName(): String {
-        sourceText(nameSource, "summary").takeIf { it.isNotBlank() }?.let { return it }
+        childText(nameSource, "summary").takeIf { it.isNotBlank() }?.let { return it }
         runCatching {
             AndroidSettings.Global.getString(context.contentResolver, AndroidSettings.Global.DEVICE_NAME)
                 ?.takeIf { it.isNotBlank() }?.let { return it.trim() }
         }
         return Build.MODEL ?: "Android"
-    }
-
-    private fun sourceText(source: View, idName: String): String {
-        val id = resources.getIdentifier(idName, "id", context.packageName)
-        return (source.findViewById<View>(id) as? TextView)?.text?.toString()?.trim().orEmpty()
     }
 
     private fun computeStorageText(): String = runCatching {
@@ -363,22 +335,17 @@ class CosQuickCardsView(
         val total = stat.totalBytes
         if (total <= 0) 0f else (total - stat.availableBytes).toFloat() / total.toFloat()
     }.getOrDefault(0f).coerceIn(0f, 1f)
-
-    private fun isNight() =
-        resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-
-    private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
 }
 
 /** 强调色圆底 + 白色手机 glyph，对应源码 PhoneGlyph。 */
 private class PhoneGlyphView(context: Context) : View(context) {
-    private val circle = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val phone = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val cut = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val circle = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private val phone = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private val cut = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
 
     init {
-        circle.color = CosTopCardView.monetAccent(context)
-        phone.color = Color.WHITE
+        circle.color = monetAccent(context)
+        phone.color = android.graphics.Color.WHITE
         cut.color = circle.color
     }
 
@@ -388,7 +355,7 @@ private class PhoneGlyphView(context: Context) : View(context) {
         invalidate()
     }
 
-    override fun onDraw(canvas: Canvas) {
+    override fun onDraw(canvas: android.graphics.Canvas) {
         super.onDraw(canvas)
         val cx = width / 2f
         val cy = height / 2f
@@ -403,8 +370,8 @@ private class PhoneGlyphView(context: Context) : View(context) {
 
 /** 存储横条，track 为强调色压暗，fill 为强调色，对应源码 StorageBar。 */
 private class StorageBarView(context: Context) : View(context) {
-    private val track = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val track = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private val fill = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
     var ratio: Float = 0f
         set(value) {
             field = value.coerceIn(0f, 1f)
@@ -412,7 +379,7 @@ private class StorageBarView(context: Context) : View(context) {
         }
 
     init {
-        setAccent(CosTopCardView.monetAccent(context))
+        setAccent(monetAccent(context))
     }
 
     fun setAccent(accent: Int) {
@@ -421,7 +388,7 @@ private class StorageBarView(context: Context) : View(context) {
         invalidate()
     }
 
-    override fun onDraw(canvas: Canvas) {
+    override fun onDraw(canvas: android.graphics.Canvas) {
         super.onDraw(canvas)
         val barHeight = resources.displayMetrics.density * 5f
         val top = (height - barHeight) / 2f
@@ -431,9 +398,9 @@ private class StorageBarView(context: Context) : View(context) {
         canvas.drawRoundRect(0f, top, right, top + barHeight, radius, radius, fill)
     }
 
-    private fun darken(color: Int, factor: Float): Int = Color.rgb(
-        (Color.red(color) * factor).roundToInt(),
-        (Color.green(color) * factor).roundToInt(),
-        (Color.blue(color) * factor).roundToInt(),
+    private fun darken(color: Int, factor: Float): Int = android.graphics.Color.rgb(
+        (android.graphics.Color.red(color) * factor).roundToInt(),
+        (android.graphics.Color.green(color) * factor).roundToInt(),
+        (android.graphics.Color.blue(color) * factor).roundToInt(),
     )
 }

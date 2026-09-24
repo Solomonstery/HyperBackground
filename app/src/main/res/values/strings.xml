@@ -203,7 +203,7 @@
     <string name="tools">Tools</string>
     <string name="restart_scope">Restart scope</string>
     <string name="restart_scope_summary">Stop hooked system processes to reload configuration</string>
-    <string name="restart_scope_confirm">Restart all module scopes now?</string>
+    <string name="restart_scope_confirm">Restart %1$d enabled scopes now?</string>
     <string name="hook_diagnostics">Hook read diagnostics</string>
     <string name="about">About</string>
     <string name="current_version">Current version %1$s</string>

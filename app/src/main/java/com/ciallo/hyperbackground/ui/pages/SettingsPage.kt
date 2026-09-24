@@ -463,12 +463,13 @@ private fun InputField(label: String, value: String, onChange: (String) -> Unit)
 @Composable
 fun RestartScopesDialog(
     activity: MainActivity,
+    targets: List<String>,
     show: Boolean,
     onDismissRequest: () -> Unit,
 ) {
     WindowDialog(
         title = stringResource(R.string.restart_scope),
-        summary = stringResource(R.string.restart_scope_confirm),
+        summary = stringResource(R.string.restart_scope_confirm, targets.size),
         show = show,
         onDismissRequest = onDismissRequest,
     ) {
@@ -488,20 +489,23 @@ fun RestartScopesDialog(
                 colors = ButtonDefaults.textButtonColorsPrimary(),
                 onClick = {
                     dismiss?.invoke()
-                    restartScopes(activity)
+                    restartScopes(activity, targets)
                 },
             )
         }
     }
 }
 
-private fun restartScopes(activity: MainActivity) {
+private fun restartScopes(activity: MainActivity, packages: List<String>) {
     android.widget.Toast.makeText(activity, R.string.root_requested, android.widget.Toast.LENGTH_SHORT).show()
     thread {
-        val success = SCOPE_PACKAGES.map { runCatching { RootShell.run("am force-stop $it").success }.getOrDefault(false) }.all { it }
+        val success = packages.map { runCatching { RootShell.run("am force-stop $it").success }.getOrDefault(false) }.all { it }
         // com.android.phone 是常驻电话进程，am force-stop 有时无法彻底结束，
         // 追加一次按进程名 kill 兜底，确保它被真正重启以重新加载配置。
-        runCatching { RootShell.run("pkill -9 -f ${BackgroundContract.PACKAGE_PHONE}") }
+        // 只在电话进程确实在重启名单里时才兜底，避免杀掉用户已关闭的作用域。
+        if (BackgroundContract.PACKAGE_PHONE in packages) {
+            runCatching { RootShell.run("pkill -9 -f ${BackgroundContract.PACKAGE_PHONE}") }
+        }
         activity.runOnUiThread {
             android.widget.Toast.makeText(
                 activity,
@@ -511,18 +515,6 @@ private fun restartScopes(activity: MainActivity) {
         }
     }
 }
-
-private val SCOPE_PACKAGES = listOf(
-    BackgroundContract.PACKAGE_SETTINGS,
-    BackgroundContract.PACKAGE_MILINK,
-    BackgroundContract.PACKAGE_PHONE,
-    BackgroundContract.PACKAGE_ACCOUNT,
-    BackgroundContract.PACKAGE_THEME_MANAGER,
-    BackgroundContract.PACKAGE_HOME,
-    BackgroundContract.PACKAGE_SECURITY_CENTER,
-    BackgroundContract.PACKAGE_POWER_KEEPER,
-    BackgroundContract.PACKAGE_MI_SETTINGS,
-)
 
 private const val DEFAULT_API = "https://uapis.cn/api/v1/saying"
 private const val DEFAULT_KEY = "text"

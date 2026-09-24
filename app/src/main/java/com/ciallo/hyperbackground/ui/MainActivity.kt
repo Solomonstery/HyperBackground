@@ -74,11 +74,13 @@ import com.ciallo.hyperbackground.ui.pages.DonatePage
 import com.ciallo.hyperbackground.ui.pages.DeviceCardPage
 import com.ciallo.hyperbackground.ui.pages.DeviceInfoPage
 import com.ciallo.hyperbackground.ui.pages.DynamicMaterialPage
+import com.ciallo.hyperbackground.ui.pages.DECLARED_SCOPE_PACKAGES
 import com.ciallo.hyperbackground.ui.pages.HomePage
 import com.ciallo.hyperbackground.ui.pages.SettingsPage
 import com.ciallo.hyperbackground.ui.pages.SettingsCardMaterialPage
 import com.ciallo.hyperbackground.ui.pages.RandomBackgroundPage
 import com.ciallo.hyperbackground.ui.pages.RestartScopesDialog
+import com.ciallo.hyperbackground.ui.pages.readScopePackages
 import com.ciallo.hyperbackground.ui.pages.UpdateAvailableDialog
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
@@ -534,6 +536,16 @@ class MainActivity : ComponentActivity() {
             null
         }
         var showRestartDialog by remember { mutableStateOf(false) }
+        var restartTargets by remember { mutableStateOf(emptyList<String>()) }
+        // 「重启」只作用于当前已启用的作用域：LSPosed 的实际作用域扣除「软件作用域」里被关掉的包。
+        // 读取要走 binder，所以先把名单算好再弹窗，避免文案先闪一个 0。
+        val requestRestart: () -> Unit = {
+            scope.launch {
+                val packages = readScopePackages().ifEmpty { DECLARED_SCOPE_PACKAGES }
+                restartTargets = packages.filterNot { it in appearance.disabledAppScopes }
+                showRestartDialog = true
+            }
+        }
         Scaffold(
             containerColor = Color.Transparent,
             bottomBar = {
@@ -628,7 +640,7 @@ class MainActivity : ComponentActivity() {
                             title = getString(R.string.nav_home),
                             bottomPadding = bottomPadding,
                             actions = {
-                                IconButton(onClick = { showRestartDialog = true }) {
+                                IconButton(onClick = requestRestart) {
                                     Icon(MiuixIcons.Refresh, contentDescription = getString(R.string.restart_scope))
                                 }
                             },
@@ -644,7 +656,7 @@ class MainActivity : ComponentActivity() {
                             title = getString(R.string.nav_settings),
                             bottomPadding = bottomPadding,
                             actions = {
-                                IconButton(onClick = { showRestartDialog = true }) {
+                                IconButton(onClick = requestRestart) {
                                     Icon(MiuixIcons.Refresh, contentDescription = getString(R.string.restart_scope))
                                 }
                             },
@@ -694,6 +706,7 @@ class MainActivity : ComponentActivity() {
             }
             RestartScopesDialog(
                 activity = this@MainActivity,
+                targets = restartTargets,
                 show = showRestartDialog,
                 onDismissRequest = { showRestartDialog = false },
             )

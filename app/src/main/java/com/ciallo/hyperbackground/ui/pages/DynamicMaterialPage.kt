@@ -4,8 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -20,7 +18,6 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
-import top.yukonga.miuix.kmp.icon.extended.All
 
 /**
  * 「动态适配」主页面：卡片背景样式 + 柔光参数入口 + 组件/软件作用域入口。
@@ -56,13 +53,6 @@ fun DynamicMaterialPage(
                 BasicComponent(
                     title = stringResource(R.string.component_scope_title),
                     summary = stringResource(R.string.component_scope_summary),
-                    startAction = {
-                        Icon(
-                            modifier = Modifier.padding(end = 16.dp).size(26.dp),
-                            imageVector = MiuixIcons.All,
-                            contentDescription = null,
-                        )
-                    },
                     endActions = {
                         Icon(imageVector = MiuixIcons.Basic.ArrowRight, contentDescription = null)
                     },

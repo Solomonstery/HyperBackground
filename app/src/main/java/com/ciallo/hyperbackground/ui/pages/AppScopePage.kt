@@ -77,15 +77,8 @@ fun AppScopePage(
     }
 
     LaunchedEffect(reloadToken) {
-        val service = HyperBackgroundApp.xposedService
-        if (service == null) {
-            scopedApps = emptyList()
-            return@LaunchedEffect
-        }
-        scopedApps = withContext(Dispatchers.IO) {
-            val packages = runCatching { service.getScope() }.getOrNull().orEmpty()
-            loadScopedApps(context, packages)
-        }
+        val packages = readScopePackages()
+        scopedApps = withContext(Dispatchers.IO) { loadScopedApps(context, packages) }
     }
 
     val apps = scopedApps

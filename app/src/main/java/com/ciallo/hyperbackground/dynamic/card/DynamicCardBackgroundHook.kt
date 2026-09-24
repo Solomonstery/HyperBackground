@@ -653,9 +653,9 @@ internal object DynamicCardBackgroundHook {
     /**
      * 动态路径用的分组绘制方法定位：**不看方法名**（R8 会改），只看签名——
      * 非抽象、非静态，首参是 `Canvas`、次参是某个 `View` 子类（即 `RecyclerView`），
-     * 后面还有两个参数（State、Adapter）；只包裹真正的分组绘制方法，
-     * 不重复包裹其外层 onDraw。安全中心的 RecyclerView.Adapter 类名也被 R8 压缩，
-     * 因此不能按 `RecyclerView$Adapter` 字面名查找。
+     * 最后一个参数是该 RecyclerView 的 Adapter。MIUIX 有 (Canvas, RecyclerView,
+     * State, Adapter) 和 (Canvas, RecyclerView, Adapter) 两种绘制入口；按 getAdapter()
+     * 的返回类型识别 Adapter，而不是依赖被 R8 压缩的内部类名。
      *
      * 这个形状把同一层里的 `onDraw(Canvas)` / `dispatchDraw(Canvas)` 这类无关重载排除在外，
      * 同时不依赖 `calculateGroupRectAndDraw` 这种会被压缩掉的名字。
@@ -666,9 +666,13 @@ internal object DynamicCardBackgroundHook {
             .filter { method ->
                 !Modifier.isAbstract(method.modifiers) &&
                     !Modifier.isStatic(method.modifiers) &&
-                    method.parameterCount == 4 &&
+                    (method.parameterCount == 3 || method.parameterCount == 4) &&
                     method.parameterTypes[0] == Canvas::class.java &&
-                    View::class.java.isAssignableFrom(method.parameterTypes[1])
+                    View::class.java.isAssignableFrom(method.parameterTypes[1]) &&
+                    method.parameterTypes[1].methods.any { getter ->
+                        getter.name == "getAdapter" && getter.parameterCount == 0 &&
+                            getter.returnType.isAssignableFrom(method.parameterTypes.last())
+                    }
             }
             .distinctBy { it.parameterTypes.toList() }
             .toList()
@@ -919,9 +923,8 @@ internal object DynamicCardBackgroundHook {
     /**
      * 结构发现：只知道「这是个分组装饰器」，其余全靠形状推断。
      *
-     * - drawable 字段：类型为 `Drawable` 的那个。若有多个（例如另配一张阴影 drawable），
-     *   优先取类型与裁剪方法第 4 个参数**完全一致**的那个——那才是被裁剪的卡面；
-     * - paint 字段：类型为 `Paint` 的那个（可空，MIUIX 用它给卡面着色）；
+     * - drawable 字段：优先取子类持有的分组卡面，避免选到基类的分隔线 Drawable；
+     * - paint 字段：优先取裁剪基类持有的分组画笔，跳过子类的选中态遮罩画笔；
      * - 工厂方法：返回同一个 drawable 类型、参数 0 个或 1 个 `Context` 的那个
      *   （关材质或切主题时用它让系统重新解析原生 drawable）；
      * - contextField：类型为 `Context` 的字段，绘制方法取不到宿主 View 时的兜底。
@@ -932,7 +935,10 @@ internal object DynamicCardBackgroundHook {
         val clipDrawableType = clipMethodOf(type)?.parameterTypes?.getOrNull(3)
         val drawableCandidates = fields.filter { Drawable::class.java.isAssignableFrom(it.type) }
         val drawableField =
-            (drawableCandidates.firstOrNull { it.type == clipDrawableType } ?: drawableCandidates.firstOrNull())
+            (drawableCandidates.firstOrNull { it.declaringClass == type && it.type == clipDrawableType }
+                ?: drawableCandidates.firstOrNull { it.declaringClass == type }
+                ?: drawableCandidates.firstOrNull { it.type == clipDrawableType }
+                ?: drawableCandidates.firstOrNull())
                 ?.apply { isAccessible = true } ?: return null
         // MIUIX PreferenceFragment's decoration has a second Paint in the subclass for
         // checkable-row masks. The group fill for ColorDrawable is painted by the
@@ -961,13 +967,13 @@ internal object DynamicCardBackgroundHook {
 
     /**
      * 分组卡的裁剪入口：`void (Canvas, RectF, Path, Drawable)`。
-     * 方法名会被 R8 压掉（设置里是 `clipDrawableRoundRect`，安全中心里是 `g`），签名不会。
+     * 不依赖方法名或是否 static：短信把它放在基类的静态方法中。
      */
     private fun clipMethodOf(type: Class<*>): Method? =
         generateSequence<Class<*>>(type) { it.superclass }
             .flatMap { it.declaredMethods.asSequence() }
             .firstOrNull { method ->
-                method.parameterCount == 4 &&
+                method.returnType == Void.TYPE && method.parameterCount == 4 &&
                     method.parameterTypes[0] == Canvas::class.java &&
                     method.parameterTypes[1] == RectF::class.java &&
                     method.parameterTypes[2] == Path::class.java &&

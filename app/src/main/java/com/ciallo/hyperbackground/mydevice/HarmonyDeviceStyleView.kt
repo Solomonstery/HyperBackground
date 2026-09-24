@@ -21,8 +21,6 @@ import com.ciallo.hyperbackground.appearance.LogoDrawableLoader
 import com.ciallo.hyperbackground.appearance.SettingsAppearanceSource
 import com.ciallo.hyperbackground.dynamic.card.DynamicCardBackgroundHook
 import android.graphics.ImageDecoder
-import com.ciallo.hyperbackground.appearance.style2TextHorizontalOffsetForAlignment
-import com.ciallo.hyperbackground.appearance.style2TextVerticalOffsetForAlignment
 import kotlin.math.roundToInt
 
 /** HarmonyOS-like replacement cards used by the independent style 2 mode. */
@@ -171,8 +169,18 @@ class HarmonyUpdateCardView(
             }
             customText.gravity = gravity or Gravity.CENTER_VERTICAL
             customText.layoutParams = LayoutParams(-1, dp(36), gravity or Gravity.CENTER_VERTICAL)
-            customText.translationX = dp(92f) * style.style2TextHorizontalOffsetForAlignment().coerceIn(-120, 120) / 60f
-            customText.translationY = -dp(92f) * style.style2TextVerticalOffsetForAlignment().coerceIn(-120, 120) / 60f
+            val horizontalOffset = when (alignment) {
+                1 -> style.style2TextHorizontalOffsetLeft
+                2 -> style.style2TextHorizontalOffsetRight
+                else -> style.style2TextHorizontalOffsetCenter
+            }
+            val verticalOffset = when (alignment) {
+                1 -> style.style2TextVerticalOffsetLeft
+                2 -> style.style2TextVerticalOffsetRight
+                else -> style.style2TextVerticalOffsetCenter
+            }
+            customText.translationX = dp(92f) * horizontalOffset.coerceIn(-120, 120) / 60f
+            customText.translationY = -dp(92f) * verticalOffset.coerceIn(-120, 120) / 60f
         }
     }
 

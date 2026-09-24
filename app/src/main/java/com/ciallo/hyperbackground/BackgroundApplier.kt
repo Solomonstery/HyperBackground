@@ -1501,6 +1501,13 @@ object BackgroundApplier {
         fun refresh(activity: Activity, home: Boolean) {
             val root = observedRoot
             if (home || root == null) return
+            // Settings' preference pages own their card backgrounds. The delayed full-tree
+            // scan clears late-created cards after they appear; keep only the immediate,
+            // named page-host cleanup performed when the wallpaper becomes ready.
+            if (activity.packageName == BackgroundContract.PACKAGE_SETTINGS) {
+                removeLayoutRescan()
+                return
+            }
             sampledColors.clear()
             clearPageSurfaces(activity, root, root, 0)
             if (transparentTopBar) clearActionBarSurfaces(activity, root, 0)

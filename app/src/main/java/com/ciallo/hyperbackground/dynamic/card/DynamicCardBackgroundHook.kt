@@ -76,6 +76,8 @@ internal object DynamicCardBackgroundHook {
         private set
     private val states = WeakHashMap<Any, State>()
     private val standaloneStates = Collections.synchronizedMap(WeakHashMap<View, StandaloneState>())
+    /** Settings recommendation card owns a native rounded fill despite living inside a preference row. */
+    private val explicitStandaloneCards = Collections.synchronizedMap(WeakHashMap<View, Unit>())
     private val standaloneWrite = ThreadLocal<Boolean>()
     /**
      * 动态发现的分组装饰器类（来自 `RecyclerView.addItemDecoration`）。
@@ -124,6 +126,8 @@ internal object DynamicCardBackgroundHook {
         val originalClipToOutline: Boolean,
         var originalCardColor: ColorStateList?,
     ) {
+        var originalForeground: Drawable? = null
+        var appliedForeground: Drawable? = null
         var outlineProvider: ViewOutlineProvider? = null
         var outlineInstalled = false
         var outlineListener: View.OnLayoutChangeListener? = null
@@ -195,6 +199,10 @@ internal object DynamicCardBackgroundHook {
         if (standalone) {
             runCatching { installStandaloneCards(classLoader) }
                 .onFailure { module.log(Log.WARN, TAG, "Standalone Settings card hook unavailable", it) }
+            if (HookRuntime.targetPackage == "com.android.settings") {
+                runCatching { installSettingsRecommendationCard(classLoader) }
+                    .onFailure { module.log(Log.WARN, TAG, "Settings recommendation card hook unavailable", it) }
+            }
         }
         // 动态路由的两个入口 hook（View.onSizeChanged 补判独立卡 + RecyclerView.addItemDecoration
         // 现场发现分组装饰器）随卡片材质一起装，保证任何装卡片材质的进程（含安全中心）都带上。
@@ -345,6 +353,27 @@ internal object DynamicCardBackgroundHook {
         withStandaloneWrite { view.background = drawable }
     }
 
+    /** Bind the actual rounded `line_layout`, not the transparent preference row or its items. */
+    private fun installSettingsRecommendationCard(classLoader: ClassLoader) {
+        val type = classLoader.loadClass("com.android.settings.recommend.RecommendPreference")
+        val method = type.getDeclaredMethod("onBindView", View::class.java)
+        method.isAccessible = true
+        module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
+            .setId("dynamic-cards:settings-recommendation").intercept { chain ->
+                val result = chain.proceed()
+                val row = chain.getArg(0) as? View
+                if (row != null) {
+                    val id = row.resources.getIdentifier("line_layout", "id", "com.android.settings")
+                    val card = if (id != 0) row.findViewById<View>(id) else null
+                    if (card != null && card.background != null) {
+                        explicitStandaloneCards[card] = Unit
+                        if (card.isAttachedToWindow) card.post { applyStandalone(card) }
+                    }
+                }
+                result
+            }
+    }
+
     private fun installStandaloneCards(classLoader: ClassLoader) {
         val attach = View::class.java.declaredMethods.firstOrNull {
             it.name == "dispatchAttachedToWindow" && it.parameterCount == 2
@@ -384,6 +413,7 @@ internal object DynamicCardBackgroundHook {
                     val state = standaloneState(view)
                     restoreCardOutline(view, state)
                     state.original = view.background
+                    state.originalForeground = view.foreground
                     state.applied = null
                     state.signature = null
                     if (palette.enabledFor(HookRuntime.targetPackage) && view.isAttachedToWindow) {
@@ -397,6 +427,7 @@ internal object DynamicCardBackgroundHook {
                     val state = synchronized(standaloneStates) { standaloneStates[view] }
                     if (state != null) {
                         clearStandaloneMaterial(view, state)
+                        restoreCardOutline(view, state)
                         val stillApplied = state.applied === view.background
                         if (stillApplied) {
                             withStandaloneWrite { view.background = state.original }
@@ -449,12 +480,15 @@ internal object DynamicCardBackgroundHook {
 
         clearStandaloneMaterial(view, state)
         restoreCardOutline(view, state)
+        if (view.foreground !== state.originalForeground) state.originalForeground = view.foreground
         val dark = night && !colors.darkFollowsLight
         val density = view.resources.displayMetrics.density
         val applied = when (colors.mode) {
             CARD_BACKGROUND_COLOR -> {
                 val color = if (dark) colors.dark else colors.light
-                prepareStandaloneBackground(view, state, color, state.originalClipToOutline)
+                prepareStandaloneBackground(view, state, color, state.originalClipToOutline).also { ready ->
+                    if (ready) installCardOutline(view, state)
+                }
             }
             CARD_BACKGROUND_FROST -> {
                 val color = if (dark) colors.darkFrost else colors.lightFrost
@@ -496,6 +530,7 @@ internal object DynamicCardBackgroundHook {
             if (!prepareStandaloneBackground(view, state, Color.TRANSPARENT, state.originalClipToOutline)) {
                 setStandaloneBackground(view, ColorDrawable(Color.TRANSPARENT), state.originalClipToOutline)
             }
+            installCardOutline(view, state)
             if (!state.failureLogged) {
                 state.failureLogged = true
                 module.log(
@@ -559,7 +594,9 @@ internal object DynamicCardBackgroundHook {
 
     private fun standaloneState(view: View): StandaloneState = synchronized(standaloneStates) {
         standaloneStates.getOrPut(view) {
-            StandaloneState(view.background, view.clipToOutline, cardBackgroundColor(view))
+            StandaloneState(view.background, view.clipToOutline, cardBackgroundColor(view)).apply {
+                originalForeground = view.foreground
+            }
         }
     }
 
@@ -572,6 +609,7 @@ internal object DynamicCardBackgroundHook {
     private fun standaloneTarget(view: View): String? {
         if (!palette.enabledFor(HookRuntime.targetPackage, ComponentKeys.STANDALONE_CARD)) return null
         if (DynamicPopupMaterialHook.owns(view)) return null
+        if (explicitStandaloneCards.containsKey(view)) return CardSurfaceDetector.key(view)
         // The suspended action menu has its own material route and scope switch.
         if (view.javaClass.name == "miuix.appcompat.internal.view.menu.action.ResponsiveActionMenuView") return null
         // MIUIX search owns its material and alpha animation; do not repaint it as a card on resize.
@@ -631,11 +669,12 @@ internal object DynamicCardBackgroundHook {
 
     private fun originalCardRadius(view: View, source: Drawable?): Float? {
         val fromDrawable = source?.let { drawable ->
-            runCatching {
-                val outline = Outline()
-                drawable.getOutline(outline)
-                outline.radius.takeIf { it > 0f }
-            }.getOrNull()
+            (drawable as? GradientDrawable)?.cornerRadius?.takeIf { it > 0f }
+                ?: runCatching {
+                    val outline = Outline()
+                    drawable.getOutline(outline)
+                    outline.radius.takeIf { it > 0f }
+                }.getOrNull()
         }
         if (fromDrawable != null) return fromDrawable
         return runCatching {
@@ -649,6 +688,21 @@ internal object DynamicCardBackgroundHook {
         if (!state.outlineInstalled) {
             state.outlineProvider = view.outlineProvider
             state.outlineInstalled = true
+        }
+        // CardStateDrawable paints hover/press independently of the View background.
+        // Clone its stateful animation and keep the original for restoration.
+        val foreground = state.originalForeground
+        if (foreground?.javaClass?.name == "com.miui.support.drawable.CardStateDrawable") {
+            val rounded = cloneDrawable(view, foreground)
+            if (rounded != null && rounded !== foreground && runCatching {
+                    rounded.javaClass.getMethod("setRadius", Int::class.javaPrimitiveType!!)
+                        .invoke(rounded, radius.toInt())
+                }.isSuccess
+            ) {
+                rounded.state = view.drawableState
+                view.foreground = rounded
+                state.appliedForeground = rounded
+            }
         }
         setCardOutline(view, radius, state.outlineListener) { state.outlineListener = it }
     }
@@ -694,6 +748,10 @@ internal object DynamicCardBackgroundHook {
     }
 
     private fun restoreCardOutline(view: View, state: StandaloneState) {
+        if (view.foreground === state.appliedForeground && state.appliedForeground != null) {
+            view.foreground = state.originalForeground
+        }
+        state.appliedForeground = null
         if (!state.outlineInstalled) return
         state.outlineListener?.let(view::removeOnLayoutChangeListener)
         state.outlineListener = null
@@ -735,7 +793,15 @@ internal object DynamicCardBackgroundHook {
         color: Int,
         clipToOutline: Boolean,
     ): Boolean {
-        val drawable = cloneAndTint(view, state.original, color) ?: return false
+        // A cloned selector/layer may keep an oversized inner rounded fill even when
+        // the View's glass outline is correct. Draw the tint through the native card's
+        // own round-rect radius instead of tinting every inner layer indiscriminately.
+        val drawable = originalCardRadius(view, state.original)?.let { radius ->
+            GradientDrawable().apply {
+                setColor(color)
+                cornerRadius = radius
+            }
+        } ?: cloneAndTint(view, state.original, color) ?: return false
         setStandaloneBackground(view, drawable, clipToOutline)
         return true
     }

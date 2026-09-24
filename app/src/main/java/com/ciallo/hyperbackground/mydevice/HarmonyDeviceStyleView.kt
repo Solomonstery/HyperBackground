@@ -21,6 +21,8 @@ import com.ciallo.hyperbackground.appearance.LogoDrawableLoader
 import com.ciallo.hyperbackground.appearance.SettingsAppearanceSource
 import com.ciallo.hyperbackground.dynamic.card.DynamicCardBackgroundHook
 import android.graphics.ImageDecoder
+import com.ciallo.hyperbackground.appearance.style2TextHorizontalOffsetForAlignment
+import com.ciallo.hyperbackground.appearance.style2TextVerticalOffsetForAlignment
 import kotlin.math.roundToInt
 
 /** HarmonyOS-like replacement cards used by the independent style 2 mode. */

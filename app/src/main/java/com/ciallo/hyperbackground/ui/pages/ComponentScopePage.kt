@@ -148,6 +148,14 @@ fun ComponentScopePage(
                             activity.updateAppearance { it.copy(componentGlobalWallpaper = value) }
                         },
                     )
+                    SwitchPreference(
+                        title = stringResource(R.string.component_layout_cleanup),
+                        summary = stringResource(R.string.component_layout_cleanup_summary),
+                        checked = appearance.componentLayoutCleanup,
+                        onCheckedChange = { value ->
+                            activity.updateAppearance { it.copy(componentLayoutCleanup = value) }
+                        },
+                    )
                 }
             }
         }

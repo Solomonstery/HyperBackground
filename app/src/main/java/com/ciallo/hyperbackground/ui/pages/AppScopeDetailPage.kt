@@ -40,6 +40,8 @@ private val COMPONENT_TEXT = mapOf(
         (R.string.component_top_bar_button to R.string.component_top_bar_button_summary),
     ComponentKeys.GLOBAL_WALLPAPER to
         (R.string.component_global_wallpaper to R.string.component_global_wallpaper_summary),
+    ComponentKeys.LAYOUT_CLEANUP to
+        (R.string.component_layout_cleanup to R.string.component_layout_cleanup_summary),
 )
 
 /**

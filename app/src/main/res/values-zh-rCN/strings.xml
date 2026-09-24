@@ -139,6 +139,8 @@
     <string name="app_scope_empty">未读取到已启用的作用域应用，请在 LSPosed 中为 HyperBackground 勾选作用域后返回本页。</string>
     <string name="component_global_wallpaper">全局壁纸</string>
     <string name="component_global_wallpaper_summary">将全局背景图套用到作用域应用的大页面</string>
+    <string name="component_layout_cleanup">布局清理</string>
+    <string name="component_layout_cleanup_summary">扫描并清理遮挡全局背景的页面色块</string>
     <string name="component_global_wallpaper_unset">请先到全局设置配置壁纸</string>
     <string name="app_scope_detail_components_title">组件</string>
     <string name="app_scope_detail_hint">只列出全局已开启的组件。</string>

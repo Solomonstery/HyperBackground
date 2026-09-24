@@ -68,6 +68,7 @@ internal const val KEY_COMPONENT_FLOATING_BAR = "component_floating_bar"
 internal const val KEY_COMPONENT_TOP_BAR_BUTTON = "component_top_bar_button"
 // 全局壁纸：把 GLOBAL 槽位的背景图套用到作用域内各应用的大页面（默认开启；未配置壁纸时由 UI 提示）。
 internal const val KEY_COMPONENT_GLOBAL_WALLPAPER = "component_global_wallpaper"
+internal const val KEY_COMPONENT_LAYOUT_CLEANUP = "component_layout_cleanup"
 // 软件作用域：被单独关闭材质的包名集合（默认空 = 全部启用，新装应用无需写默认值）。
 internal const val KEY_APP_SCOPE_DISABLED = "app_scope_disabled"
 // 软件作用域 × 组件类型：被单独关闭的「组件|包名」集合（默认空 = 该包跟随全局组件开关），
@@ -265,6 +266,7 @@ data class SettingsAppearanceSettings(
     val componentFloatingBar: Boolean = true,
     val componentTopBarButton: Boolean = false,
     val componentGlobalWallpaper: Boolean = true,
+    val componentLayoutCleanup: Boolean = false,
     val disabledAppScopes: Set<String> = emptySet(),
     val disabledAppComponents: Set<String> = emptySet(),
     val tutorialCardEnabled: Boolean = false,
@@ -418,6 +420,7 @@ internal fun SharedPreferences.toSettingsAppearance() = SettingsAppearanceSettin
     componentFloatingBar = getBoolean(KEY_COMPONENT_FLOATING_BAR, true),
     componentTopBarButton = getBoolean(KEY_COMPONENT_TOP_BAR_BUTTON, false),
     componentGlobalWallpaper = getBoolean(KEY_COMPONENT_GLOBAL_WALLPAPER, true),
+    componentLayoutCleanup = getBoolean(KEY_COMPONENT_LAYOUT_CLEANUP, false),
     disabledAppScopes = getStringSet(KEY_APP_SCOPE_DISABLED, emptySet())?.toSet().orEmpty(),
     disabledAppComponents = getStringSet(KEY_APP_COMPONENT_DISABLED, emptySet())?.toSet().orEmpty(),
     tutorialCardEnabled = getBoolean(KEY_TUTORIAL_CARD_ENABLED, false),
@@ -589,6 +592,7 @@ private fun SharedPreferences.writeSettingsAppearance(value: SettingsAppearanceS
         .putBoolean(KEY_COMPONENT_FLOATING_BAR, value.componentFloatingBar)
         .putBoolean(KEY_COMPONENT_TOP_BAR_BUTTON, value.componentTopBarButton)
         .putBoolean(KEY_COMPONENT_GLOBAL_WALLPAPER, value.componentGlobalWallpaper)
+        .putBoolean(KEY_COMPONENT_LAYOUT_CLEANUP, value.componentLayoutCleanup)
         .putStringSet(KEY_APP_SCOPE_DISABLED, value.disabledAppScopes.toMutableSet())
         .putStringSet(KEY_APP_COMPONENT_DISABLED, value.disabledAppComponents.toMutableSet())
         .putBoolean(KEY_TUTORIAL_CARD_ENABLED, value.tutorialCardEnabled)
@@ -684,6 +688,7 @@ fun SettingsAppearanceSettings.componentEnabled(component: String): Boolean = wh
     ComponentKeys.FLOATING_BAR -> componentFloatingBar
     ComponentKeys.TOP_BAR_BUTTON -> componentTopBarButton
     ComponentKeys.GLOBAL_WALLPAPER -> componentGlobalWallpaper
+    ComponentKeys.LAYOUT_CLEANUP -> componentLayoutCleanup
     else -> true
 }
 

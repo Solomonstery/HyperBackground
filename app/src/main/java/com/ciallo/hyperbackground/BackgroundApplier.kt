@@ -17,11 +17,13 @@ import android.view.ViewTreeObserver
 import android.view.Window
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.TextView
 import com.ciallo.hyperbackground.appearance.ComponentKeys
 import com.ciallo.hyperbackground.appearance.KEY_APP_COMPONENT_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_APP_SCOPE_DISABLED
 import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_GLOBAL_WALLPAPER
+import com.ciallo.hyperbackground.appearance.KEY_COMPONENT_LAYOUT_CLEANUP
 import com.ciallo.hyperbackground.appearance.SETTINGS_APPEARANCE_PREFERENCES
 import com.ciallo.hyperbackground.util.callMethod
 import com.ciallo.hyperbackground.util.getAdditionalInstanceField
@@ -67,6 +69,7 @@ object BackgroundApplier {
      */
     private data class GlobalWallpaperConfig(
         val enabled: Boolean = true,
+        val cleanupEnabled: Boolean = false,
         val disabledPackages: Set<String> = emptySet(),
         val disabledComponents: Set<String> = emptySet(),
     )
@@ -78,6 +81,7 @@ object BackgroundApplier {
     private val globalWallpaperListener =
         SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
             if (key == null || key == KEY_COMPONENT_GLOBAL_WALLPAPER ||
+                key == KEY_COMPONENT_LAYOUT_CLEANUP ||
                 key == KEY_APP_SCOPE_DISABLED || key == KEY_APP_COMPONENT_DISABLED
             ) {
                 globalWallpaperCache = readGlobalWallpaper(prefs)
@@ -86,6 +90,7 @@ object BackgroundApplier {
 
     private fun readGlobalWallpaper(prefs: SharedPreferences) = GlobalWallpaperConfig(
         enabled = prefs.getBoolean(KEY_COMPONENT_GLOBAL_WALLPAPER, true),
+        cleanupEnabled = prefs.getBoolean(KEY_COMPONENT_LAYOUT_CLEANUP, false),
         disabledPackages = prefs.getStringSet(KEY_APP_SCOPE_DISABLED, emptySet())
             ?.toSet().orEmpty(),
         disabledComponents = prefs.getStringSet(KEY_APP_COMPONENT_DISABLED, emptySet())
@@ -115,6 +120,13 @@ object BackgroundApplier {
         val pkg = packageName ?: return true
         if (pkg in config.disabledPackages) return false
         return ComponentKeys.encode(ComponentKeys.GLOBAL_WALLPAPER, pkg) !in config.disabledComponents
+    }
+
+    private fun layoutCleanupAllowedFor(packageName: String): Boolean {
+        val config = globalWallpaperConfig()
+        return config.cleanupEnabled && config.enabled && packageName !in config.disabledPackages &&
+            ComponentKeys.encode(ComponentKeys.GLOBAL_WALLPAPER, packageName) !in config.disabledComponents &&
+            ComponentKeys.encode(ComponentKeys.LAYOUT_CLEANUP, packageName) !in config.disabledComponents
     }
 
     fun applyHome(activity: Activity?) {
@@ -1452,18 +1464,14 @@ object BackgroundApplier {
     }
 
     private class LayerSession(val media: BackgroundMediaView) {
-        // Some external-settings pages (security center 应用设置/隐私与安全) build their top/stat
-        // cards asynchronously (permission usage is loaded after the first frame), so a single
-        // clear at attach/refresh time runs before those opaque neutral panels exist or are
-        // measured, leaving black/white blocks until the next onResume. Keep re-clearing on
-        // every layout pass for a short budget after the page appears so late-inflated panels
-        // are caught without a manual re-entry, then detach the observer to avoid overhead.
         private companion object {
             const val RESCAN_WINDOW_MS = 2500L
         }
 
         private val clearedViews = ArrayList<View>()
         private val originalBackgrounds = ArrayList<Drawable>()
+        private val clearedImages = ArrayList<ImageView>()
+        private val originalImages = ArrayList<Drawable>()
         private val actionBarSurfaces = ArrayList<ActionBarSurface>()
         var observedRoot: ViewGroup? = null
             private set
@@ -1476,8 +1484,6 @@ object BackgroundApplier {
         private var layoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
         private var rescanDeadline = 0L
         private var lastRescanAt = 0L
-        // 缓存 drawable 采样色，避免同一次扫描内对同一 ConstantState 反复创建 bitmap 采样。
-        // 用 ConstantState 做 key：共享状态的 drawable 复用采样结果，ColorDrawable 已直接取色不走缓存。
         private val sampledColors = IdentityHashMap<Drawable.ConstantState, Int>()
 
         fun clear(view: View?) {
@@ -1501,69 +1507,46 @@ object BackgroundApplier {
         fun refresh(activity: Activity, home: Boolean) {
             val root = observedRoot
             if (home || root == null) return
-            // Settings' preference pages own their card backgrounds. The delayed full-tree
-            // scan clears late-created cards after they appear; keep only the immediate,
-            // named page-host cleanup performed when the wallpaper becomes ready.
-            if (activity.packageName == BackgroundContract.PACKAGE_SETTINGS) {
+            if (activity.packageName == BackgroundContract.PACKAGE_SETTINGS ||
+                !layoutCleanupAllowedFor(activity.packageName)) {
                 removeLayoutRescan()
                 return
             }
             sampledColors.clear()
             clearPageSurfaces(activity, root, root, 0)
             if (transparentTopBar) clearActionBarSurfaces(activity, root, 0)
-            // Reopen the rescan window on every refresh (e.g. returning from a sub-page) so a
-            // page re-entered after its cards were recycled is cleaned up again automatically.
             observedActivity = activity
             rescanDeadline = SystemClock.uptimeMillis() + RESCAN_WINDOW_MS
-            if (layoutListener == null) installLayoutRescan(activity, root)
+            if (layoutListener == null) installLayoutRescan(root)
         }
 
-        // Watch layout passes on the observed root: opaque neutral panels created after the
-        // first frame (async permission stats etc.) trigger a fresh clear. The listener is
-        // self-limiting — it detaches once the rescan window elapses so long-lived pages do
-        // not pay for a global-layout callback forever.
-        private fun installLayoutRescan(activity: Activity, root: ViewGroup?) {
-            if (root == null) return
-            try {
-                val observer = root.viewTreeObserver
-                if (!observer.isAlive) return
-                rescanDeadline = SystemClock.uptimeMillis() + RESCAN_WINDOW_MS
-                val listener = ViewTreeObserver.OnGlobalLayoutListener {
-                    val observed = observedRoot
-                    val observedAct = observedActivity
-                    if (observed == null || observedAct == null) {
-                        removeLayoutRescan()
-                        return@OnGlobalLayoutListener
-                    }
-                    if (observedAct.isFinishing || observedAct.isDestroyed) {
-                        removeLayoutRescan()
-                        return@OnGlobalLayoutListener
-                    }
-                    // 200ms 节流：页面加载时会触发多次 layout pass，每次都全树遍历开销很大。
-                    // 合并高频回调，只在节流窗口到期时执行一次补扫。
-                    val now = SystemClock.uptimeMillis()
-                    if (now - lastRescanAt < 200L) return@OnGlobalLayoutListener
-                    lastRescanAt = now
-                    clearPageSurfaces(observedAct, observed, observed, 0)
-                    if (transparentTopBar) clearActionBarSurfaces(observedAct, observed, 0)
-                    if (now > rescanDeadline) removeLayoutRescan()
+        private fun installLayoutRescan(root: ViewGroup) {
+            val observer = root.viewTreeObserver
+            if (!observer.isAlive) return
+            val listener = ViewTreeObserver.OnGlobalLayoutListener {
+                val observed = observedRoot
+                val activity = observedActivity
+                if (observed == null || activity == null || activity.isFinishing || activity.isDestroyed ||
+                    !layoutCleanupAllowedFor(activity.packageName)) {
+                    removeLayoutRescan()
+                    return@OnGlobalLayoutListener
                 }
-                layoutListener = listener
-                observer.addOnGlobalLayoutListener(listener)
-            } catch (_: Throwable) {
+                val now = SystemClock.uptimeMillis()
+                if (now - lastRescanAt < 200L) return@OnGlobalLayoutListener
+                lastRescanAt = now
+                sampledColors.clear()
+                clearPageSurfaces(activity, observed, observed, 0)
+                if (transparentTopBar) clearActionBarSurfaces(activity, observed, 0)
+                if (now > rescanDeadline) removeLayoutRescan()
             }
+            layoutListener = listener
+            observer.addOnGlobalLayoutListener(listener)
         }
 
         private fun removeLayoutRescan() {
             val listener = layoutListener ?: return
-            try {
-                val root = observedRoot
-                if (root != null) {
-                    val observer = root.viewTreeObserver
-                    if (observer.isAlive) observer.removeOnGlobalLayoutListener(listener)
-                }
-            } catch (_: Throwable) {
-            }
+            val observer = observedRoot?.viewTreeObserver
+            if (observer != null && observer.isAlive) observer.removeOnGlobalLayoutListener(listener)
             layoutListener = null
         }
 
@@ -1574,6 +1557,14 @@ object BackgroundApplier {
         }
 
         fun restore() {
+            for (i in clearedImages.indices) {
+                try {
+                    clearedImages[i].setImageDrawable(originalImages[i])
+                } catch (_: Throwable) {
+                }
+            }
+            clearedImages.clear()
+            originalImages.clear()
             for (i in clearedViews.indices) {
                 try {
                     clearedViews[i].background = originalBackgrounds[i]
@@ -1662,15 +1653,13 @@ object BackgroundApplier {
         private fun clearPageSurfaces(activity: Activity, view: View?, root: View, depth: Int) {
             if (view == null || view === media ||
                 view.getAdditionalInstanceField(DialpadBackdropView.OWNED_VIEW_FIELD) == true) return
-            // 短信聊天页保护：消息列表（收件气泡是 #ffffff/#f2f2f2 中性白，属于内容而非底色）
-            // 与底部输入面板整棵子树不清，背景只从容器层透出。列表页的 @android:id/list 不受影响。
             if (activity.packageName == BackgroundContract.PACKAGE_MMS) {
                 val idName = resourceEntryName(activity, view.id)
                 if (idName == "message_list" || idName == "message_list_animator" ||
-                    idName == "bottom_panel"
-                ) return
+                    idName == "bottom_panel") return
             }
             if (view.visibility != View.VISIBLE) return
+            if (view is ImageView && isPageImage(activity, view, root)) clearPageImage(view)
             if (isPageSurface(activity, view, root, depth)) clear(view)
             if (view is ViewGroup) {
                 for (i in 0 until view.childCount) {
@@ -1679,38 +1668,43 @@ object BackgroundApplier {
             }
         }
 
+        private fun isPageImage(activity: Activity, view: ImageView, root: View): Boolean {
+            if (view.drawable == null) return false
+            val width = maxOf(root.width, activity.resources.displayMetrics.widthPixels)
+            val height = maxOf(root.height, activity.resources.displayMetrics.heightPixels)
+            if (view.width < width * 0.72f || view.height < height * 0.32f) return false
+            val name = resourceEntryName(activity, view.id)
+            return containsAny(name, "background", "wallpaper", "backdrop", "mask", "surface") ||
+                (view.width >= width * 0.90f && view.height >= height * 0.62f)
+        }
+
+        private fun clearPageImage(view: ImageView) {
+            if (!clearedImages.contains(view)) {
+                clearedImages.add(view)
+                originalImages.add(view.drawable)
+            }
+            view.setImageDrawable(null)
+        }
+
         private fun isPageSurface(activity: Activity, view: View, root: View, depth: Int): Boolean {
             if (view === root) return true
             val bg = view.background ?: return false
-
             val rootWidth = maxOf(root.width, activity.resources.displayMetrics.widthPixels)
             val rootHeight = maxOf(root.height, activity.resources.displayMetrics.heightPixels)
             val width = view.width
             val height = view.height
             val large = width >= (rootWidth * 0.72f).toInt() && height >= (rootHeight * 0.32f).toInt()
-
             val idName = resourceEntryName(activity, view.id)
             val pkg = activity.packageName
 
-            // Device interconnection uses a full-width opaque host surface around the
-            // actual cards. Clear only that page-level host; cards keep horizontal margins.
             if ("com.milink.service" == pkg
                 && view is ViewGroup
                 && width >= (rootWidth * 0.965f).toInt()
                 && height >= (rootHeight * 0.05f).toInt()
                 && !containsAny(idName, "card", "button", "switch", "checkbox", "icon", "image", "banner")
-            ) {
-                return true
-            }
+            ) return true
 
-            // CardView 的圆角与卡面同源于它自带的 RoundRectDrawable：清掉 background 会把圆角
-            // 一并抹掉，框架之后写回底色时只剩方角（主题商店「在线主题」标题条即此类）。
-            // CardView 本身是卡片而非页面宿主面板，这里与下方 large 分支的 cardview 豁免保持一致。
             if (isCardView(view)) return false
-
-            // The supplied Phone/Account/Theme builds split a Miuix page into several
-            // full-width host panels instead of one full-height root. Clear those host
-            // panels while retaining inset cards and controls.
             val externalSettingsPage = BackgroundContract.PACKAGE_PHONE == pkg
                 || BackgroundContract.PACKAGE_ACCOUNT == pkg
                 || BackgroundContract.PACKAGE_THEME_MANAGER == pkg
@@ -1723,30 +1717,23 @@ object BackgroundApplier {
                 && width >= (rootWidth * 0.94f).toInt()
                 && height >= (rootHeight * 0.15f).toInt()
                 && !containsAny(idName, "card", "button", "switch", "checkbox", "icon", "image", "banner")
-            ) {
-                return true
-            }
+            ) return true
 
-            // Some external-settings pages (security center 应用设置/隐私与安全) place opaque
-            // neutral ColorDrawable panels around their cards (e.g. top_container/top_view,
-            // the stat-card ConstraintLayout). In dark mode they read as black blocks and in
-            // light mode as white blocks over the wallpaper. Clear only fully-opaque neutral
-            // solid colors (black/white/grey); semi-transparent card surfaces (e.g. #24FFFFFF
-            // GradientDrawable/CardDrawable) and coloured controls are intentionally kept.
             if (externalSettingsPage
                 && width >= (rootWidth * 0.5f).toInt()
                 && height >= (rootHeight * 0.05f).toInt()
                 && isOpaqueNeutralColorDrawable(bg)
-            ) {
-                return true
-            }
+            ) return true
 
             if (!large) return false
 
-            val cls = view.javaClass.name.lowercase()
+            // A large ImageView with a neutral opaque background is a valid surface;
+            // clear only its background, never its image drawable.
+            if (view is ImageView) return isOpaqueNeutralColorDrawable(bg)
 
+            val cls = view.javaClass.name.lowercase()
             if (containsAny(idName, "card", "button", "switch", "checkbox", "icon", "avatar", "image", "banner", "header_card")) return false
-            if (containsAny(cls, "cardview", "button", "switch", "checkbox", "imageview")) return false
+            if (containsAny(cls, "cardview", "button", "switch", "checkbox")) return false
 
             if (containsAny(idName,
                     "content", "container", "recycler", "list", "prefs", "preference",
@@ -1755,9 +1742,6 @@ object BackgroundApplier {
                     "recyclerview", "nestedscrollview", "scrollview", "listview",
                     "coordinatorlayout", "fragmentcontainerview", "viewpager")) return true
 
-            // HyperOS/MIUIX preference pages often use anonymous FrameLayout/LinearLayout
-            // wrappers with a full-page theme surface. Restrict this fallback to very
-            // large containers so normal preference cards keep their native backgrounds.
             return view is ViewGroup
                 && width >= (rootWidth * 0.90f).toInt()
                 && height >= (rootHeight * 0.62f).toInt()
@@ -1789,42 +1773,26 @@ object BackgroundApplier {
             return false
         }
 
-        // True only for a fully-opaque neutral (black/white/grey) solid background.
-        // Handles ColorDrawable directly; for any other drawable (LayerDrawable,
-        // GradientDrawable, etc.) it samples a *copy* rendered to a 1x1 bitmap so we read
-        // the real composited colour without mutating the shared drawable (beta5 broke the
-        // grey cards by calling setBounds on the live instance — this copies first).
-        // Semi-transparent surfaces (e.g. #24FFFFFF cards) sample with alpha < 255 and are
-        // rejected; coloured panels are non-neutral and rejected.
+        // Sample a copy so the live drawable bounds are not changed.
         private fun isOpaqueNeutralColorDrawable(bg: Drawable?): Boolean {
             if (bg == null) return false
-            if (bg is ColorDrawable) {
-                return isOpaqueNeutral(bg.color)
-            }
-            // 非 ColorDrawable 需渲染采样：按 ConstantState 缓存，同一扫描内不重复创建 bitmap。
+            if (bg is ColorDrawable) return isOpaqueNeutral(bg.color)
             val state = bg.constantState
             val cached = if (state == null) null else sampledColors[state]
-            val color: Int
-            if (cached != null) {
-                color = cached
-            } else {
+            val color = if (cached != null) cached else {
                 val sampled = sampleDrawableColor(bg) ?: return false
-                color = sampled
-                if (state != null) sampledColors[state] = color
+                if (state != null) sampledColors[state] = sampled
+                sampled
             }
             return isOpaqueNeutral(color)
         }
 
-        // Renders a COPY of the drawable to a 1x1 bitmap and reads the pixel. Never touches
-        // the original drawable (no setBounds/draw on the live instance).
         private fun sampleDrawableColor(bg: Drawable): Int? {
             return try {
-                val state = bg.constantState ?: return null
-                val copy = state.newDrawable().mutate()
+                val copy = (bg.constantState ?: return null).newDrawable().mutate()
                 val bmp = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(bmp)
                 copy.setBounds(0, 0, 1, 1)
-                copy.draw(canvas)
+                copy.draw(Canvas(bmp))
                 val color = bmp.getPixel(0, 0)
                 bmp.recycle()
                 color
@@ -1833,7 +1801,6 @@ object BackgroundApplier {
             }
         }
 
-        // Fully opaque and neutral (channels close together, no dominant hue): black/white/grey.
         private fun isOpaqueNeutral(color: Int): Boolean {
             if (Color.alpha(color) != 255) return false
             val r = Color.red(color)

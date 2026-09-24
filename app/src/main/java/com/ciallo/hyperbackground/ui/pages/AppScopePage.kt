@@ -121,20 +121,25 @@ fun AppScopePage(
                                 title = app.label,
                                 summary = app.packageName,
                                 startAction = { AppScopeIcon(app) },
+                                // Miuix 的 endActions 外层是「Column(居中) > Row(默认 Top 对齐)」，
+                                // 直接平铺 Switch 与箭头会让 24dp 的箭头贴顶、和开关中心错位；
+                                // 这里再包一层 CenterVertically 的 Row 把它们对齐。
                                 endActions = {
-                                    Switch(
-                                        checked = enabled,
-                                        onCheckedChange = { value ->
-                                            activity.updateAppearance {
-                                                it.withAppScopeEnabled(app.packageName, value)
-                                            }
-                                        },
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Icon(
-                                        imageVector = MiuixIcons.Basic.ArrowRight,
-                                        contentDescription = null,
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Switch(
+                                            checked = enabled,
+                                            onCheckedChange = { value ->
+                                                activity.updateAppearance {
+                                                    it.withAppScopeEnabled(app.packageName, value)
+                                                }
+                                            },
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Icon(
+                                            imageVector = MiuixIcons.Basic.ArrowRight,
+                                            contentDescription = null,
+                                        )
+                                    }
                                 },
                                 onClick = { onOpenApp(app.packageName) },
                             )

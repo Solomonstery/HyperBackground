@@ -25,6 +25,7 @@ object ComponentKeys {
      * 它不是「材质」，而是与材质并列的一类可独立开关的适配能力。
      */
     const val GLOBAL_WALLPAPER = "global_wallpaper"
+    const val LAYOUT_CLEANUP = "layout_cleanup"
 
     /** 全部组件键，顺序即 UI 里的展示顺序。 */
     val ALL = listOf(
@@ -35,6 +36,7 @@ object ComponentKeys {
         FLOATING_BAR,
         TOP_BAR_BUTTON,
         GLOBAL_WALLPAPER,
+        LAYOUT_CLEANUP,
     )
 
     private const val SEPARATOR = '|'

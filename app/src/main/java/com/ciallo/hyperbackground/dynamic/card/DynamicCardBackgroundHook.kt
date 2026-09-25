@@ -9,6 +9,7 @@ import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
@@ -20,6 +21,7 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.widget.Button
 import com.ciallo.hyperbackground.HookRuntime
 import com.ciallo.hyperbackground.dynamic.popup.DynamicPopupMaterialHook
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_COLOR
@@ -126,6 +128,11 @@ internal object DynamicCardBackgroundHook {
         val originalClipToOutline: Boolean,
         var originalCardColor: ColorStateList?,
     ) {
+        var originalPadding: Rect? = null
+        var originalMinimumHeight: Int = 0
+        var originalMinimumWidth: Int = 0
+        var originalBackgroundTint: ColorStateList? = null
+        var originalMeasuredHeight: Int = 0
         var originalForeground: Drawable? = null
         var appliedForeground: Drawable? = null
         var outlineProvider: ViewOutlineProvider? = null
@@ -478,6 +485,13 @@ internal object DynamicCardBackgroundHook {
         )
         if (state.signature == signature && state.applied === view.background) return
 
+        if (view is Button) {
+            logCandidate(view, "button-native geometry " +
+                "size=${view.width}x${view.height} padding=${state.originalPadding} " +
+                "nativeMin=${state.originalMinimumHeight} drawableMin=${state.original?.minimumHeight} " +
+                "radius=${originalCardRadius(view, state.original)}")
+        }
+
         clearStandaloneMaterial(view, state)
         restoreCardOutline(view, state)
         if (view.foreground !== state.originalForeground) state.originalForeground = view.foreground
@@ -544,6 +558,9 @@ internal object DynamicCardBackgroundHook {
         }
         state.applied = view.background
         state.signature = signature
+        if (view is Button) logCandidate(view, "button-applied " +
+            "size=${view.width}x${view.height} min=${view.minimumWidth}x${view.minimumHeight} " +
+            "material=${state.material} background=${view.background?.javaClass?.name}")
         view.invalidate()
     }
 
@@ -553,6 +570,8 @@ internal object DynamicCardBackgroundHook {
         restoreCardOutline(view, state)
         withStandaloneWrite {
             view.background = state.original
+            if (view is Button) view.backgroundTintList = state.originalBackgroundTint
+            if (view is Button) view.minimumHeight = state.originalMinimumHeight
             restoreCardBackgroundColor(view, state.originalCardColor)
             view.clipToOutline = state.originalClipToOutline
         }
@@ -575,6 +594,8 @@ internal object DynamicCardBackgroundHook {
             // CardView rows keep the very same background object, so skip the setter: writing it
             // back would only re-enter the host's background hooks for a no-op change.
             if (view.background !== state.original) view.background = state.original
+            if (view is Button) view.backgroundTintList = state.originalBackgroundTint
+            if (view is Button) view.minimumHeight = state.originalMinimumHeight
             restoreCardBackgroundColor(view, state.originalCardColor)
             view.clipToOutline = state.originalClipToOutline
         }
@@ -596,6 +617,13 @@ internal object DynamicCardBackgroundHook {
         standaloneStates.getOrPut(view) {
             StandaloneState(view.background, view.clipToOutline, cardBackgroundColor(view)).apply {
                 originalForeground = view.foreground
+                originalPadding = Rect(view.paddingLeft, view.paddingTop, view.paddingRight, view.paddingBottom)
+                originalMinimumHeight = view.minimumHeight
+                originalMinimumWidth = view.minimumWidth
+                if (view is Button) {
+                    originalBackgroundTint = view.backgroundTintList
+                    originalMeasuredHeight = maxOf(view.height, view.background?.minimumHeight ?: 0)
+                }
             }
         }
     }
@@ -669,7 +697,7 @@ internal object DynamicCardBackgroundHook {
 
     private fun originalCardRadius(view: View, source: Drawable?): Float? {
         val fromDrawable = source?.let { drawable ->
-            (drawable as? GradientDrawable)?.cornerRadius?.takeIf { it > 0f }
+            CardSurfaceDetector.backgroundCornerRadius(drawable).takeIf { it > 0f }
                 ?: runCatching {
                     val outline = Outline()
                     drawable.getOutline(outline)
@@ -677,10 +705,18 @@ internal object DynamicCardBackgroundHook {
                 }.getOrNull()
         }
         if (fromDrawable != null) return fromDrawable
-        return runCatching {
+        val fromView = runCatching {
             (view.javaClass.getMethod("getRadius").invoke(view) as Number).toFloat()
                 .takeIf { it > 0f }
         }.getOrNull()
+        if (fromView != null) return fromView
+        return view.outlineProvider?.let { provider ->
+            runCatching {
+                val outline = Outline()
+                provider.getOutline(view, outline)
+                outline.radius.takeIf { it > 0f }
+            }.getOrNull()
+        }
     }
 
     private fun installCardOutline(view: View, state: StandaloneState) {
@@ -837,6 +873,14 @@ internal object DynamicCardBackgroundHook {
     private fun setStandaloneBackground(view: View, drawable: Drawable, clipToOutline: Boolean) {
         withStandaloneWrite {
             view.background = drawable
+            if (view is Button) synchronized(standaloneStates) { standaloneStates[view] }?.let { state ->
+                state.originalPadding?.let { view.setPadding(it.left, it.top, it.right, it.bottom) }
+                view.minimumWidth = state.originalMinimumWidth
+                view.backgroundTintList = null
+                // WRAP_CONTENT Buttons can derive their height from the native drawable's
+                // intrinsic/minimum height, which disappears when replacing the drawable.
+                view.minimumHeight = maxOf(state.originalMinimumHeight, state.originalMeasuredHeight)
+            }
             view.clipToOutline = clipToOutline
         }
     }
@@ -1089,6 +1133,22 @@ internal object DynamicCardBackgroundHook {
     internal fun onViewLaidOut(view: View) {
         if (!palette.enabledFor(HookRuntime.targetPackage)) return
         if (view.width <= 0 || view.height <= 0) return
+        if (view.javaClass.name == "miuix.flexible.view.HyperCellLayout") {
+            val parent = view.parent as? View
+            val recycler = generateSequence(parent) { it.parent as? View }
+                .take(6).firstOrNull { it.javaClass.name.contains("RecyclerView") }
+            logCandidate(view, "cell-probe ${CardSurfaceDetector.probe(view)} " +
+                "bg=${view.background?.javaClass?.name} radius=${CardSurfaceDetector.nativeCornerRadius(view)} " +
+                "parent=${parent?.javaClass?.simpleName} parentBg=${parent?.background?.javaClass?.name} " +
+                "decorated=${recycler?.let(DynamicCardMaterialHook::hasGroupDecoration)}")
+        }
+        if (view is android.widget.LinearLayout &&
+            (view.parent as? View)?.javaClass?.name?.contains("RecyclerView") == true) {
+            val recycler = view.parent as View
+            logCandidate(view, "row-probe ${CardSurfaceDetector.probe(view)} " +
+                "bg=${view.background?.javaClass?.name} radius=${CardSurfaceDetector.nativeCornerRadius(view)} " +
+                "decorated=${DynamicCardMaterialHook.hasGroupDecoration(recycler)}")
+        }
         // Recheck tracked views as well: recycled rows can acquire a RecyclerView parent
         // after their initial attach and must leave the standalone material route.
         if (synchronized(standaloneStates) { standaloneStates[view] }?.applied != null) {
@@ -1151,6 +1211,7 @@ internal object DynamicCardBackgroundHook {
         val drawableCandidates = fields.filter { Drawable::class.java.isAssignableFrom(it.type) }
         val drawableField =
             (drawableCandidates.firstOrNull { it.declaringClass == type && it.type == clipDrawableType }
+                ?: drawableCandidates.firstOrNull { it.declaringClass == type && it.type == Drawable::class.java }
                 ?: drawableCandidates.firstOrNull { it.declaringClass == type }
                 ?: drawableCandidates.firstOrNull { it.type == clipDrawableType }
                 ?: drawableCandidates.firstOrNull())

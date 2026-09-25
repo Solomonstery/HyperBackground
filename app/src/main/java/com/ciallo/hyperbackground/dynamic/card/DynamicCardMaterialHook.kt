@@ -10,6 +10,7 @@ import com.ciallo.hyperbackground.dynamic.search.DynamicSearchMaterialHook
 import com.ciallo.hyperbackground.dynamic.bar.DynamicFloatingBarHook
 import io.github.libxposed.api.XposedInterface.ExceptionMode
 import io.github.libxposed.api.XposedModule
+import java.lang.reflect.Modifier
 import java.util.Collections
 import java.util.WeakHashMap
 
@@ -44,19 +45,34 @@ internal object DynamicCardMaterialHook {
     @Volatile var discoveredDecorations: Int = 0
         private set
 
-    /** Only reject empty nested card shells when their RecyclerView actually draws groups. */
+    /** Read the actual decorations, including builds where AndroidX method names are obfuscated. */
     internal fun hasGroupDecoration(view: View): Boolean {
         val type = runCatching { view.javaClass.classLoader?.loadClass(RECYCLER_VIEW_CLASS) }.getOrNull()
             ?: return false
         if (!type.isInstance(view)) return false
         return runCatching {
-            val count = type.getMethod("getItemDecorationCount").invoke(view) as Int
-            val at = type.getMethod("getItemDecorationAt", Int::class.javaPrimitiveType)
-            (0 until count).any { index ->
-                val decoration = at.invoke(view, index) ?: return@any false
-                DynamicCardBackgroundHook.isGroupDecoration(decoration.javaClass)
-            }
+            decorations(view, type).any { DynamicCardBackgroundHook.isGroupDecoration(it.javaClass) }
         }.getOrDefault(false)
+    }
+
+    private fun decorationType(type: Class<*>): Class<*>? = type.declaredClasses.firstOrNull { candidate ->
+        candidate.declaredMethods.any { method ->
+            method.name == "getItemOffsets" && method.parameterTypes.firstOrNull() == android.graphics.Rect::class.java &&
+                method.parameterTypes.any { it == type } &&
+                candidate.declaredMethods.any { draw -> draw.name == "onDraw" &&
+                    draw.parameterTypes.firstOrNull() == Canvas::class.java }
+        }
+    } ?: runCatching { type.classLoader?.loadClass("androidx.recyclerview.widget.RecyclerView\$ItemDecoration") }.getOrNull()
+
+    private fun decorations(view: View, type: Class<*>): List<Any> {
+        val decoration = decorationType(type) ?: return emptyList()
+        val count = (type.getMethod("getItemDecorationCount").invoke(view) as? Int) ?: return emptyList()
+        val getter = type.declaredMethods.firstOrNull {
+            Modifier.isPublic(it.modifiers) && it.parameterCount == 1 &&
+                it.parameterTypes[0] == Int::class.javaPrimitiveType &&
+                decoration.isAssignableFrom(it.returnType)
+        }?.apply { isAccessible = true } ?: return emptyList()
+        return (0 until count).mapNotNull { getter.invoke(view, it) }
     }
 
     fun install(value: XposedModule, classLoader: ClassLoader, prefs: SharedPreferences) {
@@ -105,23 +121,25 @@ internal object DynamicCardMaterialHook {
         module.log(Log.INFO, TAG, "Dynamic layout-complete hook installed")
     }
 
-    /** `addItemDecoration` 有两个重载（带 / 不带 index），都要接。 */
+    /** Hook the two-argument registration implementation, including R8-renamed builds. */
     private fun installItemDecorationHook(classLoader: ClassLoader) {
         val type = classLoader.loadClass(RECYCLER_VIEW_CLASS)
+        val decoration = decorationType(type) ?: error("RecyclerView.ItemDecoration not found")
         // PreferenceFragment's FrameDecoration can be registered before the runtime
         // addItemDecoration hook observes it. Discover its inner ItemDecoration by
         // hierarchy rather than the R8-renamed inner class name (Settings and Security
         // Center ship different MIUIX builds).
         runCatching {
             val preference = classLoader.loadClass("miuix.preference.PreferenceFragment")
-            val decoration = classLoader.loadClass("androidx.recyclerview.widget.RecyclerView\$ItemDecoration")
             preference.declaredClasses.filter { decoration.isAssignableFrom(it) }
                 .forEach(::onDecorationAdded)
         }.onFailure { module.log(Log.DEBUG, TAG, "Preference decoration discovery unavailable", it) }
         val methods = type.declaredMethods.filter {
-            it.name == "addItemDecoration" && it.parameterCount >= 1
+            Modifier.isPublic(it.modifiers) && it.returnType == Void.TYPE &&
+                it.parameterCount == 2 && it.parameterTypes[1] == Int::class.javaPrimitiveType &&
+                it.parameterTypes[0] == decoration
         }
-        check(methods.isNotEmpty()) { "RecyclerView.addItemDecoration not found" }
+        check(methods.isNotEmpty()) { "RecyclerView ItemDecoration registration not found" }
         methods.forEachIndexed { index, method ->
             method.isAccessible = true
             module.hook(method).setExceptionMode(ExceptionMode.PROTECTIVE)
@@ -134,7 +152,6 @@ internal object DynamicCardMaterialHook {
         // Discover decorations that were registered before the add hook was installed.
         // RecyclerView draws ItemDecorations in onDraw, so inspect before proceeding.
         val countMethod = type.getMethod("getItemDecorationCount")
-        val getDecoration = type.getMethod("getItemDecorationAt", Int::class.javaPrimitiveType)
         val onDraw = type.getDeclaredMethod("onDraw", Canvas::class.java)
             .apply { isAccessible = true }
         module.hook(onDraw).setExceptionMode(ExceptionMode.PROTECTIVE)
@@ -143,14 +160,20 @@ internal object DynamicCardMaterialHook {
                 if (recycler != null && scanned[recycler] == null) {
                     runCatching {
                         val count = countMethod.invoke(recycler) as Int
-                        for (index in 0 until count) {
-                            getDecoration.invoke(recycler, index)?.let(::onDecorationAdded)
+                        val existing = decorations(recycler, type)
+                        val types = existing.map { it.javaClass.name }
+                        if (recycler.context.packageName == "com.xiaomi.account") {
+                            module.log(Log.INFO, TAG, "RecyclerView decorations: ${recycler.javaClass.name} " +
+                                "count=$count classes=${types.joinToString()} " +
+                                "group=${existing.any { DynamicCardBackgroundHook.isGroupDecoration(it.javaClass) }}")
                         }
+                        existing.forEach(::onDecorationAdded)
                     }.onSuccess { scanned[recycler] = Unit }
+                        .onFailure { error -> module.log(Log.DEBUG, TAG, "Existing decorations unavailable", error) }
                 }
                 chain.proceed()
             }
-        module.log(Log.INFO, TAG, "Dynamic ItemDecoration discovery installed: ${methods.size} overload(s)")
+        module.log(Log.INFO, TAG, "Dynamic ItemDecoration discovery installed: ${methods.size} registration method(s)")
     }
 
     /**

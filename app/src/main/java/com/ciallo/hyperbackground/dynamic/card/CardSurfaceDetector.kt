@@ -12,6 +12,7 @@ import android.graphics.drawable.RippleDrawable
 import android.graphics.drawable.StateListDrawable
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import kotlin.math.roundToInt
 
 /**
@@ -109,7 +110,7 @@ internal object CardSurfaceDetector {
         if (isEmptyCardInGroup(view)) return REASON_GROUP_LIST_ROW
         // 1) 没有自己的背景 → 它是外层分组卡上的普通行，材质由分组卡提供，绝不叠加。
         val background = view.background ?: return REASON_NO_BACKGROUND
-        if (hasNegativeNameHint(view)) return REASON_NEGATIVE_NAME
+        if (hasNegativeNameHint(view) && !isLargeActionButton(view)) return REASON_NEGATIVE_NAME
         // 2) 必须是卡片形状。前景按压效果不能证明该行自身是一张卡片。
         if (!isCardShaped(view, background)) return REASON_NOT_CARD_SHAPED
         val alpha = strongestSurfaceAlpha(view, background)
@@ -139,6 +140,24 @@ internal object CardSurfaceDetector {
         }
         return false
     }
+
+    /** Card-like leaf controls must use their existing corner geometry, not a guessed radius. */
+    private fun isLargeActionButton(view: View): Boolean =
+        view is Button && view.width >= (120 * view.resources.displayMetrics.density).roundToInt() &&
+            view.height >= (40 * view.resources.displayMetrics.density).roundToInt() &&
+            view.background?.let { background ->
+                backgroundCornerRadius(background) > 0f && surfaceAlpha(background) >= MIN_SHAPE_SURFACE_ALPHA
+            } == true
+
+    fun nativeCornerRadius(view: View): Float {
+        val background = view.background ?: return 0f
+        return maxOf(outlineRadiusOf(view), backgroundCornerRadius(background))
+    }
+
+    fun backgroundCornerRadius(background: Drawable): Float =
+        withLeaves(background) { parts ->
+            parts.maxOfOrNull(::leafCornerRadius) ?: 0f
+        }
 
     /** A transparent card shell (or its row root) inside a decorated list is not a second card.
      * Wi-Fi retains a highlighted child even for disconnected rows; when the shell fills the

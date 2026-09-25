@@ -64,7 +64,8 @@ internal object DynamicCardMaterialHook {
         if (getter != null && getter.returnType != Any::class.java) return getter.returnType
         val candidates = type.declaredMethods.filter { method ->
             Modifier.isPublic(method.modifiers) && method.returnType == Void.TYPE &&
-                method.parameterCount == 2 && method.parameterTypes[1] == Int::class.javaPrimitiveType
+                (method.parameterCount == 1 || method.parameterCount == 2 &&
+                    method.parameterTypes[1] == Int::class.javaPrimitiveType)
         }.map { it.parameterTypes[0] }.distinct()
         return candidates.firstOrNull { candidate ->
             candidate.methods.any { method ->
@@ -80,6 +81,7 @@ internal object DynamicCardMaterialHook {
     private fun decorations(view: View, type: Class<*>): List<Any> {
         val decoration = decorationType(type) ?: return emptyList()
         val count = (type.getMethod("getItemDecorationCount").invoke(view) as? Int) ?: return emptyList()
+        if (count == 0) return emptyList()
         val getter = type.declaredMethods.firstOrNull {
             it.name == "getItemDecorationAt" && Modifier.isPublic(it.modifiers) &&
                 it.parameterCount == 1 && it.parameterTypes[0] == Int::class.javaPrimitiveType &&
@@ -88,8 +90,19 @@ internal object DynamicCardMaterialHook {
             Modifier.isPublic(it.modifiers) && it.parameterCount == 1 &&
                 it.parameterTypes[0] == Int::class.javaPrimitiveType &&
                 decoration.isAssignableFrom(it.returnType)
-        }?.apply { isAccessible = true } ?: return emptyList()
-        return (0 until count).mapNotNull { getter.invoke(view, it) }
+        }?.apply { isAccessible = true }
+        if (getter != null) return (0 until count).mapNotNull { getter.invoke(view, it) }
+        // R8 may rename getItemDecorationAt or remove it entirely. Locate the live
+        // decoration list by its element type and the public count instead.
+        return type.declaredFields.asSequence().filter { java.util.List::class.java.isAssignableFrom(it.type) }
+            .mapNotNull { field ->
+                runCatching {
+                    field.isAccessible = true
+                    (field.get(view) as? List<*>)?.takeIf { items ->
+                        items.size == count && items.all(decoration::isInstance)
+                    }?.filterNotNull()
+                }.getOrNull()
+            }.firstOrNull() ?: emptyList()
     }
 
     fun install(value: XposedModule, classLoader: ClassLoader, prefs: SharedPreferences) {
@@ -138,7 +151,7 @@ internal object DynamicCardMaterialHook {
         module.log(Log.INFO, TAG, "Dynamic layout-complete hook installed")
     }
 
-    /** Hook the two-argument registration implementation, including R8-renamed builds. */
+    /** Hook both AndroidX registration signatures, including R8-renamed builds. */
     private fun installItemDecorationHook(classLoader: ClassLoader) {
         val type = classLoader.loadClass(RECYCLER_VIEW_CLASS)
         val decoration = decorationType(type) ?: error("RecyclerView.ItemDecoration not found")
@@ -153,7 +166,8 @@ internal object DynamicCardMaterialHook {
         }.onFailure { module.log(Log.DEBUG, TAG, "Preference decoration discovery unavailable", it) }
         val methods = type.declaredMethods.filter {
             Modifier.isPublic(it.modifiers) && it.returnType == Void.TYPE &&
-                it.parameterCount == 2 && it.parameterTypes[1] == Int::class.javaPrimitiveType &&
+                (it.parameterCount == 1 || it.parameterCount == 2 &&
+                    it.parameterTypes[1] == Int::class.javaPrimitiveType) &&
                 it.parameterTypes[0] == decoration
         }
         check(methods.isNotEmpty()) { "RecyclerView ItemDecoration registration not found" }
@@ -175,7 +189,7 @@ internal object DynamicCardMaterialHook {
             .setId("dynamic-cards:existing-decorations").intercept { chain ->
                 val recycler = chain.thisObject as? ViewGroup
                 if (recycler != null && scanned[recycler] == null) {
-                    runCatching {
+                    val inspected = runCatching {
                         val count = countMethod.invoke(recycler) as Int
                         val existing = decorations(recycler, type)
                         val types = existing.map { it.javaClass.name }
@@ -185,8 +199,9 @@ internal object DynamicCardMaterialHook {
                                 "group=${existing.any { DynamicCardBackgroundHook.isGroupDecoration(it.javaClass) }}")
                         }
                         existing.forEach(::onDecorationAdded)
-                    }.onSuccess { scanned[recycler] = Unit }
-                        .onFailure { error -> module.log(Log.DEBUG, TAG, "Existing decorations unavailable", error) }
+                        count > 0 && existing.size == count
+                    }.onFailure { error -> module.log(Log.DEBUG, TAG, "Existing decorations unavailable", error) }
+                    if (inspected.getOrDefault(false)) scanned[recycler] = Unit
                 }
                 chain.proceed()
             }

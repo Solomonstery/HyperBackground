@@ -1,8 +1,10 @@
-package com.ciallo.hyperbackground
+package com.ciallo.hyperbackground.dialpad
 
 import android.content.Context
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import com.ciallo.hyperbackground.BackgroundContract
+import com.ciallo.hyperbackground.BackgroundMediaView
 
 internal class DialpadImageView(
     context: Context,

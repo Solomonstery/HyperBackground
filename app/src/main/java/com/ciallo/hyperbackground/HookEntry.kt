@@ -5,6 +5,8 @@ import android.app.Application
 import android.app.Instrumentation
 import android.content.Context
 import android.content.SharedPreferences
+import android.graphics.Canvas
+import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Bundle
@@ -91,6 +93,7 @@ class HookEntry : XposedModule() {
             hookContactsActivity(classLoader)
             hookDialpadLayout(classLoader)
             hookContactsViewBackground()
+            hookContactsPinnedHeaders(classLoader)
         }
 
         if (mms) {
@@ -154,6 +157,28 @@ class HookEntry : XposedModule() {
         } catch (error: Throwable) {
             // View.setBackground 在所有进程都存在，但只在联系人进程调用 BackgroundApplier；
             // 其它进程走到 onViewBackgroundChanged 里会因 ctx 不匹配直接 return，无副作用。
+        }
+    }
+
+    private fun hookContactsPinnedHeaders(classLoader: ClassLoader) {
+        try {
+            val renderer = Class.forName(
+                "com.android.contacts.widget.recyclerView.stickyheaders.rendering.HeaderRenderer",
+                false, classLoader,
+            )
+            // 厂商方法名可能被混淆；只匹配绘制标题的参数签名。
+            val draw = renderer.declaredMethods.single { method ->
+                method.returnType == Void.TYPE && method.parameterTypes.size == 4 &&
+                    method.parameterTypes[0].name == "androidx.recyclerview.widget.RecyclerView" &&
+                    Canvas::class.java.isAssignableFrom(method.parameterTypes[1]) &&
+                    View::class.java.isAssignableFrom(method.parameterTypes[2]) &&
+                    method.parameterTypes[3] == Rect::class.java
+            }
+            hookMethod(draw, before = {
+                (args[2] as? View)?.let { BackgroundApplier.adaptContactsPinnedHeader(it) }
+            })
+        } catch (error: Throwable) {
+            logHookError("contacts pinned headers", error)
         }
     }
 

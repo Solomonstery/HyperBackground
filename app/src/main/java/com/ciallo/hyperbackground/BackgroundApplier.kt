@@ -278,6 +278,18 @@ object BackgroundApplier {
         }
     }
 
+    // StickyRecyclerHeadersDecoration 将字母分组标题缓存为独立 View，直接绘制到
+    // BaseRecyclerView 的 Canvas；它不是列表子 View，常规递归和 setBackground 回调都找不到。
+    fun adaptContactsPinnedHeader(header: View) {
+        if (header.javaClass.name != "com.android.contacts.list.ContactListPinnedHeaderView") return
+        val activity = findActivity(header.context) ?: return
+        if (activity.packageName != BackgroundContract.PACKAGE_CONTACTS ||
+            !matchesContactsSettings(activity.javaClass.name)) return
+        val enabled = HookRuntime.preferences().getBoolean(BackgroundContract.CONTACTS_SURFACE_ADAPT, true)
+        // 只处理该标题自身及其文字底色，不触及 RecyclerView 或其它悬浮窗。
+        adaptContactsOpaqueSurfaces(header, enabled, null, null)
+    }
+
     // 供 View.setBackground hook 回调调用：item 重绑时一定会 setBackground，在调用后立即清除
     // 不透明中性色底色，避免等全局布局/绘制前扫描的延迟白块。只处理联系人 content 子树内、且非
     // 拨号盘背景板的 view；它由独立的拨号盘控制器管理，不参与列表背景透明化。

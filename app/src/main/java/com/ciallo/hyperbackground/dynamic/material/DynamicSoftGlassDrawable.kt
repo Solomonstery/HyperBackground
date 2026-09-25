@@ -390,13 +390,16 @@ internal class DynamicSoftGlassDrawable(
          * attached, so both constraints turn a healthy apply into a silent no-op or an immediate
          * rollback. beta8 had neither and rendered correctly; the call order below is that version.
          */
-        fun applyToView(view: View, color: Int, config: SoftGlassParams, density: Float): Boolean {
+        fun applyToView(
+            view: View, color: Int, config: SoftGlassParams, density: Float,
+            clearBackground: Boolean = true,
+        ): Boolean {
             val api = glassApi ?: return false
             if (!isBionicsActive(view.context)) return false
             if (!view.isAttachedToWindow || !view.isHardwareAccelerated) {
                 // beta9 added this gate; beta8 had none. Keep the safety check but never let it
                 // swallow the apply - queue it for the moment the host actually becomes drawable.
-                applyWhenReady(view, color, config, density, READY_RETRIES)
+                applyWhenReady(view, color, config, density, clearBackground, READY_RETRIES)
                 return false
             }
             return runCatching {
@@ -410,7 +413,7 @@ internal class DynamicSoftGlassDrawable(
                 api.enhanceFlag.invoke(view, 8192, 12288)
 
                 // Keep the drawable as the View outline source, but let the shader own the fill.
-                clearBackgroundFill(view)
+                if (clearBackground) clearBackgroundFill(view)
                 view.invalidate()
                 true
             }.getOrDefault(false)
@@ -426,6 +429,7 @@ internal class DynamicSoftGlassDrawable(
             color: Int,
             config: SoftGlassParams,
             density: Float,
+            clearBackground: Boolean,
             attemptsLeft: Int,
         ) {
             if (attemptsLeft <= 0) return
@@ -434,15 +438,15 @@ internal class DynamicSoftGlassDrawable(
                     view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
                         override fun onViewAttachedToWindow(v: View) {
                             v.removeOnAttachStateChangeListener(this)
-                            v.post { applyWhenReady(v, color, config, density, attemptsLeft - 1) }
+                            v.post { applyWhenReady(v, color, config, density, clearBackground, attemptsLeft - 1) }
                         }
 
                         override fun onViewDetachedFromWindow(v: View) = Unit
                     })
                 } else if (!view.isHardwareAccelerated) {
-                    view.post { applyWhenReady(view, color, config, density, attemptsLeft - 1) }
+                    view.post { applyWhenReady(view, color, config, density, clearBackground, attemptsLeft - 1) }
                 } else {
-                    applyToView(view, color, config, density)
+                    applyToView(view, color, config, density, clearBackground)
                 }
             }
         }

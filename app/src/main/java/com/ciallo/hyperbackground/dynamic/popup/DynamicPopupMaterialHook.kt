@@ -34,6 +34,8 @@ import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_FROST
 import com.ciallo.hyperbackground.dynamic.material.DynamicFrostDrawable
 import com.ciallo.hyperbackground.dynamic.material.DynamicMaterialPalette
 import com.ciallo.hyperbackground.dynamic.material.DynamicSoftGlassDrawable
+import com.ciallo.hyperbackground.dynamic.dialog.DynamicActionSheetMaterial
+import com.ciallo.hyperbackground.dynamic.dialog.DynamicDialogPanelMaterial
 import io.github.libxposed.api.XposedInterface.ExceptionMode
 import io.github.libxposed.api.XposedModule
 import java.lang.reflect.Modifier
@@ -73,6 +75,10 @@ internal object DynamicPopupMaterialHook {
         ) {
             palette = DynamicMaterialPalette.read(prefs)
             main.post { originals.keys.toList().forEach { applyBackground(it, true) } }
+            main.post {
+                DynamicDialogPanelMaterial.refresh(palette)
+                DynamicActionSheetMaterial.refresh(palette)
+            }
         }
     }
 
@@ -136,21 +142,13 @@ internal object DynamicPopupMaterialHook {
     }
 
     private fun installDialogPanelHook(loader: ClassLoader) {
+        DynamicDialogPanelMaterial.install(module)
         val type = Class.forName(DIALOG_PANEL, false, loader)
-        type.declaredConstructors.forEachIndexed { index, ctor ->
-            ctor.isAccessible = true
-            module.hook(ctor).setExceptionMode(ExceptionMode.PROTECTIVE)
-                .setId("dynamic-cards:dialogpanel-ctor-$index").intercept { chain ->
-                    val result = chain.proceed()
-                    (chain.thisObject as? View)?.let { watchFirstDraw(it) }
-                    result
-                }
-        }
         val draw = type.getDeclaredMethod("draw", Canvas::class.java).apply { isAccessible = true }
         module.hook(draw).setExceptionMode(ExceptionMode.PROTECTIVE)
             .setId("dynamic-cards:dialogpanel-draw").intercept { chain ->
                 (chain.thisObject as? View)?.let { panel ->
-                    if (panel.isAttachedToWindow) applyBackground(panel)
+                    DynamicDialogPanelMaterial.update(panel, palette)
                 }
                 chain.proceed()
             }
@@ -196,21 +194,13 @@ internal object DynamicPopupMaterialHook {
         module.hook(draw).setExceptionMode(ExceptionMode.PROTECTIVE)
             .setId("dynamic-cards:popup-list-draw").intercept { chain ->
                 val view = chain.thisObject as? View
-                if (view != null && isListPopup(view)) applyBackground(view)
+                if (view != null) {
+                    if (DynamicActionSheetMaterial.isSurface(view)) {
+                        DynamicActionSheetMaterial.update(view, palette)
+                    } else if (isListPopup(view)) applyBackground(view)
+                }
                 chain.proceed()
             }
-    }
-
-    private fun watchFirstDraw(view: View) {
-        view.addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
-            override fun onLayoutChange(
-                v: View, left: Int, top: Int, right: Int, bottom: Int,
-                oldLeft: Int, oldTop: Int, oldRight: Int, oldBottom: Int,
-            ) {
-                v.removeOnLayoutChangeListener(this)
-                applyBackground(v)
-            }
-        })
     }
 
     private fun isListPopup(frame: View): Boolean {
@@ -252,7 +242,8 @@ internal object DynamicPopupMaterialHook {
         repeat(8) {
             val current = node ?: return false
             if (current.javaClass.name == POPUP_VIEW || current.javaClass.name == DIALOG_PANEL ||
-                current.javaClass.name == SMOOTH_FRAME && isListPopup(current)
+                current.javaClass.name == SMOOTH_FRAME &&
+                    (isListPopup(current) || DynamicActionSheetMaterial.isSurface(current))
             ) return true
             node = current.parent as? View
         }

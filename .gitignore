@@ -11,6 +11,7 @@
 *.p12
 *.pfx
 signing.properties
+local.properties
 
 # 构建前由 syncChangelogAsset 任务生成，勿手动提交
 /app/src/main/assets/CHANGELOG.md

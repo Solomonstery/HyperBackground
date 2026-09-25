@@ -424,7 +424,9 @@ internal object DynamicCardBackgroundHook {
                     state.applied = null
                     state.signature = null
                     if (palette.enabledFor(HookRuntime.targetPackage) && view.isAttachedToWindow) {
-                        view.post { applyStandalone(view) }
+                        // 同步应用：绑定/布局栈内还没 draw，材质能赶在首帧前就位；
+                        // 推迟到 post 会让刚写入的原生面先绘制一帧（蓝牙页进入时闪白块）。
+                        applyStandalone(view)
                     }
                 } else if (view != null &&
                     CardSurfaceDetector.probe(view) == CardSurfaceDetector.REASON_GROUP_LIST_ROW
@@ -1153,12 +1155,14 @@ internal object DynamicCardBackgroundHook {
         // after their initial attach and must leave the standalone material route.
         if (synchronized(standaloneStates) { standaloneStates[view] }?.applied != null) {
             if (CardSurfaceDetector.probe(view) == CardSurfaceDetector.REASON_GROUP_LIST_ROW) {
-                view.post { applyStandalone(view) }
+                // 同步撤回：onSizeChanged 发生在 layout 内、draw 之前，不推迟到 post。
+                applyStandalone(view)
             }
             return
         }
         if (standaloneTarget(view) == null) return
-        view.post { applyStandalone(view) }
+        // 同步接管：此刻尚未 draw，材质随本帧一起生效，原生面不会先画出去闪一帧。
+        applyStandalone(view)
     }
 
     /**

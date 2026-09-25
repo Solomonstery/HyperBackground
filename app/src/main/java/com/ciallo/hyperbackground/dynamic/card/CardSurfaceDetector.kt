@@ -61,13 +61,20 @@ internal object CardSurfaceDetector {
     /** 拆 drawable 容器（selector / layer / inset / ripple）时的最大嵌套层数。 */
     private const val MAX_DRAWABLE_DEPTH = 6
 
-    /** 资源名 / 类名里出现这些词的视图一律不是卡片。 */
-    private val NEGATIVE_NAME_HINTS = listOf(
+    /** 类名 / 资源名里出现这些词的视图一律不是卡片。 */
+    private val NEGATIVE_CLASS_HINTS = listOf(
         "icon", "badge", "avatar", "button", "switch", "checkbox", "radio",
         "divider", "indicator", "progress", "seekbar", "loading", "tab", "chip",
         "dot", "thumb", "cursor", "handle", "scrim", "mask", "ripple",
         "toast", "tooltip", "snackbar", "bubble", "arrow", "shadow",
     )
+
+    /**
+     * 资源名负面词是 [NEGATIVE_CLASS_HINTS] 的子集：`badge` 只拦类名——
+     * 通知与状态栏的整张说明卡资源名叫 `show_app_badge_card`，靠尺寸门槛与
+     * 类名负面词拦真正的角标小徽标已经足够。
+     */
+    private val NEGATIVE_ID_HINTS = NEGATIVE_CLASS_HINTS.filter { it != "badge" }
 
     /** 类名里出现这些词的就是卡片类容器本身。 */
     private val CARD_CLASS_HINTS = listOf(
@@ -238,13 +245,15 @@ internal object CardSurfaceDetector {
 
     /**
      * 视图背景里最不透明的一层。
-     * CardView 以 `getCardBackgroundColor()` 为准——蓝牙的 `view_corner` 就是
-     * `app:cardBackgroundColor="@android:color/transparent"`，只有子层高亮面才是真表面。
+     * CardView 的可视表面**就是卡面色**——androidx 的内部 `RoundRectDrawable.getOpacity()`
+     * 恒返回 TRANSLUCENT，与 `cardBackgroundColor` 是否透明无关；若与背景 alpha 取 max，
+     * 透明壳（蓝牙已保存设备行的 `view_corner`）会被当成实心面：壳自己接管后原生白面
+     * （`view_high_light_root` 的连接态高亮层）反盖在材质上，或把真正持面的子层以
+     * 「外层卡面」为由拦下。深色模式只是原生半透明暗面恰好看不出来。
      */
     fun strongestSurfaceAlpha(view: View, background: Drawable): Int {
         val cardAlpha = cardBackgroundAlpha(view)
-        val backgroundAlpha = surfaceAlpha(background)
-        return if (cardAlpha >= 0) maxOf(cardAlpha, backgroundAlpha) else backgroundAlpha
+        return if (cardAlpha >= 0) cardAlpha else surfaceAlpha(background)
     }
 
     /** CardView 的卡片底色 alpha（0..255）；不是 CardView 时返回 -1 表示「不适用」。 */
@@ -404,11 +413,12 @@ internal object CardSurfaceDetector {
         while (parent != null && depth < MAX_ANCESTOR_DEPTH) {
             val candidate = parent
             val background = candidate.background
-            if (background != null &&
-                surfaceAlpha(background) >= MIN_SHAPE_SURFACE_ALPHA &&
-                isCardShaped(candidate, background)
-            ) {
-                return true
+            if (background != null && isCardShaped(candidate, background)) {
+                // 祖先是 CardView 时同样只认卡面色：透明壳（蓝牙 view_corner）不是卡面，
+                // 不能拦住真正持有连接态高亮表面的子层。
+                val cardAlpha = cardBackgroundAlpha(candidate)
+                val alpha = if (cardAlpha >= 0) cardAlpha else surfaceAlpha(background)
+                if (alpha >= MIN_SHAPE_SURFACE_ALPHA) return true
             }
             // 到了列表容器就不必再往上：更外层是页面，不是卡片。
             if (candidate is ViewGroup && candidate.javaClass.name.contains("RecyclerView")) return false
@@ -420,11 +430,13 @@ internal object CardSurfaceDetector {
 
     private fun hasNegativeNameHint(view: View): Boolean {
         val className = view.javaClass.name.lowercase()
-        if (NEGATIVE_NAME_HINTS.any(className::contains)) return true
+        if (NEGATIVE_CLASS_HINTS.any(className::contains)) return true
         val resourceName = runCatching {
             if (view.id == View.NO_ID || view.id == 0) null
             else view.resources.getResourceEntryName(view.id).lowercase()
         }.getOrNull() ?: return false
-        return NEGATIVE_NAME_HINTS.any(resourceName::contains)
+        // 资源名负面词不含 badge：通知与状态栏的整张说明卡叫 show_app_badge_card，
+        // 而真正的角标小徽标由尺寸门槛与类名负面词拦住。
+        return NEGATIVE_ID_HINTS.any(resourceName::contains)
     }
 }

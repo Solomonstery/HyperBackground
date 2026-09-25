@@ -55,19 +55,36 @@ internal object DynamicCardMaterialHook {
         }.getOrDefault(false)
     }
 
-    private fun decorationType(type: Class<*>): Class<*>? = type.declaredClasses.firstOrNull { candidate ->
-        candidate.declaredMethods.any { method ->
-            method.name == "getItemOffsets" && method.parameterTypes.firstOrNull() == android.graphics.Rect::class.java &&
-                method.parameterTypes.any { it == type } &&
-                candidate.declaredMethods.any { draw -> draw.name == "onDraw" &&
-                    draw.parameterTypes.firstOrNull() == Canvas::class.java }
+    /** ItemDecoration can be a top-level R8 class, not a RecyclerView nested class. */
+    private fun decorationType(type: Class<*>): Class<*>? {
+        val getter = type.declaredMethods.firstOrNull { method ->
+            method.name == "getItemDecorationAt" && method.parameterCount == 1 &&
+                method.parameterTypes[0] == Int::class.javaPrimitiveType
         }
-    } ?: runCatching { type.classLoader?.loadClass("androidx.recyclerview.widget.RecyclerView\$ItemDecoration") }.getOrNull()
+        if (getter != null && getter.returnType != Any::class.java) return getter.returnType
+        val candidates = type.declaredMethods.filter { method ->
+            Modifier.isPublic(method.modifiers) && method.returnType == Void.TYPE &&
+                method.parameterCount == 2 && method.parameterTypes[1] == Int::class.javaPrimitiveType
+        }.map { it.parameterTypes[0] }.distinct()
+        return candidates.firstOrNull { candidate ->
+            candidate.methods.any { method ->
+                method.returnType == Void.TYPE && method.parameterTypes.firstOrNull() == android.graphics.Rect::class.java &&
+                    method.parameterTypes.any { it == type }
+            } && candidate.methods.any { method ->
+                method.returnType == Void.TYPE && method.parameterTypes.firstOrNull() == Canvas::class.java &&
+                    method.parameterTypes.any { it == type }
+            }
+        }
+    }
 
     private fun decorations(view: View, type: Class<*>): List<Any> {
         val decoration = decorationType(type) ?: return emptyList()
         val count = (type.getMethod("getItemDecorationCount").invoke(view) as? Int) ?: return emptyList()
         val getter = type.declaredMethods.firstOrNull {
+            it.name == "getItemDecorationAt" && Modifier.isPublic(it.modifiers) &&
+                it.parameterCount == 1 && it.parameterTypes[0] == Int::class.javaPrimitiveType &&
+                decoration.isAssignableFrom(it.returnType)
+        } ?: type.declaredMethods.firstOrNull {
             Modifier.isPublic(it.modifiers) && it.parameterCount == 1 &&
                 it.parameterTypes[0] == Int::class.javaPrimitiveType &&
                 decoration.isAssignableFrom(it.returnType)

@@ -259,7 +259,8 @@ object BackgroundApplier {
     // 保留一个铺满的透明背景即可让绘制系统正常重绘，同时背景仍透出。
     private fun adaptContactsOpaqueSurfaces(view: View?, enabled: Boolean, contentRoot: View?, skip: View?) {
         if (view == null || view === skip ||
-            view.getAdditionalInstanceField(DialpadBackdropView.OWNED_VIEW_FIELD) == true) return
+            view.getAdditionalInstanceField(DialpadBackdropView.OWNED_VIEW_FIELD) == true ||
+            isTransientPopup(view)) return
         if (view !== contentRoot) {
             try {
                 if (enabled) {
@@ -280,6 +281,22 @@ object BackgroundApplier {
         }
     }
 
+    private fun adaptMmsOpaqueSurfaces(view: View?, contentRoot: View, skip: View?) {
+        if (view == null || view === skip || isTransientPopup(view)) return
+        if (view !== contentRoot) {
+            try {
+                val bg = view.background
+                if (bg != null && isOpaqueNeutralSurface(bg)) makeTransparent(bg)
+            } catch (_: Throwable) {
+            }
+        }
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                adaptMmsOpaqueSurfaces(view.getChildAt(i), contentRoot, skip)
+            }
+        }
+    }
+
     // 供 View.setBackground hook 回调调用：item 重绑时一定会 setBackground，在调用后立即清除
     // 不透明中性色底色，避免等全局布局/绘制前扫描的延迟白块。只处理联系人 content 子树内、且非
     // 拨号盘背景板的 view；已被存过原始背景（CONTACTS_BG_SAVED 非空）说明之前已清过，跳过。
@@ -289,6 +306,8 @@ object BackgroundApplier {
             if (!HookRuntime.preferences().getBoolean(BackgroundContract.CONTACTS_SURFACE_ADAPT, true)) return
             val activity = findActivity(view.context) ?: return
             if (!matchesContactsSettings(activity.javaClass.name)) return
+            val content = activity.findViewById<View>(android.R.id.content) ?: return
+            if (!isDescendant(view, content) || isTransientPopup(view)) return
             // 跳过拨号盘背景板及其子树（由 setAlpha 专门处理）。
             val bgViewId = resolveId(activity, "dialer_background_view")
             if (bgViewId != 0) {
@@ -551,7 +570,7 @@ object BackgroundApplier {
             val content = activity.findViewById<View>(android.R.id.content) ?: return
             val fabId = resolveId(activity, "fab")
             val fab = if (fabId == 0) null else activity.findViewById<View>(fabId)
-            adaptContactsOpaqueSurfaces(content, true, content, fab)
+            adaptMmsOpaqueSurfaces(content, content, fab)
         } catch (error: Throwable) {
             log("adaptMmsListSurfaces", error)
         }
@@ -658,6 +677,8 @@ object BackgroundApplier {
         try {
             val activity = findActivity(view.context) ?: return
             if (!isMmsListActivity(activity.javaClass.name)) return
+            val content = activity.findViewById<View>(android.R.id.content) ?: return
+            if (!isDescendant(view, content) || isTransientPopup(view)) return
             val bg = view.background
             if (bg != null && isOpaqueNeutralSurface(bg)) {
                 makeTransparent(bg)
@@ -665,6 +686,34 @@ object BackgroundApplier {
             }
         } catch (_: Throwable) {
         }
+    }
+
+    private fun isTransientPopup(view: View): Boolean {
+        // PopupWindow and Dialog have their own window, but can share the Activity Context.
+        // Some MIUIX panels are hosted in the Activity window instead; exclude those too.
+        var node: View? = view
+        while (node != null) {
+            val type = node.javaClass.name
+            if (type == "miuix.appcompat.internal.widget.DialogParentPanel2" ||
+                type == "miuix.popupwidget.widget.PopupView" ||
+                type == "android.widget.PopupWindow\$PopupDecorView" ||
+                (type == "miuix.smooth.SmoothFrameLayout2" && isMmsListPopup(node))
+            ) return true
+            node = node.parent as? View
+        }
+        return false
+    }
+
+    private fun isMmsListPopup(frame: View): Boolean {
+        val group = frame as? ViewGroup ?: return false
+        for (i in 0 until group.childCount) {
+            val spring = group.getChildAt(i) as? ViewGroup ?: continue
+            if (spring.javaClass.name != "miuix.springback.view.SpringBackLayout") continue
+            for (j in 0 until spring.childCount) {
+                if (spring.getChildAt(j) is android.widget.ListView) return true
+            }
+        }
+        return false
     }
 
     // 拨号盘键盘由 ViewStub 点击后异步 inflate，Activity 生命周期回调抓不到它「刚 inflate、绘制第一帧
@@ -1652,7 +1701,8 @@ object BackgroundApplier {
 
         private fun clearPageSurfaces(activity: Activity, view: View?, root: View, depth: Int) {
             if (view == null || view === media ||
-                view.getAdditionalInstanceField(DialpadBackdropView.OWNED_VIEW_FIELD) == true) return
+                view.getAdditionalInstanceField(DialpadBackdropView.OWNED_VIEW_FIELD) == true ||
+                activity.packageName == BackgroundContract.PACKAGE_PHONE && isTransientPopup(view)) return
             if (activity.packageName == BackgroundContract.PACKAGE_MMS) {
                 val idName = resourceEntryName(activity, view.id)
                 if (idName == "message_list" || idName == "message_list_animator" ||

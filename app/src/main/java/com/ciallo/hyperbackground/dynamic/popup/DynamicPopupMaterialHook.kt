@@ -60,6 +60,7 @@ internal object DynamicPopupMaterialHook {
     private val outlines = WeakHashMap<View, ViewOutlineProvider?>()
     private val originalClipping = WeakHashMap<View, Boolean>()
     private val outlineListeners = WeakHashMap<View, View.OnLayoutChangeListener>()
+    private val deniedWindowBlur = WeakHashMap<View, Boolean>()
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
         if (key == null || key in setOf(
                 KEY_CUSTOM_CARD_ENABLED, KEY_COMPONENT_POPUP, KEY_LIGHT_CARD_COLOR,
@@ -165,6 +166,7 @@ internal object DynamicPopupMaterialHook {
                 val config = palette
                 val surface = runCatching { content.get(chain.thisObject) as? View }.getOrNull()
                 if (surface != null && isListPopup(surface) &&
+                    !shouldIgnore(surface) &&
                     config.enabledFor(HookRuntime.targetPackage, ComponentKeys.POPUP) &&
                     config.mode == CARD_BACKGROUND_SOFT_GLASS
                 ) true else result
@@ -230,6 +232,21 @@ internal object DynamicPopupMaterialHook {
             view.parent?.parent?.javaClass?.name == "miuix.popupwidget.widget.PopupWindow\$ContainerView" &&
             view.rootView.javaClass.simpleName == "PopupDecorView"
 
+    /** Leave native surfaces untouched when the system denies backdrop sampling for this app. */
+    private fun shouldIgnore(view: View): Boolean {
+        if (view.javaClass.name != DIALOG_PANEL && !isListPopup(view)) return false
+        deniedWindowBlur[view]?.let { return it }
+        val whitelisted = runCatching {
+            View::class.java.getMethod("isPassWindowBlurWhitelisted", String::class.java)
+                .invoke(view, view.context.packageName) as? Boolean
+        }.getOrNull() ?: return false
+        deniedWindowBlur[view] = !whitelisted
+        if (!whitelisted) module.log(Log.INFO, TAG,
+            "Popup skipped: pass-window blur denied view=${view.javaClass.name} " +
+                "background=${view.background?.javaClass?.name} alpha=${view.background?.alpha}")
+        return !whitelisted
+    }
+
     internal fun owns(view: View): Boolean {
         var node: View? = view
         repeat(8) {
@@ -243,6 +260,11 @@ internal object DynamicPopupMaterialHook {
     }
 
     private fun applyBackground(view: View, refresh: Boolean = false) {
+        if (shouldIgnore(view)) {
+            if (replacements.containsKey(view) || glass.containsKey(view) || frost.containsKey(view) ||
+                outlines.containsKey(view)) restoreBackground(view)
+            return
+        }
         val current = view.background
         val previous = replacements[view]
         if (current !== previous && (!originals.containsKey(view) || current != null)) {
@@ -256,16 +278,7 @@ internal object DynamicPopupMaterialHook {
         // The primary HyperPopupWindow menu cannot sample the backdrop on this Contacts build.
         // Leave it native; the ClipLayout-hosted secondary menu retains its working glass.
         if (!popupEnabled || isUnsupportedContactsMenu(view)) {
-            if (glass.remove(view) != null) DynamicSoftGlassDrawable.clearFromView(view)
-            if (frost.remove(view) != null) DynamicFrostDrawable.clearFromView(view)
-            if (outlines.containsKey(view)) {
-                outlineListeners.remove(view)?.let(view::removeOnLayoutChangeListener)
-                view.outlineProvider = outlines.remove(view)
-                originalClipping.remove(view)?.let { view.clipToOutline = it }
-                view.invalidateOutline()
-            }
-            if (current === previous) view.background = original
-            replacements.remove(view)
+            restoreBackground(view)
             return
         }
         if (current === previous && previous != null && !refresh) {
@@ -375,5 +388,21 @@ internal object DynamicPopupMaterialHook {
             glass[view] = false
         }
         module.log(Log.INFO, TAG, "Popup color fallback: ${view.javaClass.name}@${System.identityHashCode(view).toString(16)} original=${original?.javaClass?.name} mode=${config.mode}")
+    }
+
+    private fun restoreBackground(view: View) {
+        if (glass.remove(view) != null) DynamicSoftGlassDrawable.clearFromView(view)
+        if (frost.remove(view) != null) DynamicFrostDrawable.clearFromView(view)
+        if (outlines.containsKey(view)) {
+            outlineListeners.remove(view)?.let(view::removeOnLayoutChangeListener)
+            view.outlineProvider = outlines.remove(view)
+            originalClipping.remove(view)?.let { view.clipToOutline = it }
+            view.invalidateOutline()
+        }
+        val replacement = replacements.remove(view)
+        if (replacement != null && view.background === replacement && originals.containsKey(view)) {
+            view.background = originals[view]
+        }
+        originals.remove(view)
     }
 }

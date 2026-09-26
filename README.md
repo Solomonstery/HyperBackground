@@ -21,7 +21,7 @@
 
 HyperBackground 是一个面向 HyperOS 的 LSPosed 背景与外观自定义模块，用于为系统设置及部分 HyperOS 系统应用提供统一、可配置的自定义背景体验。
 
-> 当前最新发行版：**1.4.3**
+> 当前最新发行版：**1.4.4**
 >
 > 包名：`com.ciallo.hyperbackground`
 >
@@ -37,11 +37,11 @@ HyperBackground 是一个面向 HyperOS 的 LSPosed 背景与外观自定义模�
 
 ### 背景自定义
 
-- 设置主页、我的设备、全局背景、通讯录与拨号四套独立背景通道，选图方式一致。
+- 设置主页、我的设备、全局背景、通讯录与拨号、短信五套独立背景通道，选图方式一致。
 - 设置主页支持独立图片，不强制继承全局背景。
 - “我的设备”支持图片、GIF、动态 WebP、MP4 和 WebM，并可恢复系统 RuntimeShader 动态背景。
 - 各套背景均支持透明度、模糊开关和模糊强度。
-- 全局背景覆盖 Settings 普通二级页面，并扩展到设备互联、电话设置、小米账号、主题壁纸、系统桌面、手机管家、省电管理及健康使用手机等已适配页面。
+- 全局背景覆盖 Settings 普通二级页面，并扩展到设备互联、电话设置、小米账号、主题壁纸、系统桌面、手机管家、省电管理、健康使用手机、短信等已适配页面。
 - MIUIX 二级页面支持透明顶栏与连续背景显示。
 - 对移动网络 `MobileNetworkSettings` 使用独立的背景宿主处理，避免背景被 MIUIX 页面转场容器一同移动。
 - 登录、授权、锁屏凭据、支付、拨号、紧急呼叫及浮动窗口保持系统原样。
@@ -71,6 +71,14 @@ HyperBackground 是一个面向 HyperOS 的 LSPosed 背景与外观自定义模�
 - 模块界面支持 Monet 壁纸取色、12 色预设、HSV 调节，以及 `#RRGGBB` / `#AARRGGBB` 手动输入。
 - 模块外观支持独立背景、背景透明度、模糊和卡片透明度。
 
+### 卡片与材质
+
+- 设置分组卡片支持自定义颜色、磨砂、柔光玻璃三种背景模式，浅色/深色独立配置颜色、模糊强度、不透明度与高光。
+- 「我的设备」自绘卡片、通知说明卡、蓝牙设备卡等独立卡片统一接入当前卡片样式，材质不可用时逐级回退。
+- MIUIX 弹窗在柔光玻璃模式下复用当前材质。
+- 卡片配置支持剪贴板导入导出与统一恢复默认。
+- 动态适配体系按内容自动识别独立卡片表面，卡片材质路由可扩展到 LSPosed 中勾选的其它应用。
+
 ### 其它
 
 - 提供 Hook 读取记录，用于确认目标进程是否已执行 Hook 并读取全局背景。
@@ -84,6 +92,19 @@ HyperBackground 是一个面向 HyperOS 的 LSPosed 背景与外观自定义模�
 - 槽位三态：不使用 / 随刷新 / 固定。「固定」的槽位仍显示当前随机图，但跳过「立刻更换」与开机自动换图。
 - 换图时机可选「仅手动」「仅开机自动」「手动 + 开机」。
 - 每个背景通道详情页新增「导出当前图片」，将当前生效背景（随机优先）保存到相册 `Pictures/HyperBackground/`。
+
+## 1.4.4
+
+汇总 1.4.4-beta1 至 beta11 全部测试线，作为稳定版发布：
+
+- 卡片背景体系：分组卡片支持自定义颜色、磨砂、柔光玻璃三种模式，浅色/深色独立配置；弹窗复用柔光材质；卡片配置支持导入导出与恢复默认。
+- 动态适配体系：内容驱动的通用卡片表面识别，卡片材质路由可扩展到 LSPosed 勾选的其它应用；新增底栏渐变与顶栏渐变设置。
+- 新增短信背景通道（主页会话列表与聊天页双通道）。
+- 「我的设备」新增 COS 样式与背景预加载，自绘卡片统一接入卡片材质路由。
+- 拨号盘独立背景重构：等比缩放、纵向定位、四角圆角裁切、键盘面板独立不透明度。
+- 功能与作用域两级控制：作用域管理页、一键重启作用域，完善 26 个作用域适配。
+- 设置页「配置」栏目、隐藏桌面图标、顶栏按钮常驻。
+- 修复蓝牙/通知卡片浅色漏接管、misettings 分组装饰器卡片失守、柔光切换闪烁、顶栏模糊层拦截触摸、我的设备黑帧、设置 UI 溢出等。
 
 ## 1.4.3
 
@@ -109,17 +130,33 @@ HyperBackground 是一个面向 HyperOS 的 LSPosed 背景与外观自定义模�
 ## 当前作用域
 
 - `com.android.settings`
-- `com.milink.service`
-- `com.android.phone`
-- `com.xiaomi.account`
-- `com.android.thememanager`
-- `com.miui.home`
-- `com.miui.securitycenter`
-- `com.miui.powerkeeper`
-- `com.xiaomi.misettings`
 - `com.android.contacts`
+- `com.android.mms`
+- `com.android.phone`
+- `com.milink.service`
+- `com.xiaomi.account`
+- `com.xiaomi.misettings`
+- `com.android.thememanager`
+- `com.miui.securitycenter`
+- `com.miui.securitycore`
+- `com.android.deskclock`
+- `com.android.fileexplorer`
+- `com.android.providers.downloads.ui`
+- `com.android.quicksearchbox`
+- `com.android.updater`
+- `com.android.soundrecorder`
+- `com.duokan.phone.remotecontroller`
+- `com.miui.aod`
+- `com.miui.calculator`
+- `com.miui.cloudservice`
+- `com.miui.cloudbackup`
+- `com.miui.backup`
+- `com.miui.huanji`
+- `com.miui.misound`
+- `com.miui.notes`
+- `com.miui.audiomonitor`
 
-普通 Settings 二级页面使用全局背景；设置主页和“我的设备”分别由独立通道控制，通讯录与拨号由 `com.android.contacts` 通道控制。跨包作用域只处理已识别的全屏设置页面，敏感或临时窗口保持系统原样。
+普通 Settings 二级页面使用全局背景；设置主页、我的设备、通讯录与拨号、短信分别由独立通道控制。跨包作用域只处理已识别的全屏设置页面，敏感或临时窗口保持系统原样；非官方支持范围的应用仅加载卡片与弹窗材质，不启用整页背景、主题或文字颜色管线。
 
 ## 安装
 

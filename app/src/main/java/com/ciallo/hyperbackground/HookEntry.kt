@@ -19,6 +19,7 @@ import com.ciallo.hyperbackground.appearance.SettingsAppearanceSources
 import com.ciallo.hyperbackground.appearance.SettingsBackgroundView
 import com.ciallo.hyperbackground.dialpad.DialpadBackgroundController
 import com.ciallo.hyperbackground.dynamic.card.DynamicCardBackgroundHook
+import com.ciallo.hyperbackground.dynamic.bar.DynamicBottomGradientHook
 import com.ciallo.hyperbackground.dynamic.topbar.DynamicActionBarHook
 import com.ciallo.hyperbackground.util.callMethod
 import com.ciallo.hyperbackground.util.hookMethod
@@ -108,6 +109,8 @@ class HookEntry : XposedModule() {
         installCardMaterial(classLoader)
         runCatching { DynamicActionBarHook.install(HookRuntime.module(), classLoader) }
             .onFailure { HookRuntime.log("[HyperBackground] Dynamic action bar unavailable: $it") }
+        runCatching { DynamicBottomGradientHook.install(HookRuntime.module(), classLoader) }
+            .onFailure { HookRuntime.log("[HyperBackground] Bottom gradient unavailable: $it") }
     }
 
     /**

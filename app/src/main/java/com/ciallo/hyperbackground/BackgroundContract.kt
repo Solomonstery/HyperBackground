@@ -91,6 +91,10 @@ object BackgroundContract {
     const val UI_TOP_BLUR_ENABLED = "ui_top_blur_enabled"
     const val UI_TOP_BLUR_STRENGTH = "ui_top_blur_strength"
     const val UI_TOP_BLUR_OPACITY = "ui_top_blur_opacity"
+    const val UI_BOTTOM_GRADIENT_ENABLED = "ui_bottom_gradient_enabled"
+    const val UI_BOTTOM_GRADIENT_STRENGTH = "ui_bottom_gradient_strength"
+    const val UI_BOTTOM_GRADIENT_OPACITY = "ui_bottom_gradient_opacity"
+    const val UI_BOTTOM_CLEAR_ENABLED = "ui_bottom_clear_enabled"
     // 清除设置主页顶栏遮罩。只作用于 MiuiSettings 首页；开启时首页清除优先，
     // 其它设置二级页仍可继续使用全局顶栏模糊。
     const val UI_TOP_CLEAR_ENABLED = "ui_top_clear_enabled"

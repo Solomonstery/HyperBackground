@@ -89,6 +89,7 @@ internal object DynamicActionBarHook {
 
     private lateinit var module: XposedModule
     private var maskAlpha: Field? = null
+    private var isSplit: Field? = null
     private var setType: Method? = null
     private var setMode: Method? = null
     private var setViewMode: Method? = null
@@ -101,6 +102,7 @@ internal object DynamicActionBarHook {
     fun install(value: XposedModule, loader: ClassLoader) {
         val type = runCatching { loader.loadClass(BAR) }.getOrNull() ?: return
         module = value
+        isSplit = runCatching { type.getDeclaredField("mIsSplit").apply { isAccessible = true } }.getOrNull()
         setType = View::class.java.getMethod("setMiBackgroundBlurType", Int::class.javaPrimitiveType)
         setMode = View::class.java.getMethod("setMiBackgroundBlurMode", Int::class.javaPrimitiveType)
         setViewMode = View::class.java.getMethod("setMiViewBlurMode", Int::class.javaPrimitiveType)
@@ -197,7 +199,7 @@ internal object DynamicActionBarHook {
                     (chain.thisObject as? ViewGroup)?.let { bar ->
                         bars[bar] = Unit
                         // 遮罩层只在反混淆成功后才有意义，避免给非 MIUIX 结构多挂一个子 View。
-                        if (maskAlpha != null) ensure(bar)
+                        if (maskAlpha != null && runCatching { isSplit?.getBoolean(bar) }.getOrNull() != true) ensure(bar)
                         syncButtonBackground(bar)
                         syncButtons(bar)
                     }
@@ -274,8 +276,13 @@ internal object DynamicActionBarHook {
     }
 
     private fun enabled(): Boolean =
-        scoped() && (HookRuntime.preferences().getBoolean(BackgroundContract.UI_TOP_BLUR_ENABLED, true) ||
-            HookRuntime.preferences().getBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, false))
+        scoped() && (HookRuntime.preferences().getBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, false) ||
+            HookRuntime.preferences().getBoolean(BackgroundContract.UI_TOP_BLUR_ENABLED, true) &&
+            !bottomGradientEnabled())
+
+    private fun bottomGradientEnabled(): Boolean =
+        HookRuntime.preferences().getBoolean(BackgroundContract.UI_BOTTOM_GRADIENT_ENABLED, false) &&
+            !HookRuntime.preferences().getBoolean(BackgroundContract.UI_BOTTOM_CLEAR_ENABLED, false)
 
     /** 顶栏按钮背景常驻只在顶栏按钮组件启用时生效（含软件作用域的整包/按组件开关）。 */
     private fun buttonBackgroundEnabled(): Boolean =
@@ -392,7 +399,11 @@ internal object DynamicActionBarHook {
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             visibility = View.INVISIBLE
         }
-        bar.addView(child, 0, ViewGroup.LayoutParams(-1, -1))
+        // MIUIX split bars measure their height from the tallest child. Never attach
+        // this overlay to a known split bar; on builds without mIsSplit, use a
+        // zero-size measured child and size it to the real bar in onLayout instead.
+        val size = if (isSplit != null) ViewGroup.LayoutParams.MATCH_PARENT else 0
+        bar.addView(child, 0, ViewGroup.LayoutParams(size, size))
         return State(child).also { owned[bar] = it }
     }
 
@@ -407,6 +418,7 @@ internal object DynamicActionBarHook {
             hide(state)
             return
         }
+        val clear = HookRuntime.preferences().getBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, false)
         // Do not remove the native fill unless its mask painter has been identified too.
         if (maskAlpha == null) return
         if (!state.cleared) {
@@ -415,14 +427,23 @@ internal object DynamicActionBarHook {
         }
         if (getPrimary?.invoke(bar) != null) setPrimary?.invoke(bar, null)
 
-        val clear = HookRuntime.preferences().getBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, false)
         val strength = HookRuntime.preferences().getInt(BackgroundContract.UI_TOP_BLUR_STRENGTH, 10).coerceIn(0, 100)
         val opacity = HookRuntime.preferences().getInt(BackgroundContract.UI_TOP_BLUR_OPACITY, 100).coerceIn(0, 100)
         val fraction = (maskAlpha?.getFloat(bar) ?: 0f).coerceIn(0f, 1f)
         val radius = if (clear) 0f else min(strength * bar.resources.displayMetrics.density, bar.height * .5f)
         val alpha = if (clear) 0f else fraction * opacity / 100f
-        if (radius <= 0f || alpha <= 0f || bar.height <= 0) {
+        if (radius <= 0f || bar.height <= 0) {
             hide(state)
+            return
+        }
+        if (alpha <= 0f) {
+            // Scrolling frequently drives the mask alpha through zero. Tearing down
+            // the gradient render node at that boundary can race the bottom gradient
+            // on RenderThread; keep its blur configuration and only fade it out.
+            if (state.lastAlpha != 0f) {
+                state.blur.alpha = 0f
+                state.lastAlpha = 0f
+            }
             return
         }
         if (state.lastRadius != radius || state.lastHeight != bar.height) {

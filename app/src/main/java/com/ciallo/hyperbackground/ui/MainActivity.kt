@@ -590,14 +590,14 @@ class MainActivity : ComponentActivity() {
                         FloatingNavigationBarItem(
                             selected = pagerState.currentPage == 1,
                             onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
-                            icon = MiuixIcons.Settings,
-                            label = getString(R.string.nav_settings),
+                            icon = MiuixIcons.All,
+                            label = getString(R.string.nav_dynamic),
                         )
                         FloatingNavigationBarItem(
                             selected = pagerState.currentPage == 2,
                             onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
-                            icon = MiuixIcons.All,
-                            label = getString(R.string.nav_dynamic),
+                            icon = MiuixIcons.Settings,
+                            label = getString(R.string.nav_settings),
                         )
                         FloatingNavigationBarItem(
                             selected = pagerState.currentPage == 3,
@@ -621,14 +621,14 @@ class MainActivity : ComponentActivity() {
                         NavigationBarItem(
                             selected = pagerState.currentPage == 1,
                             onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
-                            icon = MiuixIcons.Settings,
-                            label = getString(R.string.nav_settings),
+                            icon = MiuixIcons.All,
+                            label = getString(R.string.nav_dynamic),
                         )
                         NavigationBarItem(
                             selected = pagerState.currentPage == 2,
                             onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
-                            icon = MiuixIcons.All,
-                            label = getString(R.string.nav_dynamic),
+                            icon = MiuixIcons.Settings,
+                            label = getString(R.string.nav_settings),
                         )
                         NavigationBarItem(
                             selected = pagerState.currentPage == 3,
@@ -667,6 +667,19 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         1 -> MainPageScaffold(
+                            title = getString(R.string.nav_dynamic),
+                            bottomPadding = bottomPadding,
+                        ) { padding, scrollModifier ->
+                            DynamicMaterialPage(
+                                activity = this@MainActivity,
+                                modifier = scrollModifier,
+                                padding = padding,
+                                onOpenMaterial = { onOpenRoute(ROUTE_CARD_MATERIAL) },
+                                onOpenComponentScope = { onOpenRoute(ROUTE_COMPONENT_SCOPE) },
+                                onOpenAppScope = { onOpenRoute(ROUTE_APP_SCOPE) },
+                            )
+                        }
+                        2 -> MainPageScaffold(
                             title = getString(R.string.nav_settings),
                             bottomPadding = bottomPadding,
                             actions = {
@@ -688,19 +701,6 @@ class MainActivity : ComponentActivity() {
                                 onMonet = onMonet,
                                 onAccent = onAccent,
                                 onOpenChangelog = { scope.launch { pagerState.animateScrollToPage(3) } },
-                            )
-                        }
-                        2 -> MainPageScaffold(
-                            title = getString(R.string.nav_dynamic),
-                            bottomPadding = bottomPadding,
-                        ) { padding, scrollModifier ->
-                            DynamicMaterialPage(
-                                activity = this@MainActivity,
-                                modifier = scrollModifier,
-                                padding = padding,
-                                onOpenMaterial = { onOpenRoute(ROUTE_CARD_MATERIAL) },
-                                onOpenComponentScope = { onOpenRoute(ROUTE_COMPONENT_SCOPE) },
-                                onOpenAppScope = { onOpenRoute(ROUTE_APP_SCOPE) },
                             )
                         }
                         else -> MainPageScaffold(

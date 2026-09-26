@@ -186,6 +186,15 @@
     <string name="top_blur_opacity">Top blur opacity</string>
     <string name="top_clear">Clear top bar</string>
     <string name="top_clear_summary">Make all Settings top bars transparent, overriding top blur</string>
+    <string name="bottom_gradient">Bottom gradient</string>
+    <string name="bottom_gradient_summary">Customize the bottom gradient</string>
+    <string name="bottom_gradient_enabled">Bottom gradient blur</string>
+    <string name="bottom_gradient_enabled_summary">Use a transparent gradient blur behind the bottom bar</string>
+    <string name="gradient_blur_conflict">Top and bottom blur conflict; only one can be enabled</string>
+    <string name="bottom_gradient_strength">Bottom gradient strength</string>
+    <string name="bottom_gradient_opacity">Bottom gradient opacity</string>
+    <string name="bottom_clear">Clear bottom bar</string>
+    <string name="bottom_clear_summary">Remove the bottom gradient overlay</string>
     <string name="top_button_background">Persistent top bar buttons</string>
     <string name="top_button_background_summary">Keep the top bar button backgrounds visible without scrolling the list</string>
     <string name="home_scale_title">Home background scaling</string>

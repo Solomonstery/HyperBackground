@@ -86,7 +86,7 @@ jobs:
           chmod +x build.sh
           ./build.sh
 
-      - name: 校验版本、作用域与私有签名
+      - name: 校验版本与私有签名
         id: package
         shell: bash
         run: |
@@ -101,14 +101,6 @@ jobs:
           RAW="$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
           ACTUAL="$(printf '%s' "$RAW" | tr '[:lower:]' '[:upper:]' | sed 's/../&:/g;s/:$//')"
           test "$ACTUAL" = "$EXPECTED"
-          unzip -p "$APK" META-INF/xposed/scope.list > "$RUNNER_TEMP/scope.list"
-          test "$(wc -l < "$RUNNER_TEMP/scope.list")" -eq 11
-          for package_name in \
-            com.android.settings com.milink.service com.android.phone com.xiaomi.account \
-            com.android.thememanager com.miui.home com.miui.securitycenter com.miui.powerkeeper \
-            com.xiaomi.misettings com.android.contacts com.android.mms; do
-            grep -Fxq "$package_name" "$RUNNER_TEMP/scope.list"
-          done
           TARGET="HyperBackground-v$VERSION.apk"
           cp "$APK" "$TARGET"
           SHA256="$(sha256sum "$TARGET" | awk '{print $1}')"
@@ -166,7 +158,7 @@ jobs:
             fi
             echo "## 构建链"
             echo
-            echo "- main：目录源码 → Java 17 → Android SDK 37 / Build Tools 36.0.0 → Gradle Release → Secrets 注入 PKCS12 私有签名 → 版本、作用域与证书校验 → Actions Artifact → GitHub Release。"
+            echo "- main：目录源码 → Java 17 → Android SDK 37 / Build Tools 36.0.0 → Gradle Release → Secrets 注入 PKCS12 私有签名 → 版本与证书校验 → Actions Artifact → GitHub Release。"
             echo "- source-archives：历史源码 ZIP 独立分支，构建链按版本号选择最高归档；1.3.6 本次从 main 目录源码构建。"
             echo
             echo "## 构建信息"

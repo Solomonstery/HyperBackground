@@ -94,6 +94,7 @@ fun DynamicMaterialPage(
 @Composable
 private fun TopBarEffects(activity: MainActivity) {
     val config = activity.config
+    var showTopGradient by remember { mutableStateOf(false) }
     var showBottomGradient by remember { mutableStateOf(false) }
     var clear by remember { mutableStateOf(config.getBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, false)) }
     var blur by remember {
@@ -105,6 +106,79 @@ private fun TopBarEffects(activity: MainActivity) {
     var bottomClear by remember {
         mutableStateOf(config.getBoolean(BackgroundContract.UI_BOTTOM_CLEAR_ENABLED, false))
     }
+    UiCard(activity, Modifier.fillMaxWidth()) {
+        BasicComponent(
+            title = stringResource(R.string.top_gradient),
+            summary = stringResource(R.string.top_gradient_summary),
+            endActions = {
+                Icon(imageVector = MiuixIcons.Basic.ArrowRight, contentDescription = null)
+            },
+            onClick = { showTopGradient = true },
+        )
+        BasicComponent(
+            title = stringResource(R.string.bottom_gradient),
+            summary = stringResource(R.string.bottom_gradient_summary),
+            endActions = {
+                Icon(imageVector = MiuixIcons.Basic.ArrowRight, contentDescription = null)
+            },
+            onClick = { showBottomGradient = true },
+        )
+    }
+    TopGradientDialog(
+        activity = activity,
+        show = showTopGradient,
+        blur = blur,
+        clear = clear,
+        bottomActive = bottomGradient && !bottomClear,
+        onBlurChange = { value ->
+            blur = value
+            if (value) bottomGradient = false
+            config.edit().putBoolean(BackgroundContract.UI_TOP_BLUR_ENABLED, value)
+                .also { if (value) it.putBoolean(BackgroundContract.UI_BOTTOM_GRADIENT_ENABLED, false) }
+                .apply()
+        },
+        onClearChange = { value ->
+            clear = value
+            config.edit().putBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, value)
+                .putBoolean(BackgroundContract.UI_TOP_BLUR_ENABLED, blur)
+                .apply()
+        },
+        onDismiss = { showTopGradient = false },
+    )
+    BottomGradientDialog(
+        activity = activity,
+        show = showBottomGradient,
+        gradient = bottomGradient,
+        clear = bottomClear,
+        onGradientChange = { value ->
+            bottomGradient = value
+            if (value) blur = false
+            config.edit().putBoolean(BackgroundContract.UI_BOTTOM_GRADIENT_ENABLED, value)
+                .also { if (value) it.putBoolean(BackgroundContract.UI_TOP_BLUR_ENABLED, false) }
+                .apply()
+        },
+        onClearChange = { value ->
+            bottomClear = value
+            config.edit().putBoolean(BackgroundContract.UI_BOTTOM_CLEAR_ENABLED, value)
+                .putBoolean(BackgroundContract.UI_BOTTOM_GRADIENT_ENABLED, bottomGradient)
+                .apply()
+        },
+        onDismiss = { showBottomGradient = false },
+    )
+}
+
+@Composable
+private fun TopGradientDialog(
+    activity: MainActivity,
+    show: Boolean,
+    blur: Boolean,
+    clear: Boolean,
+    bottomActive: Boolean,
+    onBlurChange: (Boolean) -> Unit,
+    onClearChange: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val config = activity.config
     var strength by remember {
         mutableFloatStateOf(config.getInt(BackgroundContract.UI_TOP_BLUR_STRENGTH, 10).coerceIn(0, 100).toFloat())
     }
@@ -112,23 +186,23 @@ private fun TopBarEffects(activity: MainActivity) {
         mutableFloatStateOf(config.getInt(BackgroundContract.UI_TOP_BLUR_OPACITY, 100).coerceIn(0, 100).toFloat())
     }
     val motion = spring<IntSize>(dampingRatio = 0.82f, stiffness = 420f)
-    UiCard(activity, Modifier.fillMaxWidth()) {
+    val active = blur && !clear && !bottomActive
+    WindowDialog(
+        title = stringResource(R.string.top_gradient),
+        show = show,
+        onDismissRequest = onDismiss,
+    ) {
         Column {
             SwitchPreference(
                 title = stringResource(R.string.top_blur),
-                summary = stringResource(R.string.top_blur_summary) + " · " + stringResource(R.string.gradient_blur_conflict),
-                checked = blur && !clear && !(bottomGradient && !bottomClear),
+                summary = stringResource(R.string.top_blur_summary) + " · " +
+                    stringResource(R.string.gradient_blur_conflict),
+                checked = active,
                 enabled = !clear,
-                onCheckedChange = { value ->
-                    blur = value
-                    if (value) bottomGradient = false
-                    config.edit().putBoolean(BackgroundContract.UI_TOP_BLUR_ENABLED, value)
-                        .also { if (value) it.putBoolean(BackgroundContract.UI_BOTTOM_GRADIENT_ENABLED, false) }
-                        .apply()
-                },
+                onCheckedChange = { onBlurChange(it) },
             )
             AnimatedVisibility(
-                visible = blur && !clear && !(bottomGradient && !bottomClear),
+                visible = active,
                 enter = expandVertically(animationSpec = motion) + fadeIn(),
                 exit = shrinkVertically(animationSpec = motion) + fadeOut(),
             ) {
@@ -156,44 +230,10 @@ private fun TopBarEffects(activity: MainActivity) {
                 summary = stringResource(R.string.top_clear_summary),
                 checked = clear,
                 enabled = !blur || clear,
-                onCheckedChange = { value ->
-                    clear = value
-                    config.edit().putBoolean(BackgroundContract.UI_TOP_CLEAR_ENABLED, value)
-                        .putBoolean(BackgroundContract.UI_TOP_BLUR_ENABLED, blur)
-                        .apply()
-                },
-            )
-            BasicComponent(
-                title = stringResource(R.string.bottom_gradient),
-                summary = stringResource(R.string.bottom_gradient_summary) + " · " +
-                    stringResource(R.string.gradient_blur_conflict),
-                endActions = {
-                    Icon(imageVector = MiuixIcons.Basic.ArrowRight, contentDescription = null)
-                },
-                onClick = { showBottomGradient = true },
+                onCheckedChange = { onClearChange(it) },
             )
         }
     }
-    BottomGradientDialog(
-        activity = activity,
-        show = showBottomGradient,
-        gradient = bottomGradient,
-        clear = bottomClear,
-        onGradientChange = { value ->
-            bottomGradient = value
-            if (value) blur = false
-            config.edit().putBoolean(BackgroundContract.UI_BOTTOM_GRADIENT_ENABLED, value)
-                .also { if (value) it.putBoolean(BackgroundContract.UI_TOP_BLUR_ENABLED, false) }
-                .apply()
-        },
-        onClearChange = { value ->
-            bottomClear = value
-            config.edit().putBoolean(BackgroundContract.UI_BOTTOM_CLEAR_ENABLED, value)
-                .putBoolean(BackgroundContract.UI_BOTTOM_GRADIENT_ENABLED, bottomGradient)
-                .apply()
-        },
-        onDismiss = { showBottomGradient = false },
-    )
 }
 
 @Composable

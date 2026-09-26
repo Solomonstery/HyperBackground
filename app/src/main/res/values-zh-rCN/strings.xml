@@ -4,51 +4,295 @@
     <string name="contacts_dialpad_blur_summary">默认背景模糊面板后方内容，自定义背景模糊图片，按键保持清晰</string>
     <string name="app_name">HyperBG</string>
     <string name="app_description">为 HyperOS 系统设置及相关系统页面注入统一可配置的自定义背景。</string>
-    <string name="nav_home">主页</string><string name="nav_settings">设置</string><string name="nav_about">关于</string>
-    <string name="saying">一言</string><string name="scope">背景</string><string name="saying_loading">正在获取一言…</string><string name="saying_failed">一言获取失败，点击重试</string>
-    <string name="background_home">设置主页</string><string name="background_home_summary">独立控制 HyperOS 设置首页</string>
-    <string name="background_device">我的设备</string><string name="background_device_summary">图片、GIF、WebP、MP4 和 WebM</string>
-    <string name="background_global">全局设置</string><string name="background_global_summary">所有二级页面的背景与颜色</string>
-    <string name="background_contacts">通讯录与拨号</string><string name="background_contacts_summary">通讯录与拨号主界面的背景</string><string name="background_mms">短信</string><string name="background_mms_summary">短信主页与聊天界面的背景，可分别设置</string><string name="background_mms_chat">短信聊天</string><string name="background_mms_chat_summary">短信聊天与新建短信界面的背景</string><string name="mms_set_home_bg">设置主页背景</string><string name="mms_set_chat_bg">设置聊天背景</string><string name="mms_export_home">主页背景</string><string name="mms_export_chat">聊天背景</string>
-    <string name="contacts_surface_title">拨号盘与列表</string><string name="contacts_surface_adapt">适配界面元素</string><string name="contacts_surface_adapt_summary">清除列表的纯色底并让拨号盘键盘面板半透明</string><string name="contacts_dialpad_opacity">键盘面板不透明度</string>
-    <string name="contacts_dialpad_bg_mode">拨号盘背景</string><string name="contacts_dialpad_bg_default">默认</string><string name="contacts_dialpad_bg_custom">自定义</string><string name="contacts_dialpad_zoom">缩放大小</string><string name="contacts_dialpad_focus_y">纵向位置</string><string name="contacts_theme">颜色模式</string>
-    <string name="back">返回</string><string name="choose_image">选择图片</string><string name="choose_media">选择媒体</string><string name="replace_image">更换图片</string><string name="restore_default">恢复默认</string>
-    <string name="enabled_size">已启用 · %1$s</string><string name="system_default">跟随系统默认</string>
-    <string name="opacity">不透明度</string><string name="background_blur">背景模糊</string><string name="background_blur_summary">仅模糊背景媒体</string><string name="blur_strength">模糊强度</string><string name="background_brightness">亮度</string>
-    <string name="saved_reopen">已保存，重新进入目标页面后生效</string><string name="saved">已保存</string><string name="save_failed">保存失败：%1$s</string><string name="unsupported_type">不支持这种文件类型：%1$s</string><string name="file_too_large">文件不能超过 200 MB</string>
-    <string name="appearance">外观</string><string name="settings_appearance">全局颜色</string><string name="settings_theme">颜色模式</string><string name="text_color">文字颜色</string><string name="set_background">设置背景</string><string name="set_background_summary">选择并预览背景媒体</string><string name="background_dialog_summary">点击预览区域选择文件</string><string name="save">保存</string>
-    <string name="device_card_title">自定义我的设备</string><string name="device_card_summary">设备卡片样式、LOGO、图片与布局</string><string name="dynamic_background_title">动态背景</string><string name="dynamic_background_summary">静态可调透明度</string><string name="device_background_preload">背景预加载</string><string name="device_background_preload_summary">应用启动时预解码背景，消除进入页面时的黑帧</string><string name="device_info_title">设备信息覆盖</string><string name="device_info_summary">覆盖设置页面上显示的参数值</string>
-    <string name="device_card_style">我的设备界面样式</string><string name="device_card_style_system">系统默认</string><string name="device_card_style_one">样式1 (来自酷安@Mr_Bocchi)</string><string name="device_card_style_two">样式2</string><string name="device_card_style_three">样式3</string><string name="cos_card_title">卡片标题</string><string name="cos_card_subtitle">卡片副标题</string><string name="cos_card_signature">卡片签名</string>
-    <string name="logo_import">导入LOGO</string><string name="logo_clear">清除LOGO</string><string name="logo_not_imported">未导入</string><string name="logo_none">无LOGO</string><string name="logo_imported">已导入</string>
-    <string name="group_device_image">机型图片</string><string name="group_background_image">背景图片</string><string name="group_logo">LOGO</string><string name="group_logo_version">LOGO与版本号</string><string name="group_bottom_mark">底部标识</string><string name="group_text">文案</string><string name="group_text_color_mode">文本颜色模式</string>
-    <string name="device_image_import">导入机型图片</string><string name="device_image_clear">清除机型图片</string><string name="image_not_imported">无图片</string><string name="device_image_scale">机型图片缩放</string><string name="device_image_logo_spacing">机型图片与LOGO间距</string>
-    <string name="background_image_import">导入背景图片</string><string name="background_image_clear">清除背景图片</string><string name="background_image_blur">背景图片模糊度</string><string name="background_image_h_offset">背景图片左右偏移</string><string name="background_image_v_offset">背景图片上下偏移</string><string name="background_image_scale">背景图片缩放</string>
-    <string name="logo_scale">LOGO缩放</string><string name="logo_v_offset">LOGO上下偏移</string><string name="bottom_logo_text_spacing">底部Logo与文案间距</string><string name="signature">署名</string>
-    <string name="logo_version_alignment">LOGO与版本号对齐方式</string><string name="align_left">左对齐</string><string name="align_center">居中对齐</string><string name="align_right">右对齐</string><string name="logo_version_line_spacing">LOGO与版本号行间距</string><string name="logo_version_h_offset">LOGO与版本号左右偏移</string><string name="logo_version_v_offset">LOGO与版本号上下偏移</string>
-    <string name="text_show_custom">显示自定义文案</string><string name="text_content">文案</string><string name="text_independent">独立于LOGO和版本号</string><string name="text_scale">文案缩放</string><string name="text_position">显示位置</string><string name="text_position_above">LOGO之上</string><string name="text_position_below">版本号之下</string><string name="text_logo_line_spacing">文案与LOGO行间距</string><string name="text_version_line_spacing">文案与版本号行间距</string><string name="text_align_center">居中</string><string name="text_v_offset">文案上下偏移</string><string name="text_h_offset">文案左右偏移</string>
-    <string name="color_mode_logo">LOGO</string><string name="color_mode_version">版本号</string><string name="color_mode_text">文案</string><string name="color_mode_follow">跟随系统</string><string name="color_mode_dark">深色</string><string name="color_mode_light">浅色</string>
-    <string name="logo_mode_title">自定义LOGO</string><string name="logo_mode_system">系统默认</string><string name="logo_mode_no_material">不保留高级材质</string><string name="logo_mode_keep_material">保留高级材质（需要导入SVG/XML）</string>
-    <string name="device_info_group_settings">设置应用</string><string name="device_info_enable">启用设备信息覆盖</string><string name="device_info_group_basic">基础参数</string><string name="device_info_group_all">全部参数与信息</string><string name="device_info_group_camera">我的设备（影像参数）</string>
-    <string name="device_field_model">手机型号</string><string name="device_field_processor">处理器</string><string name="device_field_ram">运行内存</string><string name="device_field_battery">电池容量</string><string name="device_field_screen_size">屏幕尺寸</string><string name="device_field_resolution">分辨率</string><string name="device_field_camera_rear">我的设备 · 后摄</string><string name="device_field_camera_front">我的设备 · 前摄</string><string name="device_field_camera">全部参数与信息 · 摄像头</string><string name="device_field_os_version">OS 版本</string><string name="device_field_android_version">Android 版本</string><string name="device_field_storage">内部存储</string><string name="device_field_kernel">内核版本</string><string name="device_field_baseband">基带版本</string><string name="device_field_hardware">硬件版本</string>
-    <string name="follow_system">跟随系统</string><string name="light">浅色</string><string name="dark">深色</string><string name="light_text">浅色字</string><string name="dark_text">深色字</string>
-    <string name="module_appearance">模块外观</string><string name="module_theme">模块界面模式</string><string name="theme_color_enabled">Monet 主题色</string><string name="theme_color_enabled_summary">启用 Monet 或自定义主题强调色</string><string name="monet">Monet 壁纸取色</string><string name="monet_summary">跟随当前壁纸生成 MIUIX 动态色</string><string name="accent_color">主题强调色</string><string name="custom_color">自定义颜色</string><string name="custom_color_summary">选择自定义主题强调色</string><string name="choose_color">选择颜色</string><string name="cancel">取消</string><string name="confirm">确定</string>
-    <string name="module_background">模块背景</string><string name="clear_background">清除背景</string><string name="background_opacity">背景图不透明度</string><string name="card_opacity">组件不透明度</string><string name="bottom_bar_blur">底栏模糊</string><string name="bottom_bar_blur_summary">模糊底栏后方的模块内容</string><string name="floating_bottom_bar">悬浮底栏</string><string name="floating_bottom_bar_summary">使用带圆角和边距的悬浮导航栏</string><string name="module_blur">模块背景模糊</string><string name="blur">模糊</string><string name="top_blur">顶部模糊</string><string name="top_blur_summary">为设置各级页面顶栏启用渐变模糊</string><string name="top_blur_opacity">顶部模糊不透明度</string><string name="top_clear">清除顶栏</string><string name="top_clear_summary">将设置各页面顶栏变透明，覆盖顶部模糊效果</string><string name="top_button_background">顶栏按钮背景常驻</string><string name="top_button_background_summary">无需下拉列表即可常显顶栏按钮背景</string><string name="home_scale_title">首页背景缩放</string><string name="home_zoom">缩放大小</string><string name="home_focus_x">横向位置</string><string name="home_focus_y">纵向位置</string>
-    <string name="bottom_gradient">底部渐变</string><string name="bottom_gradient_summary">自定义底部渐变参数</string><string name="bottom_gradient_enabled">底部渐变模糊</string><string name="bottom_gradient_enabled_summary">以透明渐变模糊替换底栏的纯色渐变</string><string name="bottom_gradient_strength">底部渐变强度</string><string name="bottom_gradient_opacity">底部渐变不透明度</string><string name="bottom_clear">清除底栏</string><string name="bottom_clear_summary">清除底栏的渐变遮罩</string>
+    <string name="nav_home">主页</string>
+    <string name="nav_settings">设置</string>
+    <string name="nav_about">关于</string>
+    <string name="saying">一言</string>
+    <string name="scope">背景</string>
+    <string name="saying_loading">正在获取一言…</string>
+    <string name="saying_failed">一言获取失败，点击重试</string>
+    <string name="background_home">设置主页</string>
+    <string name="background_home_summary">独立控制 HyperOS 设置首页</string>
+    <string name="background_device">我的设备</string>
+    <string name="background_device_summary">图片、GIF、WebP、MP4 和 WebM</string>
+    <string name="background_global">全局设置</string>
+    <string name="background_global_summary">所有二级页面的背景与颜色</string>
+    <string name="background_contacts">通讯录与拨号</string>
+    <string name="background_contacts_summary">通讯录与拨号主界面的背景</string>
+    <string name="background_mms">短信</string>
+    <string name="background_mms_summary">短信主页与聊天界面的背景，可分别设置</string>
+    <string name="background_mms_chat">短信聊天</string>
+    <string name="background_mms_chat_summary">短信聊天与新建短信界面的背景</string>
+    <string name="mms_set_home_bg">设置主页背景</string>
+    <string name="mms_set_chat_bg">设置聊天背景</string>
+    <string name="mms_export_home">主页背景</string>
+    <string name="mms_export_chat">聊天背景</string>
+    <string name="contacts_surface_title">拨号盘与列表</string>
+    <string name="contacts_surface_adapt">适配界面元素</string>
+    <string name="contacts_surface_adapt_summary">清除列表的纯色底并让拨号盘键盘面板半透明</string>
+    <string name="contacts_dialpad_opacity">键盘面板不透明度</string>
+    <string name="contacts_dialpad_bg_mode">拨号盘背景</string>
+    <string name="contacts_dialpad_bg_default">默认</string>
+    <string name="contacts_dialpad_bg_custom">自定义</string>
+    <string name="contacts_dialpad_zoom">缩放大小</string>
+    <string name="contacts_dialpad_focus_y">纵向位置</string>
+    <string name="contacts_theme">颜色模式</string>
+    <string name="back">返回</string>
+    <string name="choose_image">选择图片</string>
+    <string name="choose_media">选择媒体</string>
+    <string name="replace_image">更换图片</string>
+    <string name="restore_default">恢复默认</string>
+    <string name="enabled_size">已启用 · %1$s</string>
+    <string name="system_default">跟随系统默认</string>
+    <string name="opacity">不透明度</string>
+    <string name="background_blur">背景模糊</string>
+    <string name="background_blur_summary">仅模糊背景媒体</string>
+    <string name="blur_strength">模糊强度</string>
+    <string name="background_brightness">亮度</string>
+    <string name="saved_reopen">已保存，重新进入目标页面后生效</string>
+    <string name="saved">已保存</string>
+    <string name="save_failed">保存失败：%1$s</string>
+    <string name="unsupported_type">不支持这种文件类型：%1$s</string>
+    <string name="file_too_large">文件不能超过 200 MB</string>
+    <string name="appearance">外观</string>
+    <string name="settings_appearance">全局颜色</string>
+    <string name="settings_theme">颜色模式</string>
+    <string name="text_color">文字颜色</string>
+    <string name="set_background">设置背景</string>
+    <string name="set_background_summary">选择并预览背景媒体</string>
+    <string name="background_dialog_summary">点击预览区域选择文件</string>
+    <string name="save">保存</string>
+    <string name="device_card_title">自定义我的设备</string>
+    <string name="device_card_summary">设备卡片样式、LOGO、图片与布局</string>
+    <string name="dynamic_background_title">动态背景</string>
+    <string name="dynamic_background_summary">静态可调透明度</string>
+    <string name="device_background_preload">背景预加载</string>
+    <string name="device_background_preload_summary">应用启动时预解码背景，消除进入页面时的黑帧</string>
+    <string name="device_info_title">设备信息覆盖</string>
+    <string name="device_info_summary">覆盖设置页面上显示的参数值</string>
+    <string name="device_card_style">我的设备界面样式</string>
+    <string name="device_card_style_system">系统默认</string>
+    <string name="device_card_style_one">样式1 (来自酷安@Mr_Bocchi)</string>
+    <string name="device_card_style_two">样式2</string>
+    <string name="device_card_style_three">样式3</string>
+    <string name="cos_card_title">卡片标题</string>
+    <string name="cos_card_subtitle">卡片副标题</string>
+    <string name="cos_card_signature">卡片签名</string>
+    <string name="logo_import">导入LOGO</string>
+    <string name="logo_clear">清除LOGO</string>
+    <string name="logo_not_imported">未导入</string>
+    <string name="logo_none">无LOGO</string>
+    <string name="logo_imported">已导入</string>
+    <string name="group_device_image">机型图片</string>
+    <string name="group_background_image">背景图片</string>
+    <string name="group_logo">LOGO</string>
+    <string name="group_logo_version">LOGO与版本号</string>
+    <string name="group_bottom_mark">底部标识</string>
+    <string name="group_text">文案</string>
+    <string name="group_text_color_mode">文本颜色模式</string>
+    <string name="device_image_import">导入机型图片</string>
+    <string name="device_image_clear">清除机型图片</string>
+    <string name="image_not_imported">无图片</string>
+    <string name="device_image_scale">机型图片缩放</string>
+    <string name="device_image_logo_spacing">机型图片与LOGO间距</string>
+    <string name="background_image_import">导入背景图片</string>
+    <string name="background_image_clear">清除背景图片</string>
+    <string name="background_image_blur">背景图片模糊度</string>
+    <string name="background_image_h_offset">背景图片左右偏移</string>
+    <string name="background_image_v_offset">背景图片上下偏移</string>
+    <string name="background_image_scale">背景图片缩放</string>
+    <string name="logo_scale">LOGO缩放</string>
+    <string name="logo_v_offset">LOGO上下偏移</string>
+    <string name="bottom_logo_text_spacing">底部Logo与文案间距</string>
+    <string name="signature">署名</string>
+    <string name="logo_version_alignment">LOGO与版本号对齐方式</string>
+    <string name="align_left">左对齐</string>
+    <string name="align_center">居中对齐</string>
+    <string name="align_right">右对齐</string>
+    <string name="logo_version_line_spacing">LOGO与版本号行间距</string>
+    <string name="logo_version_h_offset">LOGO与版本号左右偏移</string>
+    <string name="logo_version_v_offset">LOGO与版本号上下偏移</string>
+    <string name="text_show_custom">显示自定义文案</string>
+    <string name="text_content">文案</string>
+    <string name="text_independent">独立于LOGO和版本号</string>
+    <string name="text_scale">文案缩放</string>
+    <string name="text_position">显示位置</string>
+    <string name="text_position_above">LOGO之上</string>
+    <string name="text_position_below">版本号之下</string>
+    <string name="text_logo_line_spacing">文案与LOGO行间距</string>
+    <string name="text_version_line_spacing">文案与版本号行间距</string>
+    <string name="text_align_center">居中</string>
+    <string name="text_v_offset">文案上下偏移</string>
+    <string name="text_h_offset">文案左右偏移</string>
+    <string name="color_mode_logo">LOGO</string>
+    <string name="color_mode_version">版本号</string>
+    <string name="color_mode_text">文案</string>
+    <string name="color_mode_follow">跟随系统</string>
+    <string name="color_mode_dark">深色</string>
+    <string name="color_mode_light">浅色</string>
+    <string name="logo_mode_title">自定义LOGO</string>
+    <string name="logo_mode_system">系统默认</string>
+    <string name="logo_mode_no_material">不保留高级材质</string>
+    <string name="logo_mode_keep_material">保留高级材质（需要导入SVG/XML）</string>
+    <string name="device_info_group_settings">设置应用</string>
+    <string name="device_info_enable">启用设备信息覆盖</string>
+    <string name="device_info_group_basic">基础参数</string>
+    <string name="device_info_group_all">全部参数与信息</string>
+    <string name="device_info_group_camera">我的设备（影像参数）</string>
+    <string name="device_field_model">手机型号</string>
+    <string name="device_field_processor">处理器</string>
+    <string name="device_field_ram">运行内存</string>
+    <string name="device_field_battery">电池容量</string>
+    <string name="device_field_screen_size">屏幕尺寸</string>
+    <string name="device_field_resolution">分辨率</string>
+    <string name="device_field_camera_rear">我的设备 · 后摄</string>
+    <string name="device_field_camera_front">我的设备 · 前摄</string>
+    <string name="device_field_camera">全部参数与信息 · 摄像头</string>
+    <string name="device_field_os_version">OS 版本</string>
+    <string name="device_field_android_version">Android 版本</string>
+    <string name="device_field_storage">内部存储</string>
+    <string name="device_field_kernel">内核版本</string>
+    <string name="device_field_baseband">基带版本</string>
+    <string name="device_field_hardware">硬件版本</string>
+    <string name="follow_system">跟随系统</string>
+    <string name="light">浅色</string>
+    <string name="dark">深色</string>
+    <string name="light_text">浅色字</string>
+    <string name="dark_text">深色字</string>
+    <string name="module_appearance">模块外观</string>
+    <string name="module_theme">模块界面模式</string>
+    <string name="theme_color_enabled">Monet 主题色</string>
+    <string name="theme_color_enabled_summary">启用 Monet 或自定义主题强调色</string>
+    <string name="monet">Monet 壁纸取色</string>
+    <string name="monet_summary">跟随当前壁纸生成 MIUIX 动态色</string>
+    <string name="accent_color">主题强调色</string>
+    <string name="custom_color">自定义颜色</string>
+    <string name="custom_color_summary">选择自定义主题强调色</string>
+    <string name="choose_color">选择颜色</string>
+    <string name="cancel">取消</string>
+    <string name="confirm">确定</string>
+    <string name="module_background">模块背景</string>
+    <string name="clear_background">清除背景</string>
+    <string name="background_opacity">背景图不透明度</string>
+    <string name="card_opacity">组件不透明度</string>
+    <string name="bottom_bar_blur">底栏模糊</string>
+    <string name="bottom_bar_blur_summary">模糊底栏后方的模块内容</string>
+    <string name="floating_bottom_bar">悬浮底栏</string>
+    <string name="floating_bottom_bar_summary">使用带圆角和边距的悬浮导航栏</string>
+    <string name="module_blur">模块背景模糊</string>
+    <string name="blur">模糊</string>
+    <string name="top_blur">顶部模糊</string>
+    <string name="top_blur_summary">为设置各级页面顶栏启用渐变模糊</string>
+    <string name="top_blur_opacity">顶部模糊不透明度</string>
+    <string name="top_clear">清除顶栏</string>
+    <string name="top_clear_summary">将设置各页面顶栏变透明，覆盖顶部模糊效果</string>
+    <string name="top_button_background">顶栏按钮背景常驻</string>
+    <string name="top_button_background_summary">无需下拉列表即可常显顶栏按钮背景</string>
+    <string name="home_scale_title">首页背景缩放</string>
+    <string name="home_zoom">缩放大小</string>
+    <string name="home_focus_x">横向位置</string>
+    <string name="home_focus_y">纵向位置</string>
+    <string name="top_gradient">顶栏渐变</string>
+    <string name="top_gradient_summary">自定义顶栏渐变参数</string>
+    <string name="bottom_gradient">底部渐变</string>
+    <string name="bottom_gradient_summary">自定义底部渐变参数</string>
+    <string name="bottom_gradient_enabled">底部渐变模糊</string>
+    <string name="bottom_gradient_enabled_summary">以透明渐变模糊替换底栏的纯色渐变</string>
+    <string name="bottom_gradient_strength">底部渐变强度</string>
+    <string name="bottom_gradient_opacity">底部渐变不透明度</string>
+    <string name="bottom_clear">清除底栏</string>
+    <string name="bottom_clear_summary">清除底栏的渐变遮罩</string>
     <string name="gradient_blur_conflict">顶部和底部模糊冲突，不能同时开启</string>
-    <string name="language">语言</string><string name="language_system">跟随系统</string><string name="language_chinese">简体中文</string><string name="language_english">English</string>
-    <string name="saying_settings">一言设置</string><string name="saying_enabled_summary">在主页显示一言</string><string name="saying_settings_summary">配置 API 地址和读取字段</string><string name="api_address">API 地址</string><string name="response_field">读取字段</string><string name="save_refresh">保存并刷新</string>
-    <string name="tools">工具</string><string name="restart_scope">重启作用域</string><string name="restart_scope_summary">结束被 Hook 的系统进程以重新加载配置</string><string name="restart_scope_confirm">是否重启 %1$d 个已启用的作用域？</string><string name="hook_diagnostics">Hook 读取记录</string>
-    <string name="about">关于</string><string name="current_version">当前版本 %1$s</string><string name="github_releases">GitHub Releases</string><string name="changelog">更新日志</string><string name="changelog_loading">正在读取更新日志…</string><string name="changelog_empty">暂无更新日志。</string><string name="changelog_current">当前版本 · %1$s</string><string name="changelog_latest">最新正式版 · %1$s</string><string name="changelog_see_github">本地未内置该版本日志，请打开 GitHub Releases 查看。</string><string name="uninstall_notice_title">警告</string><string name="uninstall_notice_intro">在取消作用域或卸载模块前，请按以下顺序操作：</string><string name="uninstall_notice_step_1">将「颜色模式」与「文字颜色」均调回「跟随系统」。</string><string name="uninstall_notice_step_2">执行一次「重启作用域」。</string><string name="uninstall_notice_step_3">将已挂载背景的各二级页面依次打开一次（如需删除背景，则全部打开一次），使其恢复默认状态。</string><string name="uninstall_notice_step_4">确认显示无误后，再取消作用域或卸载模块。</string><string name="update_dialog_title">发现新版本 %1$s</string><string name="update_dialog_summary">检测到更高的正式版，更新日志：</string><string name="update_dialog_update">更新</string><string name="update_check">检查更新</string><string name="update_checking">检查中…</string><string name="update_recheck">重新检查</string><string name="update_available">发现新正式版 %1$s</string><string name="update_up_to_date">当前已是最新正式版</string><string name="update_preview">当前为测试版 · 正式版最新</string><string name="update_latest_stable">最新正式版 %1$s</string><string name="update_failed">版本检查失败</string><string name="author">制作者 · 苍簇</string><string name="coolapk">酷安主页</string><string name="github">GitHub</string><string name="donate">请作者喝咖啡</string><string name="donate_message">HyperBackground 一直免费，也不打算收费。如果它帮你省了点事，请我喝杯咖啡就好。</string><string name="donate_hint">微信扫码 · 也可截图后在微信「扫一扫」里从相册选取</string><string name="donate_voluntary">完全自愿，不影响模块的任何功能。</string>
-    <string name="root_requested">正在请求 Root…</string><string name="scope_restarted">作用域已重启</string><string name="root_unavailable">无法调用 Root，请确认已授权</string>
-    <string name="diagnostic_empty">请先打开目标页面，再回到这里查看。</string><string name="close">关闭</string><string name="clear_records">清空记录</string><string name="not_read">未读取</string><string name="read_at">已读取 · %1$s</string>
-    <string name="random_background">随机背景</string><string name="random_entry_summary">通过 API 随机拉取背景图，不影响手动设置的图片</string><string name="random_enabled_summary">开启后按所选作用范围使用 API 随机图，关闭即恢复手动设置的图片</string>
-    <string name="random_trigger">触发方式</string><string name="random_mode">换图时机</string><string name="random_mode_manual">仅手动</string><string name="random_mode_boot">仅开机自动</string><string name="random_mode_both">手动 + 开机</string>
-    <string name="random_api_title">图片来源</string><string name="random_api_dialog_summary">接口需直接返回图片二进制流（支持 302 跳转）。默认使用 uapis 随机图片接口。</string><string name="random_category">图片类别</string>
-    <string name="random_cat_random">全随机</string><string name="random_cat_acg">二次元动漫</string><string name="random_cat_landscape">风景图</string><string name="random_cat_anime">混合动漫</string><string name="random_cat_mobile_wallpaper">手机壁纸</string><string name="random_cat_general_anime">动漫图</string><string name="random_cat_pc_wallpaper">电脑壁纸（平板）</string>
-    <string name="random_slots_title">作用范围</string><string name="random_slots_none">未选择</string><string name="random_slots_count">已选 %1$d 项</string>
-    <string name="random_slot_off">不使用</string><string name="random_slot_refresh">随刷新</string><string name="random_slot_pinned">固定</string><string name="random_no_refreshable">没有可刷新的槽位（已全部固定或未选择）</string>
-    <string name="random_fetch">立刻更换</string><string name="random_fetching">正在更换…</string><string name="random_fetch_done">随机背景已更新</string><string name="random_fetch_failed">%2$d 个槽位中 %1$d 个失败</string><string name="random_no_slots">请先在「作用范围」中选择至少一个位置</string>
-    <string name="export_background">导出当前图片</string><string name="export_background_summary">保存到相册（%1$s）</string><string name="export_no_file">无背景可导出</string><string name="export_done">已导出：%1$s</string>
+    <string name="language">语言</string>
+    <string name="language_system">跟随系统</string>
+    <string name="language_chinese">简体中文</string>
+    <string name="language_english">English</string>
+    <string name="saying_settings">一言设置</string>
+    <string name="saying_enabled_summary">在主页显示一言</string>
+    <string name="saying_settings_summary">配置 API 地址和读取字段</string>
+    <string name="api_address">API 地址</string>
+    <string name="response_field">读取字段</string>
+    <string name="save_refresh">保存并刷新</string>
+    <string name="tools">工具</string>
+    <string name="restart_scope">重启作用域</string>
+    <string name="restart_scope_summary">结束被 Hook 的系统进程以重新加载配置</string>
+    <string name="restart_scope_confirm">是否重启 %1$d 个已启用的作用域？</string>
+    <string name="hook_diagnostics">Hook 读取记录</string>
+    <string name="about">关于</string>
+    <string name="current_version">当前版本 %1$s</string>
+    <string name="github_releases">GitHub Releases</string>
+    <string name="changelog">更新日志</string>
+    <string name="changelog_loading">正在读取更新日志…</string>
+    <string name="changelog_empty">暂无更新日志。</string>
+    <string name="changelog_current">当前版本 · %1$s</string>
+    <string name="changelog_latest">最新正式版 · %1$s</string>
+    <string name="changelog_see_github">本地未内置该版本日志，请打开 GitHub Releases 查看。</string>
+    <string name="uninstall_notice_title">警告</string>
+    <string name="uninstall_notice_intro">在取消作用域或卸载模块前，请按以下顺序操作：</string>
+    <string name="uninstall_notice_step_1">将「颜色模式」与「文字颜色」均调回「跟随系统」。</string>
+    <string name="uninstall_notice_step_2">执行一次「重启作用域」。</string>
+    <string name="uninstall_notice_step_3">将已挂载背景的各二级页面依次打开一次（如需删除背景，则全部打开一次），使其恢复默认状态。</string>
+    <string name="uninstall_notice_step_4">确认显示无误后，再取消作用域或卸载模块。</string>
+    <string name="update_dialog_title">发现新版本 %1$s</string>
+    <string name="update_dialog_summary">检测到更高的正式版，更新日志：</string>
+    <string name="update_dialog_update">更新</string>
+    <string name="update_check">检查更新</string>
+    <string name="update_checking">检查中…</string>
+    <string name="update_recheck">重新检查</string>
+    <string name="update_available">发现新正式版 %1$s</string>
+    <string name="update_up_to_date">当前已是最新正式版</string>
+    <string name="update_preview">当前为测试版 · 正式版最新</string>
+    <string name="update_latest_stable">最新正式版 %1$s</string>
+    <string name="update_failed">版本检查失败</string>
+    <string name="author">制作者 · 苍簇</string>
+    <string name="coolapk">酷安主页</string>
+    <string name="github">GitHub</string>
+    <string name="donate">请作者喝咖啡</string>
+    <string name="donate_message">HyperBackground 一直免费，也不打算收费。如果它帮你省了点事，请我喝杯咖啡就好。</string>
+    <string name="donate_hint">微信扫码 · 也可截图后在微信「扫一扫」里从相册选取</string>
+    <string name="donate_voluntary">完全自愿，不影响模块的任何功能。</string>
+    <string name="root_requested">正在请求 Root…</string>
+    <string name="scope_restarted">作用域已重启</string>
+    <string name="root_unavailable">无法调用 Root，请确认已授权</string>
+    <string name="diagnostic_empty">请先打开目标页面，再回到这里查看。</string>
+    <string name="close">关闭</string>
+    <string name="clear_records">清空记录</string>
+    <string name="not_read">未读取</string>
+    <string name="read_at">已读取 · %1$s</string>
+    <string name="random_background">随机背景</string>
+    <string name="random_entry_summary">通过 API 随机拉取背景图，不影响手动设置的图片</string>
+    <string name="random_enabled_summary">开启后按所选作用范围使用 API 随机图，关闭即恢复手动设置的图片</string>
+    <string name="random_trigger">触发方式</string>
+    <string name="random_mode">换图时机</string>
+    <string name="random_mode_manual">仅手动</string>
+    <string name="random_mode_boot">仅开机自动</string>
+    <string name="random_mode_both">手动 + 开机</string>
+    <string name="random_api_title">图片来源</string>
+    <string name="random_api_dialog_summary">接口需直接返回图片二进制流（支持 302 跳转）。默认使用 uapis 随机图片接口。</string>
+    <string name="random_category">图片类别</string>
+    <string name="random_cat_random">全随机</string>
+    <string name="random_cat_acg">二次元动漫</string>
+    <string name="random_cat_landscape">风景图</string>
+    <string name="random_cat_anime">混合动漫</string>
+    <string name="random_cat_mobile_wallpaper">手机壁纸</string>
+    <string name="random_cat_general_anime">动漫图</string>
+    <string name="random_cat_pc_wallpaper">电脑壁纸（平板）</string>
+    <string name="random_slots_title">作用范围</string>
+    <string name="random_slots_none">未选择</string>
+    <string name="random_slots_count">已选 %1$d 项</string>
+    <string name="random_slot_off">不使用</string>
+    <string name="random_slot_refresh">随刷新</string>
+    <string name="random_slot_pinned">固定</string>
+    <string name="random_no_refreshable">没有可刷新的槽位（已全部固定或未选择）</string>
+    <string name="random_fetch">立刻更换</string>
+    <string name="random_fetching">正在更换…</string>
+    <string name="random_fetch_done">随机背景已更新</string>
+    <string name="random_fetch_failed">%2$d 个槽位中 %1$d 个失败</string>
+    <string name="random_no_slots">请先在「作用范围」中选择至少一个位置</string>
+    <string name="export_background">导出当前图片</string>
+    <string name="export_background_summary">保存到相册（%1$s）</string>
+    <string name="export_no_file">无背景可导出</string>
+    <string name="export_done">已导出：%1$s</string>
     <string name="config">配置</string>
     <string name="settings_entry">设置页软件入口</string>
     <string name="settings_entry_summary">在 HyperOS 设置首页添加一条打开本模块的入口</string>

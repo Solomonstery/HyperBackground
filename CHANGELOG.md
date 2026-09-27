@@ -2,6 +2,12 @@
 
 GitHub Actions 会按照 APK 的实际 `versionName` 提取对应章节，并写入 GitHub Release 描述。版本名包含 `test`、`alpha`、`beta`、`rc` 或 `dev` 时会自动标记为 Pre-release。
 
+## 1.4.5-beta1
+
+### 修复
+
+- 修复设置主页搜索框输入文字时，`search_mask` 与 `search_loading` 不透明遮罩重新显示并覆盖自定义背景的问题；搜索框材质与页面遮罩清理改为独立通道。
+
 ## 1.4.4
 
 汇总 1.4.4-beta1 至 beta11 全部测试线，作为稳定版发布：

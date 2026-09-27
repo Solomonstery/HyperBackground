@@ -84,6 +84,9 @@ class HookEntry : XposedModule() {
         if (settings) {
             // 「配置」栏目 - 设置页软件入口：往设置首页 Header 列表插入模块条目。
             SettingsHomeEntryHook.install(classLoader)
+            // 搜索框材质由动态管线负责；搜索结果的页面遮罩仍是 Settings 专属层，
+            // 输入文字时会被反复显示，必须单独保持透明以免盖住主页背景。
+            SettingsSearchMaskOverride.install(classLoader)
             hookHomeActivity(classLoader)
             hookHomeFragment(classLoader)
             hookDeviceFragment(classLoader)

@@ -63,6 +63,12 @@
             </intent-filter>
         </receiver>
 
+        <!-- Hooked processes use this explicit receiver to request a page-open rotation. -->
+        <receiver
+            android:name=".PageRandomReceiver"
+            android:enabled="true"
+            android:exported="true" />
+
         <provider
             android:name=".appearance.SettingsAppearanceProvider"
             android:authorities="com.ciallo.hyperbackground.settingsappearance"

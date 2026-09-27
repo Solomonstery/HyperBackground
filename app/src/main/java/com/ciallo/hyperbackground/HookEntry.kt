@@ -10,10 +10,13 @@ import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import androidx.annotation.RequiresApi
 import com.ciallo.hyperbackground.appearance.APPEARANCE_SLOT_DEVICE
+import com.ciallo.hyperbackground.appearance.KEY_CUSTOM_CARD_ENABLED
 import com.ciallo.hyperbackground.appearance.SETTINGS_APPEARANCE_PREFERENCES
 import com.ciallo.hyperbackground.appearance.SettingsAppearanceSources
 import com.ciallo.hyperbackground.appearance.SettingsBackgroundView
@@ -37,6 +40,10 @@ import java.util.WeakHashMap
  */
 class HookEntry : XposedModule() {
     private var configListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
+    private var lazyCardListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
+    private var lazyBottomListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
+    @Volatile private var cardMaterialInstalled = false
+    @Volatile private var bottomGradientInstalled = false
 
     private companion object {
         /**
@@ -52,8 +59,11 @@ class HookEntry : XposedModule() {
         if (!param.isFirstPackage) return
         val preferences = getRemotePreferences(BackgroundContract.PREFS)
         HookRuntime.initialize(this, preferences, param.packageName)
-        configListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-            TextColorOverride.invalidateConfig()
+        configListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == null || key == BackgroundContract.FONT_MODE) {
+                TextColorOverride.invalidateConfig()
+                TextColorOverride.installIfEnabled()
+            }
         }
         preferences.registerOnSharedPreferenceChangeListener(configListener)
         log(
@@ -79,7 +89,7 @@ class HookEntry : XposedModule() {
         // 主题（深浅色）与文字色强制对所有支持的作用域进程生效，不再局限于设置进程，
         // 这样应用详情页等由其它进程提供的页面也能被强制控制。
         SettingsThemeOverride.install(packageName)
-        TextColorOverride.install()
+        TextColorOverride.installIfEnabled()
 
         if (settings) {
             // 「配置」栏目 - 设置页软件入口：往设置首页 Header 列表插入模块条目。
@@ -109,9 +119,73 @@ class HookEntry : XposedModule() {
         // 动态卡片材质是「纯动态」的：只认 framework/AndroidX 公开 API 与结构形状，
         // 不依赖任何包名 / 资源名。为验证跨作用域可行性，对所有进程统一安装，
         // 由 CardSurfaceDetector / 色板开关自行决定要不要接管（匹配不上自然不动）。
-        installCardMaterial(classLoader)
+        installCardMaterialLazily(classLoader)
         runCatching { DynamicActionBarHook.install(HookRuntime.module(), classLoader) }
             .onFailure { HookRuntime.log("[HyperBackground] Dynamic action bar unavailable: $it") }
+        installBottomGradientLazily(classLoader)
+    }
+
+    private fun installCardMaterialLazily(classLoader: ClassLoader) {
+        val prefs = HookRuntime.remotePreferences(SETTINGS_APPEARANCE_PREFERENCES) ?: return
+        if (prefs.getBoolean(KEY_CUSTOM_CARD_ENABLED, false)) {
+            installCardMaterialOnce(classLoader)
+            return
+        }
+        lateinit var listener: SharedPreferences.OnSharedPreferenceChangeListener
+        listener = SharedPreferences.OnSharedPreferenceChangeListener { changed, key ->
+            if ((key == null || key == KEY_CUSTOM_CARD_ENABLED) &&
+                changed.getBoolean(KEY_CUSTOM_CARD_ENABLED, false)
+            ) {
+                Handler(Looper.getMainLooper()).post {
+                    installCardMaterialOnce(classLoader)
+                    changed.unregisterOnSharedPreferenceChangeListener(listener)
+                    if (lazyCardListener === listener) lazyCardListener = null
+                }
+            }
+        }
+        lazyCardListener = listener
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    private fun installCardMaterialOnce(classLoader: ClassLoader) {
+        synchronized(this) {
+            if (cardMaterialInstalled) return
+            cardMaterialInstalled = true
+        }
+        installCardMaterial(classLoader)
+    }
+
+    private fun installBottomGradientLazily(classLoader: ClassLoader) {
+        val prefs = HookRuntime.preferences()
+        fun enabled() = prefs.getBoolean(BackgroundContract.UI_BOTTOM_GRADIENT_ENABLED, false) ||
+            prefs.getBoolean(BackgroundContract.UI_BOTTOM_CLEAR_ENABLED, false)
+        if (enabled()) {
+            installBottomGradientOnce(classLoader)
+            return
+        }
+        lateinit var listener: SharedPreferences.OnSharedPreferenceChangeListener
+        listener = SharedPreferences.OnSharedPreferenceChangeListener { changed, key ->
+            if ((key == null || key == BackgroundContract.UI_BOTTOM_GRADIENT_ENABLED ||
+                    key == BackgroundContract.UI_BOTTOM_CLEAR_ENABLED) &&
+                (changed.getBoolean(BackgroundContract.UI_BOTTOM_GRADIENT_ENABLED, false) ||
+                    changed.getBoolean(BackgroundContract.UI_BOTTOM_CLEAR_ENABLED, false))
+            ) {
+                Handler(Looper.getMainLooper()).post {
+                    installBottomGradientOnce(classLoader)
+                    changed.unregisterOnSharedPreferenceChangeListener(listener)
+                    if (lazyBottomListener === listener) lazyBottomListener = null
+                }
+            }
+        }
+        lazyBottomListener = listener
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    private fun installBottomGradientOnce(classLoader: ClassLoader) {
+        synchronized(this) {
+            if (bottomGradientInstalled) return
+            bottomGradientInstalled = true
+        }
         runCatching { DynamicBottomGradientHook.install(HookRuntime.module(), classLoader) }
             .onFailure { HookRuntime.log("[HyperBackground] Bottom gradient unavailable: $it") }
     }
@@ -202,6 +276,7 @@ class HookEntry : XposedModule() {
             hookMethod(Instrumentation::class.java, "callActivityOnResume", Activity::class.java) {
                 val activity = args[0] as? Activity ?: return@hookMethod
                 scheduleGlobal(activity)
+                PageRandomRefreshHook.requestGlobal(activity)
             }
         } catch (error: Throwable) {
             logHookError("Instrumentation lifecycle", error)
@@ -310,6 +385,7 @@ class HookEntry : XposedModule() {
                 hookMethod(className, classLoader, "onResume") {
                     val activity = thisObject as? Activity ?: return@hookMethod
                     BackgroundApplier.applyContacts(activity)
+                    PageRandomRefreshHook.requestContacts(activity)
                 }
                 hookMethod(className, classLoader, "onContentChanged") {
                     val activity = thisObject as? Activity ?: return@hookMethod
@@ -366,6 +442,7 @@ class HookEntry : XposedModule() {
         hookMmsActivityGroup(
             classLoader, MMS_HOME_ACTIVITIES, "home",
             apply = { BackgroundApplier.applyMmsHome(it) },
+            request = { PageRandomRefreshHook.requestMmsHome(it) },
             stop = { BackgroundApplier.stopMmsHome(it) },
             destroy = { BackgroundApplier.destroyMmsHome(it) },
         )
@@ -375,6 +452,7 @@ class HookEntry : XposedModule() {
         hookMmsActivityGroup(
             classLoader, MMS_CHAT_ACTIVITIES, "chat",
             apply = { BackgroundApplier.applyMmsChat(it) },
+            request = { PageRandomRefreshHook.requestMmsChat(it) },
             stop = { BackgroundApplier.stopMmsChat(it) },
             destroy = { BackgroundApplier.destroyMmsChat(it) },
         )
@@ -385,6 +463,7 @@ class HookEntry : XposedModule() {
         classNames: Array<String>,
         tag: String,
         apply: (Activity) -> Unit,
+        request: (Activity) -> Unit,
         stop: (Activity) -> Unit,
         destroy: (Activity) -> Unit,
     ) {
@@ -401,7 +480,10 @@ class HookEntry : XposedModule() {
                     targetOrNull(this)?.let(apply)
                 }
                 hookMethod(className, classLoader, "onResume") {
-                    targetOrNull(this)?.let(apply)
+                    targetOrNull(this)?.let { activity ->
+                        apply(activity)
+                        request(activity)
+                    }
                 }
                 hookMethod(className, classLoader, "onContentChanged") {
                     targetOrNull(this)?.let(apply)
@@ -481,6 +563,7 @@ class HookEntry : XposedModule() {
             hookMethod("com.android.settings.MiuiSettings", classLoader, "onResume") {
                 val activity = thisObject as? Activity ?: return@hookMethod
                 BackgroundApplier.applyHome(activity)
+                PageRandomRefreshHook.requestHome(activity)
             }
             hookMethod("com.android.settings.MiuiSettings", classLoader, "onStop") {
                 val activity = thisObject as? Activity ?: return@hookMethod
@@ -536,9 +619,11 @@ class HookEntry : XposedModule() {
             }
 
             hookMethod(className, classLoader, "onResume") {
-                val a = thisObject!!.callMethod("getActivity")
+                val fragment = thisObject ?: return@hookMethod
+                val a = fragment.callMethod("getActivity")
                 if (a is Activity) BackgroundApplier.enterDevice(a)
-                BackgroundApplier.applyDevice(thisObject)
+                BackgroundApplier.applyDevice(fragment)
+                if (a is Activity) PageRandomRefreshHook.requestDevice(a, fragment)
             }
 
             hookMethod(className, classLoader, "onStop") {

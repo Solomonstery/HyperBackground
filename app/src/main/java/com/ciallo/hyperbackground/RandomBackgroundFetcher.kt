@@ -41,9 +41,20 @@ object RandomBackgroundFetcher {
      */
     fun fetchForSlotBlocking(context: Context, slot: String): String? {
         val config = ConfigManager.get(context)
+        if (config.getInt(
+                BackgroundContract.UI_RANDOM_BG_SOURCE,
+                BackgroundContract.RANDOM_BG_SOURCE_API,
+            ) == BackgroundContract.RANDOM_BG_SOURCE_LOCAL
+        ) {
+            return LocalRandomBackgroundStore.applyForSlotBlocking(context, slot)
+        }
         val api = config.getString(BackgroundContract.UI_RANDOM_BG_API, DEFAULT_API) ?: DEFAULT_API
         val category = config.getString(BackgroundContract.UI_RANDOM_BG_CATEGORY, "") ?: ""
-        val temp = File(context.cacheDir, "random_bg_${slot}.tmp")
+        val temp = runCatching {
+            File.createTempFile("random_bg_${slot}_", ".tmp", context.cacheDir)
+        }.getOrElse { error ->
+            return error.message ?: error.javaClass.simpleName
+        }
         try {
             val (file, mime) = download(buildUrl(api, category), temp)
             config.importRandomBackground(slot, file, mime)

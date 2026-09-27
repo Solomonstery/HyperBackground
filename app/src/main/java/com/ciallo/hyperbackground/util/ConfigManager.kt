@@ -8,6 +8,7 @@ import com.ciallo.hyperbackground.HyperBackgroundApp
 import io.github.libxposed.service.XposedService
 import java.io.File
 import java.io.FileOutputStream
+import java.util.UUID
 import kotlin.collections.minus
 
 /** Central local storage that mirrors hook-facing state through libxposed. */
@@ -18,6 +19,14 @@ class ConfigManager private constructor(private val context: Context) : SharedPr
         // 拨号盘槽位已从随机背景中移除（整屏宽度渲染基准与其它槽位不同，随机图无法正确居中）。
         // 清理历史数据，避免 hook 侧仍按旧配置对拨号盘生效而 UI 已无法关闭。
         migrateRemoveDialpadFromRandom()
+        ensurePageRandomToken()
+    }
+
+    private fun ensurePageRandomToken() {
+        if (!getString(BackgroundContract.UI_RANDOM_BG_PAGE_TOKEN, null).isNullOrBlank()) return
+        edit()
+            .putString(BackgroundContract.UI_RANDOM_BG_PAGE_TOKEN, UUID.randomUUID().toString())
+            .commit()
     }
 
     private fun migrateRemoveDialpadFromRandom() {
@@ -245,6 +254,14 @@ class ConfigManager private constructor(private val context: Context) : SharedPr
                 BackgroundContract.remoteMediaName(slot, random = true), randomBackgroundFile(slot).takeIf(
                     File::isFile), service)
         }
+    }
+
+    /** Synchronize only one generated image plus its metadata for a page-open refresh. */
+    fun syncRandomBackgroundToRemote(slot: String, service: XposedService) {
+        if (slot == BackgroundContract.RANDOM_SLOT_UI) return
+        val source = randomBackgroundFile(slot).takeIf(File::isFile)
+        syncMedia(BackgroundContract.remoteMediaName(slot, random = true), source, service)
+        copyPreferences(preferences, service.getRemotePreferences(BackgroundContract.PREFS))
     }
 
     private fun copyMedia(target: File, uri: Uri) {

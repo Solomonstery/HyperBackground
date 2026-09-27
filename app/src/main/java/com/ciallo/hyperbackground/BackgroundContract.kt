@@ -121,6 +121,10 @@ object BackgroundContract {
     // 随机背景（API 拉取）：与用户手动设置的背景独立存储（<slot>.random.bin），开关切换互不覆盖。
     // 总开关关闭或某槽位未勾选时，hook 侧仍读手动背景文件，手动图永远保留。
     const val UI_RANDOM_BG_ENABLED = "ui_random_bg_enabled"
+    // 图片来源：0=在线 API，1=用户导入的本地图库。
+    const val UI_RANDOM_BG_SOURCE = "ui_random_bg_source"
+    const val RANDOM_BG_SOURCE_API = 0
+    const val RANDOM_BG_SOURCE_LOCAL = 1
     const val UI_RANDOM_BG_API = "ui_random_bg_api"
     // 主类别（acg/landscape/anime/pc_wallpaper/mobile_wallpaper/general_anime/ai_drawing/bq/furry），空=全随机。
     const val UI_RANDOM_BG_CATEGORY = "ui_random_bg_category"
@@ -133,6 +137,15 @@ object BackgroundContract {
     const val RANDOM_BG_MODE_MANUAL = 0
     const val RANDOM_BG_MODE_BOOT = 1
     const val RANDOM_BG_MODE_BOTH = 2
+    const val RANDOM_BG_MODE_PAGE = 3
+    // A private, mirrored capability token authenticates page-refresh broadcasts sent by
+    // hooked app processes. The receiver remains exported because those processes use
+    // different UIDs, but requests without the token are ignored.
+    const val UI_RANDOM_BG_PAGE_TOKEN = "ui_random_bg_page_token"
+    const val ACTION_RANDOM_BG_PAGE_REQUEST =
+        "com.ciallo.hyperbackground.action.RANDOM_BG_PAGE_REQUEST"
+    const val EXTRA_RANDOM_BG_SLOT = "random_bg_slot"
+    const val EXTRA_RANDOM_BG_TOKEN = "random_bg_token"
     // 槽位集合中表示「模块自身 UI 背景」的特殊值（系统槽位用 home/device/... 原名）。
     const val RANDOM_SLOT_UI = "ui"
     // random 文件元数据前缀，与手动 MIME_PREFIX/SIZE_PREFIX/MODIFIED_PREFIX 完全隔离。
@@ -141,6 +154,8 @@ object BackgroundContract {
     const val RANDOM_MODIFIED_PREFIX = "random_modified_"
     // 模块自身 UI 背景的 random 文件 mime（UI 背景不经过 libxposed remote，仅模块进程内读取）。
     const val UI_RANDOM_BG_UI_MIME = "ui_random_bg_ui_mime"
+    // 本地图库为每个槽位记录上一次抽中的文件名；图库超过一张时避免连续重复。
+    const val UI_RANDOM_BG_LOCAL_LAST_PREFIX = "ui_random_bg_local_last_"
     const val UI_IGNORED_UPDATE_VERSION = "ui_ignored_update_version"
     internal const val UI_SCROLL_Y = "ui_scroll_y"
     const val UI_THEME_FOLLOW = 0

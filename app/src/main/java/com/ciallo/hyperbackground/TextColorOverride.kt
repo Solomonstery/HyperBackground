@@ -17,13 +17,31 @@ internal object TextColorOverride {
     @Volatile
     private var cachedMode: Int = BackgroundContract.FONT_FOLLOW
 
+    @Volatile
+    private var installed = false
+
     @JvmStatic
     fun invalidateConfig() {
         modeLoaded = false
     }
 
     @JvmStatic
+    fun installIfEnabled() {
+        val enabled = runCatching {
+            HookRuntime.preferences().getInt(
+                BackgroundContract.FONT_MODE,
+                BackgroundContract.FONT_FOLLOW,
+            ) != BackgroundContract.FONT_FOLLOW
+        }.getOrDefault(false)
+        if (enabled) install()
+    }
+
+    @JvmStatic
     fun install() {
+        synchronized(this) {
+            if (installed) return
+            installed = true
+        }
         try {
             hookMethod(TextView::class.java, "setTextColor", Int::class.javaPrimitiveType!!) {
                 val textView = thisObject as? TextView ?: return@hookMethod
@@ -65,7 +83,10 @@ internal object TextColorOverride {
             if (!BackgroundContract.isSupportedPackage(context.packageName)) {
                 return BackgroundContract.FONT_FOLLOW
             }
-            cachedMode = BackgroundContract.query(context, BackgroundContract.HOME).fontMode
+            cachedMode = HookRuntime.preferences().getInt(
+                BackgroundContract.FONT_MODE,
+                BackgroundContract.FONT_FOLLOW,
+            )
             modeLoaded = true
             cachedMode
         } catch (_: Throwable) {

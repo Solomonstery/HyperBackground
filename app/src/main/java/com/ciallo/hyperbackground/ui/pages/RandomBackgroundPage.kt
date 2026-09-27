@@ -1,5 +1,7 @@
 package com.ciallo.hyperbackground.ui.pages
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -33,6 +35,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ciallo.hyperbackground.BackgroundContract
 import com.ciallo.hyperbackground.HyperBackgroundApp
+import com.ciallo.hyperbackground.LocalRandomBackgroundStore
 import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.RandomBackgroundFetcher
 import com.ciallo.hyperbackground.ui.MainActivity
@@ -69,6 +72,41 @@ fun RandomBackgroundPage(
     var category by remember {
         mutableStateOf(config.getString(BackgroundContract.UI_RANDOM_BG_CATEGORY, "") ?: "")
     }
+    var source by remember {
+        mutableIntStateOf(
+            config.getInt(
+                BackgroundContract.UI_RANDOM_BG_SOURCE,
+                BackgroundContract.RANDOM_BG_SOURCE_API,
+            ),
+        )
+    }
+    var localCount by remember { mutableIntStateOf(LocalRandomBackgroundStore.imageCount(activity)) }
+    var importingLocal by remember { mutableStateOf(false) }
+    var showClearLocalDialog by remember { mutableStateOf(false) }
+    var showLocalManager by remember { mutableStateOf(false) }
+    val localImagePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        importingLocal = true
+        Thread({
+            val result = LocalRandomBackgroundStore.importImages(activity, uris)
+            activity.runOnUiThread {
+                importingLocal = false
+                localCount = LocalRandomBackgroundStore.imageCount(activity)
+                android.widget.Toast.makeText(
+                    activity,
+                    activity.getString(
+                        R.string.random_local_import_result,
+                        result.imported,
+                        result.duplicates,
+                        result.failed,
+                    ),
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+        }, "RandomBg-LocalImport").start()
+    }
 
     // 拨号盘槽位不参与随机背景：它沿用整屏宽度渲染基准，随机图无法正确居中。
     val slotOptions = listOf(
@@ -94,6 +132,11 @@ fun RandomBackgroundPage(
         stringResource(R.string.random_mode_manual),
         stringResource(R.string.random_mode_boot),
         stringResource(R.string.random_mode_both),
+        stringResource(R.string.random_mode_page),
+    )
+    val sourceOptions = listOf(
+        stringResource(R.string.random_source_api),
+        stringResource(R.string.random_source_local),
     )
 
     val categoryOptions = remember {
@@ -157,31 +200,95 @@ fun RandomBackgroundPage(
                                 HyperBackgroundApp.updateBootReceiverState(activity)
                             },
                         )
+                        AnimatedVisibility(
+                            visible = mode == BackgroundContract.RANDOM_BG_MODE_PAGE,
+                            enter = expandVertically(animationSpec = tween(220)) + fadeIn(),
+                            exit = shrinkVertically(animationSpec = tween(220)) + fadeOut(),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.random_mode_page_hint),
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
                     }
-                    SectionTitle(stringResource(R.string.random_api_title))
+                    SectionTitle(stringResource(R.string.random_source_title))
                     UiCard(activity, Modifier.fillMaxWidth()) {
-                        BasicComponent(
-                            title = stringResource(R.string.api_address),
-                            summary = config.getString(
-                                BackgroundContract.UI_RANDOM_BG_API,
-                                RandomBackgroundFetcher.DEFAULT_API,
-                            ) ?: RandomBackgroundFetcher.DEFAULT_API,
-                            endActions = {
-                                Icon(MiuixIcons.Basic.ArrowRight, contentDescription = null)
-                            },
-                            onClick = { showApiDialog = true },
-                        )
                         OverlayDropdownPreference(
-                            title = stringResource(R.string.random_category),
-                            items = categoryLabels,
-                            selectedIndex = categoryIndex,
-                            onSelectedIndexChange = { idx ->
-                                category = categoryOptions[idx].first
+                            title = stringResource(R.string.random_source_type),
+                            items = sourceOptions,
+                            selectedIndex = source.coerceIn(sourceOptions.indices),
+                            onSelectedIndexChange = {
+                                source = it
                                 config.edit()
-                                    .putString(BackgroundContract.UI_RANDOM_BG_CATEGORY, categoryOptions[idx].first)
+                                    .putInt(BackgroundContract.UI_RANDOM_BG_SOURCE, it)
                                     .apply()
                             },
                         )
+                        AnimatedVisibility(source == BackgroundContract.RANDOM_BG_SOURCE_API) {
+                            Column {
+                                BasicComponent(
+                                    title = stringResource(R.string.api_address),
+                                    summary = config.getString(
+                                        BackgroundContract.UI_RANDOM_BG_API,
+                                        RandomBackgroundFetcher.DEFAULT_API,
+                                    ) ?: RandomBackgroundFetcher.DEFAULT_API,
+                                    endActions = {
+                                        Icon(MiuixIcons.Basic.ArrowRight, contentDescription = null)
+                                    },
+                                    onClick = { showApiDialog = true },
+                                )
+                                OverlayDropdownPreference(
+                                    title = stringResource(R.string.random_category),
+                                    items = categoryLabels,
+                                    selectedIndex = categoryIndex,
+                                    onSelectedIndexChange = { idx ->
+                                        category = categoryOptions[idx].first
+                                        config.edit()
+                                            .putString(
+                                                BackgroundContract.UI_RANDOM_BG_CATEGORY,
+                                                categoryOptions[idx].first,
+                                            )
+                                            .apply()
+                                    },
+                                )
+                            }
+                        }
+                        AnimatedVisibility(source == BackgroundContract.RANDOM_BG_SOURCE_LOCAL) {
+                            Column {
+                                BasicComponent(
+                                    title = if (importingLocal) {
+                                        stringResource(R.string.random_local_importing)
+                                    } else {
+                                        stringResource(R.string.random_local_import)
+                                    },
+                                    summary = stringResource(R.string.random_local_count, localCount),
+                                    enabled = !importingLocal,
+                                    endActions = {
+                                        Icon(MiuixIcons.Basic.ArrowRight, contentDescription = null)
+                                    },
+                                    onClick = { localImagePicker.launch(arrayOf("image/*")) },
+                                )
+                                BasicComponent(
+                                    title = stringResource(R.string.random_local_manage),
+                                    summary = stringResource(R.string.random_local_manage_entry, localCount),
+                                    enabled = localCount > 0 && !importingLocal,
+                                    endActions = {
+                                        Icon(MiuixIcons.Basic.ArrowRight, contentDescription = null)
+                                    },
+                                    onClick = { showLocalManager = true },
+                                )
+                                BasicComponent(
+                                    title = stringResource(R.string.random_local_clear),
+                                    summary = stringResource(R.string.random_local_clear_summary),
+                                    enabled = localCount > 0 && !importingLocal,
+                                    endActions = {
+                                        Icon(MiuixIcons.Basic.ArrowRight, contentDescription = null)
+                                    },
+                                    onClick = { showClearLocalDialog = true },
+                                )
+                            }
+                        }
                     }
                     SectionTitle(stringResource(R.string.random_slots_title))
                     UiCard(activity, Modifier.fillMaxWidth()) {
@@ -236,8 +343,11 @@ fun RandomBackgroundPage(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.textButtonColorsPrimary(),
-                        enabled = !busy,
-                        onClick = { fetchAll(activity) { busy = false } },
+                        enabled = !busy && !importingLocal,
+                        onClick = {
+                            busy = true
+                            fetchAll(activity) { busy = false }
+                        },
                     )
                 }
             }
@@ -257,6 +367,32 @@ fun RandomBackgroundPage(
             },
         )
     }
+    if (showClearLocalDialog) {
+        LocalLibraryClearDialog(
+            onDismiss = { showClearLocalDialog = false },
+            onConfirm = {
+                showClearLocalDialog = false
+                Thread({
+                    val cleared = LocalRandomBackgroundStore.clear(activity)
+                    activity.runOnUiThread {
+                        localCount = LocalRandomBackgroundStore.imageCount(activity)
+                        android.widget.Toast.makeText(
+                            activity,
+                            if (cleared) R.string.random_local_cleared else R.string.random_local_clear_failed,
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                }, "RandomBg-LocalClear").start()
+            },
+        )
+    }
+    if (showLocalManager) {
+        LocalLibraryManagerDialog(
+            activity = activity,
+            onDismiss = { showLocalManager = false },
+            onCountChanged = { count -> localCount = count },
+        )
+    }
 }
 
 private fun fetchAll(activity: MainActivity, onDone: () -> Unit) {
@@ -264,6 +400,17 @@ private fun fetchAll(activity: MainActivity, onDone: () -> Unit) {
     val slots = activity.config.refreshableRandomSlots()
     if (slots.isEmpty()) {
         android.widget.Toast.makeText(activity, R.string.random_no_refreshable, android.widget.Toast.LENGTH_SHORT).show()
+        onDone()
+        return
+    }
+    if (activity.config.getInt(
+            BackgroundContract.UI_RANDOM_BG_SOURCE,
+            BackgroundContract.RANDOM_BG_SOURCE_API,
+        ) == BackgroundContract.RANDOM_BG_SOURCE_LOCAL &&
+        LocalRandomBackgroundStore.imageCount(activity) == 0
+    ) {
+        android.widget.Toast.makeText(activity, R.string.random_local_empty, android.widget.Toast.LENGTH_SHORT).show()
+        onDone()
         return
     }
     val total = slots.size
@@ -285,6 +432,37 @@ private fun fetchAll(activity: MainActivity, onDone: () -> Unit) {
             android.widget.Toast.makeText(activity, msg, android.widget.Toast.LENGTH_SHORT).show()
         }
     }, "RandomBg-FetchAll").start()
+}
+
+@Composable
+private fun LocalLibraryClearDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    WindowDialog(
+        title = stringResource(R.string.random_local_clear),
+        summary = stringResource(R.string.random_local_clear_confirm),
+        show = true,
+        onDismissRequest = onDismiss,
+    ) {
+        val dismiss = LocalDismissState.current
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            TextButton(
+                modifier = Modifier.weight(1f),
+                text = stringResource(R.string.cancel),
+                onClick = onDismiss,
+            )
+            TextButton(
+                modifier = Modifier.weight(1f),
+                text = stringResource(R.string.confirm),
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+                onClick = {
+                    onConfirm()
+                    dismiss?.invoke()
+                },
+            )
+        }
+    }
 }
 
 @Composable

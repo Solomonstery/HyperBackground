@@ -146,6 +146,18 @@ object BackgroundApplier {
         applyLayer(activity, BackgroundContract.GLOBAL, GLOBAL_SESSION, false)
     }
 
+    /** True when this Activity is actually rendered by the generic/global background channel. */
+    fun usesGlobalBackground(activity: Activity?): Boolean =
+        activity != null && !shouldSkipGlobal(activity)
+
+    /** Fast path used after the first frame to avoid repeating structural page detection. */
+    fun hasGlobalBackground(activity: Activity?): Boolean {
+        if (activity == null) return false
+        val session = activity.getAdditionalInstanceField(GLOBAL_SESSION) as? LayerSession
+            ?: return false
+        return !session.media.isDisposed && session.media.parent != null
+    }
+
     fun stopGlobal(activity: Activity?) {
         stopLayer(activity, GLOBAL_SESSION)
     }

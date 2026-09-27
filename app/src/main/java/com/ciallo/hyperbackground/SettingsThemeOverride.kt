@@ -28,6 +28,9 @@ internal object SettingsThemeOverride {
     @Volatile
     private var currentPackage: String? = null
 
+    @Volatile
+    private var lastApplicationNightMode: Int? = null
+
     @JvmStatic
     fun install(packageName: String?) {
         currentPackage = packageName
@@ -88,7 +91,10 @@ internal object SettingsThemeOverride {
                 BackgroundContract.SETTINGS_THEME_FOLLOW,
             )
         } else {
-            BackgroundContract.query(context, BackgroundContract.HOME).settingsThemeMode
+            HookRuntime.preferences().getInt(
+                BackgroundContract.SETTINGS_THEME_MODE,
+                BackgroundContract.SETTINGS_THEME_FOLLOW,
+            )
         }
     } catch (_: Throwable) {
         BackgroundContract.SETTINGS_THEME_FOLLOW
@@ -136,7 +142,9 @@ internal object SettingsThemeOverride {
                 BackgroundContract.SETTINGS_THEME_LIGHT -> UiModeManager.MODE_NIGHT_NO
                 else -> UiModeManager.MODE_NIGHT_AUTO // FOLLOW：还原为跟随系统，撤销 per-app 覆盖
             }
+            if (lastApplicationNightMode == target) return
             manager.setApplicationNightMode(target)
+            lastApplicationNightMode = target
         } catch (error: Throwable) {
             log("[HyperBackground] setApplicationNightMode failed: $error")
         }

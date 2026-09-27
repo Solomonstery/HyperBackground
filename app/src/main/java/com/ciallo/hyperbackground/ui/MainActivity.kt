@@ -59,6 +59,7 @@ import androidx.compose.ui.zIndex
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.ciallo.hyperbackground.BackgroundContract
+import com.ciallo.hyperbackground.RandomBackgroundFetcher
 import com.ciallo.hyperbackground.util.ConfigManager
 import com.ciallo.hyperbackground.R
 import com.ciallo.hyperbackground.appearance.AppearanceUiController
@@ -141,6 +142,7 @@ class MainActivity : ComponentActivity() {
     var floatingBottomBar by mutableStateOf(false)
         private set
     private var pendingMediaResult: ((Uri, String) -> Unit)? = null
+    private var pageRandomUiRefreshing = false
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@registerForActivityResult
@@ -161,6 +163,26 @@ class MainActivity : ComponentActivity() {
         floatingBottomBar = config.getBoolean(BackgroundContract.UI_FLOATING_BOTTOM_BAR, false)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent { HyperBackgroundApp() }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (pageRandomUiRefreshing) return
+        if (!config.getBoolean(BackgroundContract.UI_RANDOM_BG_ENABLED, false)) return
+        if (config.getInt(
+                BackgroundContract.UI_RANDOM_BG_MODE,
+                BackgroundContract.RANDOM_BG_MODE_MANUAL,
+            ) != BackgroundContract.RANDOM_BG_MODE_PAGE
+        ) return
+        if (BackgroundContract.RANDOM_SLOT_UI !in config.refreshableRandomSlots()) return
+        pageRandomUiRefreshing = true
+        window.decorView.postDelayed({
+            RandomBackgroundFetcher.fetchForSlot(this, BackgroundContract.RANDOM_SLOT_UI) {
+                runOnUiThread {
+                    pageRandomUiRefreshing = false
+                }
+            }
+        }, PAGE_RANDOM_DELAY_MS)
     }
 
     fun chooseBackground(slot: String, onSelected: (Uri, String) -> Unit) {
@@ -1241,6 +1263,7 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val PAGE_RANDOM_DELAY_MS = 350L
         // 二级页导航哨兵：复用 detailSlot 的 AnimatedContent/返回动画承载更新日志与外观页，
         // 取一个不会与背景 slot（home/device/global）冲突的值。
         const val ROUTE_CHANGELOG = "__changelog__"

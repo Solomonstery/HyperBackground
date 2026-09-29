@@ -7,7 +7,6 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
@@ -134,7 +133,6 @@ internal object DynamicSearchMaterialHook {
         preferences = prefs
         palette = DynamicMaterialPalette.read(prefs)
         prefs.registerOnSharedPreferenceChangeListener(listener)
-        module.log(Log.INFO, TAG, "MIUIX search material hooks installed")
     }
 
     private fun applyChildren(owner: View) {

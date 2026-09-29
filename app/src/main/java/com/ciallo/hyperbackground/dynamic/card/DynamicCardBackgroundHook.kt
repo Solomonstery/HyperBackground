@@ -926,6 +926,7 @@ internal object DynamicCardBackgroundHook {
                         glass = state.glass
                         frost?.bindHost(host)
                         glass?.bindHost(host)
+                        glass?.bindDecoration(owner)
                         frost?.beginFrame()
                         glass?.beginFrame()
                     }

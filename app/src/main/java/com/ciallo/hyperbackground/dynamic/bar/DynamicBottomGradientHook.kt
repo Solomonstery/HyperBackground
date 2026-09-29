@@ -26,7 +26,7 @@ internal object DynamicBottomGradientHook {
     private const val NAVIGATOR = "miuix.bottomnavigation.BottomNavigator"
     private data class State(
         val view: View, var height: Int = -1, var radius: Float = -1f,
-        var opacity: Float = -1f, var failed: Boolean = false, var logged: Boolean = false,
+        var opacity: Float = -1f, var failed: Boolean = false,
     )
     private val bars = Collections.synchronizedMap(WeakHashMap<ViewGroup, State>())
     private val navigators = Collections.synchronizedMap(WeakHashMap<View, Unit>())
@@ -57,10 +57,6 @@ internal object DynamicBottomGradientHook {
                 )
             } ?: return
         val (split, scrim) = resolved
-        module.log(
-            Log.INFO, "HyperBackgroundBars",
-            "Bottom gradient resolved package=${HookRuntime.targetPackage} split=${split.name} painter=${scrim.name}",
-        )
         val setMode = View::class.java.getMethod("setMiBackgroundBlurMode", Int::class.javaPrimitiveType)
         val setViewMode = View::class.java.getMethod("setMiViewBlurMode", Int::class.javaPrimitiveType)
         val setType = View::class.java.getMethod("setMiBackgroundBlurType", Int::class.javaPrimitiveType)
@@ -164,13 +160,6 @@ internal object DynamicBottomGradientHook {
                         bar.addView(view, 0, ViewGroup.LayoutParams(0, 0))
                         State(view).also { bars[bar] = it }
                     }
-                    if (!state.logged) {
-                        state.logged = true
-                        module.log(
-                            Log.INFO, "HyperBackgroundBars",
-                            "Split bar active ${bar.javaClass.name} enabled=${enabled()} clear=${clear()} height=${bar.height}",
-                        )
-                    }
                     runCatching { refresh(bar, state) }.onFailure { error ->
                         hide(state)
                         state.failed = true
@@ -185,7 +174,6 @@ internal object DynamicBottomGradientHook {
                 if (bar != null && isSplit(bar) &&
                     (clear() || enabled() && bars[bar]?.view?.visibility == View.VISIBLE)
                 ) {
-                    module.log(Log.DEBUG, "HyperBackgroundBars", "Split scrim suppressed enabled=${enabled()} clear=${clear()}")
                     null
                 } else chain.proceed()
             }
@@ -214,7 +202,6 @@ internal object DynamicBottomGradientHook {
         }
         HookRuntime.preferences().registerOnSharedPreferenceChangeListener(configChanges)
         configListener = configChanges
-        module.log(Log.INFO, "HyperBackgroundBars", "Split action bar gradient installed")
     }
 
     private fun installBottomNavigator(module: XposedModule, loader: ClassLoader) {
@@ -353,7 +340,6 @@ internal object DynamicBottomGradientHook {
                 }
             }
         }
-        module.log(Log.INFO, "HyperBackgroundBars", "BottomNavigator gradient hook installed package=${HookRuntime.targetPackage}")
     }
 
     private fun discoverSplit(type: Class<*>, loader: ClassLoader): Pair<Field, Method>? {

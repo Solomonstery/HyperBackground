@@ -161,6 +161,7 @@ internal object DynamicActionBarHook {
                     if (bar != null && enabled() && owned.containsKey(bar)) null else chain.proceed()
                 }
         }
+        module.log(Log.INFO, TAG, "Action bar installed mask=${painter.name} alpha=${maskAlpha?.name} inline=$painterIsOnDraw")
     }
 
     /**
@@ -187,6 +188,7 @@ internal object DynamicActionBarHook {
                 (chain.thisObject as? ViewGroup)?.let(::syncButtons)
                 result
             }
+        module.log(Log.INFO, TAG, "Top bar button background hook installed")
     }
 
     private fun hookLifecycle(type: Class<*>) {

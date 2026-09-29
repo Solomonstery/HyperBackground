@@ -90,6 +90,12 @@ internal object CardSurfaceDetector {
     const val REASON_OUTER_CARD_SURFACE = "outer-card-surface"
     const val REASON_GROUP_LIST_ROW = "group-list-row"
 
+    /**
+     * 半透明卡片被接管时的回调（诊断用，可能为 null）。宿主把它接到去重日志上，
+     * 于是「哪些半透明面被当成卡片了」在真机上可直接回看。
+     */
+    var onTranslucentCard: ((View, Int) -> Unit)? = null
+
     /** 该视图是否是一个「自己带面」的独立卡片。 */
     fun looksLikeStandaloneCard(view: View): Boolean = probe(view) == null
 
@@ -116,6 +122,7 @@ internal object CardSurfaceDetector {
         if (!isCardShaped(view, background)) return REASON_NOT_CARD_SHAPED
         val alpha = strongestSurfaceAlpha(view, background)
         if (alpha < MIN_SHAPE_SURFACE_ALPHA) return REASON_TRANSPARENT_SURFACE
+        if (alpha < MIN_SURFACE_ALPHA) onTranslucentCard?.invoke(view, alpha)
         // 3) 同一条目内已经有更外层的卡片面 → 这一层是它的内容，不重复上材质。
         if (hasOuterCardSurface(view)) return REASON_OUTER_CARD_SURFACE
         return null

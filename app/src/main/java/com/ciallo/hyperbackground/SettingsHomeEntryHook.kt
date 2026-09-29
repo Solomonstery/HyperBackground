@@ -69,6 +69,7 @@ object SettingsHomeEntryHook {
                 runCatching { insertEntry(activity, classLoader, headers) }
                     .onFailure { log("[HyperBackground] settings entry insert failed: $it") }
             }
+            log("[HyperBackground] Installed settings home entry hook")
         } catch (error: Throwable) {
             log("[HyperBackground] Could not hook settings home entry: $error")
             log(error)
@@ -95,6 +96,7 @@ object SettingsHomeEntryHook {
             inheritAdjacentGroupId(headers, header, position)
         }
         headers.add(position, header)
+        log("[HyperBackground] Inserted settings home entry at $position")
     }
 
     private fun moduleLabel(context: Context): CharSequence = runCatching {
@@ -208,5 +210,6 @@ object SettingsHomeEntryHook {
             })
         }
         iconHookInstalled = overloads.isNotEmpty()
+        log("[HyperBackground] Hooked Resources.getDrawable for the settings entry icon")
     }
 }

@@ -107,6 +107,9 @@ internal object DynamicCardMaterialHook {
 
     fun install(value: XposedModule, classLoader: ClassLoader, prefs: SharedPreferences) {
         module = value
+        CardSurfaceDetector.onTranslucentCard = { view, alpha ->
+            DynamicCardBackgroundHook.logCandidate(view, "matched translucent-card alpha=$alpha")
+        }
         runCatching { installLayoutCompleteHook() }
             .onFailure { module.log(Log.WARN, TAG, "Dynamic layout-complete hook unavailable", it) }
         runCatching { installItemDecorationHook(classLoader) }
@@ -118,6 +121,10 @@ internal object DynamicCardMaterialHook {
             .onFailure { module.log(Log.WARN, TAG, "Dynamic floating bar hook unavailable", it) }
         runCatching { DynamicSearchMaterialHook.install(module, classLoader, prefs) }
             .onFailure { module.log(Log.WARN, TAG, "Dynamic search material hook unavailable", it) }
+        module.log(
+            Log.INFO, TAG,
+            "Dynamic card routing installed: decorations=$discoveredDecorations",
+        )
     }
 
     /**
@@ -141,6 +148,7 @@ internal object DynamicCardMaterialHook {
                 }
                 result
             }
+        module.log(Log.INFO, TAG, "Dynamic layout-complete hook installed")
     }
 
     /** Hook both AndroidX registration signatures, including R8-renamed builds. */
@@ -155,7 +163,7 @@ internal object DynamicCardMaterialHook {
             val preference = classLoader.loadClass("miuix.preference.PreferenceFragment")
             preference.declaredClasses.filter { decoration.isAssignableFrom(it) }
                 .forEach(::onDecorationAdded)
-        }
+        }.onFailure { module.log(Log.DEBUG, TAG, "Preference decoration discovery unavailable", it) }
         val methods = type.declaredMethods.filter {
             Modifier.isPublic(it.modifiers) && it.returnType == Void.TYPE &&
                 (it.parameterCount == 1 || it.parameterCount == 2 &&
@@ -184,13 +192,20 @@ internal object DynamicCardMaterialHook {
                     val inspected = runCatching {
                         val count = countMethod.invoke(recycler) as Int
                         val existing = decorations(recycler, type)
+                        val types = existing.map { it.javaClass.name }
+                        if (recycler.context.packageName == "com.xiaomi.account") {
+                            module.log(Log.INFO, TAG, "RecyclerView decorations: ${recycler.javaClass.name} " +
+                                "count=$count classes=${types.joinToString()} " +
+                                "group=${existing.any { DynamicCardBackgroundHook.isGroupDecoration(it.javaClass) }}")
+                        }
                         existing.forEach(::onDecorationAdded)
                         count > 0 && existing.size == count
-                    }
+                    }.onFailure { error -> module.log(Log.DEBUG, TAG, "Existing decorations unavailable", error) }
                     if (inspected.getOrDefault(false)) scanned[recycler] = Unit
                 }
                 chain.proceed()
             }
+        module.log(Log.INFO, TAG, "Dynamic ItemDecoration discovery installed: ${methods.size} registration method(s)")
     }
 
     /**
@@ -201,6 +216,10 @@ internal object DynamicCardMaterialHook {
     private fun onDecorationAdded(decoration: Any) {
         val type = decoration.javaClass
         synchronized(processed) { if (!processed.add(type)) return }
-        if (DynamicCardBackgroundHook.installDynamicDecoration(type)) discoveredDecorations++
+        if (DynamicCardBackgroundHook.installDynamicDecoration(type)) {
+            discoveredDecorations++
+        } else {
+            module.log(Log.DEBUG, TAG, "Dynamic decoration skipped: ${type.name}")
+        }
     }
 }

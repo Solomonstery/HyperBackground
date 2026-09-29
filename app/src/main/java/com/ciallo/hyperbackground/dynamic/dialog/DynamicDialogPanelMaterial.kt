@@ -5,6 +5,7 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.DrawableContainer
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
+import android.util.Log
 import android.view.View
 import com.ciallo.hyperbackground.HookRuntime
 import com.ciallo.hyperbackground.appearance.CARD_BACKGROUND_SOFT_GLASS
@@ -95,6 +96,7 @@ internal object DynamicDialogPanelMaterial {
         states[panel] = State(background, layers, before, listener, palette, contentFills)
         panel.addOnAttachStateChangeListener(listener)
         contentFills.update(panel)
+        module.log(Log.INFO, TAG, "Dialog glass applied: ${panel.javaClass.name}")
     }
 
     private fun restore(panel: View) {

@@ -88,6 +88,8 @@ internal object DynamicCardBackgroundHook {
     private val decorationClasses = Collections.synchronizedSet(LinkedHashSet<Class<*>>())
     /** 已挂过 hook 的分组裁剪方法，避免两条路径重复挂载同一个方法。 */
     private val hookedClipMethods = Collections.synchronizedSet(HashSet<String>())
+    /** 通用路由诊断日志的去重集合，见 [logCandidate]。 */
+    private val candidateLog = Collections.synchronizedSet(HashSet<String>())
     /** 动态路径 hook id 的序号，保证同一进程内每次挂载都拿到唯一 id。 */
     private var dynamicHookSeq = 0
     private val handler by lazy { Handler(Looper.getMainLooper()) }
@@ -105,6 +107,7 @@ internal object DynamicCardBackgroundHook {
         var failureLogged = false
         var frostFailureLogged = false
         var glassFailureLogged = false
+        var lastBranch = -1
     }
 
     private class State(val access: Access) {
@@ -189,11 +192,17 @@ internal object DynamicCardBackgroundHook {
         if (!groupHooks) {
             // 只做自绘卡片（applyCustomCardMaterial）的进程：调色板 + 刷新监听足够。
             // 分组 hook 是每帧绘制路径，接管范围之外的进程一律不装，避免拖慢整页加载。
+            module.log(Log.INFO, TAG, "Card material runtime: palette only, group hooks skipped")
             return
         }
         // 纯动态路由：所有按字面类名 / 资源名认目标的 hook 都不装。分组装饰器由
         // DynamicCardMaterialHook 从 RecyclerView.addItemDecoration 现场发现；
         // 独立卡片由 CardSurfaceDetector 按「这一行自己画了什么面」判定。
+        module.log(
+            Log.INFO, TAG,
+            "Card material runtime: dynamic routing " +
+                "bionicsApi=${DynamicSoftGlassDrawable.hasBionicsApi()}",
+        )
         if (standalone) {
             runCatching { installStandaloneCards(classLoader) }
                 .onFailure { module.log(Log.WARN, TAG, "Standalone Settings card hook unavailable", it) }
@@ -440,6 +449,7 @@ internal object DynamicCardBackgroundHook {
                 }
                 result
             }
+        module.log(Log.INFO, TAG, "Installed standalone card material routing")
     }
 
     private fun applyStandalone(view: View) {
@@ -476,6 +486,13 @@ internal object DynamicCardBackgroundHook {
             System.identityHashCode(state.original),
         )
         if (state.signature == signature && state.applied === view.background) return
+
+        if (view is Button) {
+            logCandidate(view, "button-native geometry " +
+                "size=${view.width}x${view.height} padding=${state.originalPadding} " +
+                "nativeMin=${state.originalMinimumHeight} drawableMin=${state.original?.minimumHeight} " +
+                "radius=${originalCardRadius(view, state.original)}")
+        }
 
         clearStandaloneMaterial(view, state)
         restoreCardOutline(view, state)
@@ -543,6 +560,9 @@ internal object DynamicCardBackgroundHook {
         }
         state.applied = view.background
         state.signature = signature
+        if (view is Button) logCandidate(view, "button-applied " +
+            "size=${view.width}x${view.height} min=${view.minimumWidth}x${view.minimumHeight} " +
+            "material=${state.material} background=${view.background?.javaClass?.name}")
         view.invalidate()
     }
 
@@ -626,9 +646,14 @@ internal object DynamicCardBackgroundHook {
         if (isSearchSurface(view)) return null
         val reason = CardSurfaceDetector.probe(view)
         if (reason != null) {
+            // 尺寸不足 / 没有自己的背景是正常行为，不打日志；其余「自己有面却被拦下」
+            // 的原因（透明面 / 负向词 / 非卡片形状 / 外层卡面）都值得记录，用来定位漏判。
+            if (CardSurfaceDetector.isNearMiss(reason)) logCandidate(view, "near-miss $reason")
             return null
         }
-        return CardSurfaceDetector.key(view)
+        val key = CardSurfaceDetector.key(view)
+        logCandidate(view, "matched key=$key")
+        return key
     }
 
     private fun isSearchSurface(view: View): Boolean {
@@ -941,6 +966,21 @@ internal object DynamicCardBackgroundHook {
         states.getOrPut(owner) { State(access) }
     }
 
+    private fun logMaterialBranch(access: Access, context: Context, glass: Boolean, frost: Boolean) {
+        val branch = when {
+            glass -> 2
+            frost -> 1
+            else -> 0
+        }
+        if (access.lastBranch == branch) return
+        access.lastBranch = branch
+        module.log(Log.INFO, TAG, when (branch) {
+            2 -> "Card material branch: soft glass (${DynamicSoftGlassDrawable.bionicsDiagnostics(context)})"
+            1 -> "Card material branch: frost (Gaussian path)"
+            else -> "Card material branch: flat color"
+        })
+    }
+
     private fun update(owner: Any, state: State, context: Context, nativeResolved: Boolean = false) {
         val access = state.access
         if (state.failed) return
@@ -986,6 +1026,7 @@ internal object DynamicCardBackgroundHook {
                 && groupClipAvailable
                 && DynamicSoftGlassDrawable.isBionicsActive(context)
             val useFrost = !useGlass && colors.mode != CARD_BACKGROUND_COLOR && groupClipAvailable
+            logMaterialBranch(access, context, useGlass, useFrost)
             val glassy = useGlass || useFrost
             val color = if (glassy) {
                 if (dark) colors.darkFrost else colors.lightFrost
@@ -1094,6 +1135,22 @@ internal object DynamicCardBackgroundHook {
     internal fun onViewLaidOut(view: View) {
         if (!palette.enabledFor(HookRuntime.targetPackage)) return
         if (view.width <= 0 || view.height <= 0) return
+        if (view.javaClass.name == "miuix.flexible.view.HyperCellLayout") {
+            val parent = view.parent as? View
+            val recycler = generateSequence(parent) { it.parent as? View }
+                .take(6).firstOrNull { it.javaClass.name.contains("RecyclerView") }
+            logCandidate(view, "cell-probe ${CardSurfaceDetector.probe(view)} " +
+                "bg=${view.background?.javaClass?.name} radius=${CardSurfaceDetector.nativeCornerRadius(view)} " +
+                "parent=${parent?.javaClass?.simpleName} parentBg=${parent?.background?.javaClass?.name} " +
+                "decorated=${recycler?.let(DynamicCardMaterialHook::hasGroupDecoration)}")
+        }
+        if (view is android.widget.LinearLayout &&
+            (view.parent as? View)?.javaClass?.name?.contains("RecyclerView") == true) {
+            val recycler = view.parent as View
+            logCandidate(view, "row-probe ${CardSurfaceDetector.probe(view)} " +
+                "bg=${view.background?.javaClass?.name} radius=${CardSurfaceDetector.nativeCornerRadius(view)} " +
+                "decorated=${DynamicCardMaterialHook.hasGroupDecoration(recycler)}")
+        }
         // Recheck tracked views as well: recycled rows can acquire a RecyclerView parent
         // after their initial attach and must leave the standalone material route.
         if (synchronized(standaloneStates) { standaloneStates[view] }?.applied != null) {
@@ -1129,6 +1186,12 @@ internal object DynamicCardBackgroundHook {
             hookClipMethod(clip)
             groupClipAvailable = true
             routingAvailable = true
+            module.log(
+                Log.INFO, TAG,
+                "Dynamic group decoration: ${type.name} " +
+                    "drawable=${access.drawable.type.simpleName} " +
+                    "factory=${access.factory?.name ?: "-"}",
+            )
             true
         }.getOrElse { error ->
             module.log(Log.WARN, TAG, "Dynamic group decoration failed: ${type.name}", error)
@@ -1233,6 +1296,29 @@ internal object DynamicCardBackgroundHook {
         "dyn${dynamicHookSeq++}"
     }
 
+    /**
+     * 通用路由的接管 / 近失诊断日志：按「原因 + 类名 + 资源名」去重并全局封顶，
+     * 既能在日志里回答「这张卡到底接管了没、被哪条规则拦下」，又不会在列表页刷屏
+     * （每类视图最多一行）。
+     */
+    internal fun logCandidate(view: View, detail: String) {
+        val id = if (view.id == View.NO_ID || view.id == 0) "-" else {
+            runCatching { view.resources.getResourceEntryName(view.id) }.getOrNull() ?: "-"
+        }
+        val key = "$detail|${view.javaClass.name}|$id"
+        synchronized(candidateLog) {
+            if (key in candidateLog || candidateLog.size >= CANDIDATE_LOG_LIMIT) return
+            candidateLog.add(key)
+        }
+        module.log(
+            Log.INFO, TAG,
+            "Standalone $detail class=${view.javaClass.simpleName} id=$id " +
+                "size=${view.width}x${view.height}",
+        )
+    }
+
+    /** 通用路由诊断日志每种视图最多记几行，防止在长列表页刷屏。 */
+    private const val CANDIDATE_LOG_LIMIT = 60
     private const val STANDALONE_MATERIAL_NONE = 0
     private const val STANDALONE_MATERIAL_FROST = 1
     private const val STANDALONE_MATERIAL_GLASS = 2

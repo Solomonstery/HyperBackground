@@ -18,7 +18,6 @@ import android.graphics.drawable.Drawable
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.View
-import android.view.ViewGroup
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 import java.lang.reflect.Method
@@ -52,30 +51,12 @@ internal class DynamicSoftGlassDrawable(
     private val context = context.applicationContext
     private val tint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nodes = ArrayList<GlassNode>()
-    private val keyedNodes = HashMap<GroupKey, GlassNode>()
     private val retiredNodes = ArrayList<GlassNode>()
     private var host: WeakReference<View>? = null
-    private var groupMethodOwner: Class<*>? = null
-    private var groupMethod: Method? = null
-    private var recyclerAccessOwner: Class<*>? = null
-    private var adapterGetter: Method? = null
-    private var childPositionGetter: Method? = null
-    private var itemIdOwner: Class<*>? = null
-    private var itemIdGetter: Method? = null
     private var cursor = 0
     private var config = SoftGlassParams()
     private var density = 1f
     private var failed = false
-
-    private enum class NodeMatch {
-        FRESH,
-        CONTINUE,
-        TOP_TRIMMED,
-        BOTTOM_TRIMMED,
-        DIFFERENT,
-    }
-
-    private data class GroupKey(val groupId: Int, val firstItemId: Long)
 
     fun configure(color: Int, value: SoftGlassParams, density: Float) {
         // The reference maps transparency to shader channel 14 as a percentage scale of the
@@ -104,23 +85,18 @@ internal class DynamicSoftGlassDrawable(
     }
 
     override fun drawGroup(canvas: Canvas, rect: RectF, path: Path) {
-        if (rect.isEmpty) return
+                if (rect.isEmpty) return
         val api = glassApi
         if (canvas.isHardwareAccelerated && api != null && !failed) {
             try {
                 val requestedHeight = ceil(rect.height()).toInt().coerceAtLeast(1)
-                val key = resolveGroupKey(rect)
-                val existing = if (key != null) keyedNodes[key] else nodes.getOrNull(cursor)
-                val match = existing?.match(rect, requestedHeight) ?: NodeMatch.FRESH
-                val node = if (existing != null && match != NodeMatch.DIFFERENT) {
-                    existing
+                val node = if (cursor < nodes.size && nodes[cursor].canReuse(rect, requestedHeight)) {
+                    nodes[cursor]
                 } else {
                     val replacement = GlassNode(context, api)
-                    if (key != null) {
-                        existing?.let(retiredNodes::add)
-                        keyedNodes[key] = replacement
-                    } else if (cursor < nodes.size) {
+                    if (cursor < nodes.size) {
                         val previous = nodes[cursor]
+                        replacement.seedFrom(previous)
                         retiredNodes += previous
                         nodes[cursor] = replacement
                     } else {
@@ -128,16 +104,8 @@ internal class DynamicSoftGlassDrawable(
                     }
                     replacement
                 }
-                if (key == null) cursor++
-                node.draw(
-                    canvas,
-                    rect,
-                    path,
-                    config,
-                    density,
-                    tint.color,
-                    if (node === existing) match else NodeMatch.FRESH,
-                )
+                cursor++
+                node.draw(canvas, rect, path, config, density, tint.color)
                 return
             } catch (error: Throwable) {
                 failed = true
@@ -173,101 +141,9 @@ internal class DynamicSoftGlassDrawable(
     private fun releaseNodes() {
         nodes.forEach(GlassNode::clear)
         nodes.clear()
-        keyedNodes.values.forEach(GlassNode::clear)
-        keyedNodes.clear()
         retiredNodes.forEach(GlassNode::clear)
         retiredNodes.clear()
         cursor = 0
-        groupMethodOwner = null
-        groupMethod = null
-        recyclerAccessOwner = null
-        adapterGetter = null
-        childPositionGetter = null
-        itemIdOwner = null
-        itemIdGetter = null
-    }
-
-    /**
-     * CardItemDecoration draws one material path for each contiguous adapter group. Resolve that
-     * group from the child intersecting [rect], then use the first item's stable id to distinguish
-     * repeated group ids. Hook-inserted Settings headers therefore keep their own GlassNode even
-     * when adding/removing them changes the visible draw order.
-     */
-    private fun resolveGroupKey(rect: RectF): GroupKey? {
-        val recycler = host?.get() as? ViewGroup ?: return null
-        val (getAdapter, getChildPosition) = recyclerAccess(recycler.javaClass) ?: return null
-        val adapter = runCatching { getAdapter.invoke(recycler) }.getOrNull() ?: return null
-        var position = NO_POSITION
-        var bestOverlap = 0f
-        for (index in 0 until recycler.childCount) {
-            val child = recycler.getChildAt(index)
-            val overlap = minOf(rect.bottom, child.y + child.height) - maxOf(rect.top, child.y)
-            if (overlap > bestOverlap) {
-                val candidate = runCatching {
-                    getChildPosition.invoke(recycler, child) as? Int
-                }.getOrNull() ?: NO_POSITION
-                if (candidate != NO_POSITION) {
-                    bestOverlap = overlap
-                    position = candidate
-                }
-            }
-        }
-        if (position == NO_POSITION) return null
-
-        val method = groupMethod(adapter.javaClass) ?: return null
-        fun groupAt(index: Int): Int? = runCatching {
-            method.invoke(adapter, index) as? Int
-        }.getOrNull()
-        val groupId = groupAt(position) ?: return null
-        if (groupId == Int.MIN_VALUE) return null
-
-        var first = position
-        while (first > 0 && groupAt(first - 1) == groupId) first--
-        val getItemId = itemIdMethod(adapter.javaClass)
-        val firstItemId = getItemId?.let { method ->
-            runCatching { method.invoke(adapter, first) as? Long }.getOrNull()
-        } ?: first.toLong()
-        return GroupKey(groupId, firstItemId)
-    }
-
-    private fun recyclerAccess(type: Class<*>): Pair<Method, Method>? {
-        if (recyclerAccessOwner !== type) {
-            adapterGetter = type.methods.firstOrNull { method ->
-                method.name == "getAdapter" && method.parameterCount == 0
-            }?.apply { isAccessible = true }
-            childPositionGetter = type.methods.firstOrNull { method ->
-                method.name == "getChildAdapterPosition" && method.parameterCount == 1 &&
-                    View::class.java.isAssignableFrom(method.parameterTypes[0]) &&
-                    method.returnType == Int::class.javaPrimitiveType
-            }?.apply { isAccessible = true }
-            recyclerAccessOwner = type
-        }
-        val adapter = adapterGetter ?: return null
-        val childPosition = childPositionGetter ?: return null
-        return adapter to childPosition
-    }
-
-    private fun itemIdMethod(type: Class<*>): Method? {
-        if (itemIdOwner === type) return itemIdGetter
-        itemIdGetter = type.methods.firstOrNull { method ->
-            method.name == "getItemId" && method.parameterCount == 1 &&
-                method.parameterTypes[0] == Int::class.javaPrimitiveType &&
-                method.returnType == Long::class.javaPrimitiveType
-        }?.apply { isAccessible = true }
-        itemIdOwner = type
-        return itemIdGetter
-    }
-
-    private fun groupMethod(type: Class<*>): Method? {
-        if (groupMethodOwner === type) return groupMethod
-        val resolved = type.methods.firstOrNull { method ->
-            method.name == "getItemViewGroup" && method.parameterCount == 1 &&
-                method.parameterTypes[0] == Int::class.javaPrimitiveType &&
-                method.returnType == Int::class.javaPrimitiveType
-        }?.apply { isAccessible = true }
-        groupMethodOwner = type
-        groupMethod = resolved
-        return resolved
     }
 
     private fun activateHostBlurSurface(view: View) {
@@ -297,67 +173,43 @@ internal class DynamicSoftGlassDrawable(
         private var outlineHeight = 0
         private var outlineInitialized = false
         private var outlineApplied = false
-        private var outlineAnchor = OutlineAnchor.NONE
+        private var minimumWidth = 0
+        private var minimumHeight = 0
         private var active = false
 
         private var lastTop = Float.NaN
         private var lastBottom = Float.NaN
 
-        private var lastRequestedHeight = 0
-
-        private enum class OutlineAnchor { NONE, TOP, BOTTOM }
-
-        /**
-         * Decide whether the draw-order slot still represents the same card. MIUIX rebuilds a
-         * group path from attached rows, so recycling the first/last row changes only one edge.
-         * A real slot hand-off moves both edges to another card and must start with a clean outline.
-         */
-        fun match(rect: RectF, requestedHeight: Int): NodeMatch {
-            if (lastRequestedHeight == 0 || lastTop.isNaN() || lastBottom.isNaN()) {
-                return NodeMatch.CONTINUE
-            }
-            val topDelta = rect.top - lastTop
-            val bottomDelta = rect.bottom - lastBottom
-            val edgeDifference = abs(topDelta - bottomDelta)
-            val referenceHeight = minOf(lastRequestedHeight, requestedHeight).coerceAtLeast(1)
-            val movementLimit = maxOf(96f, referenceHeight * 0.35f)
-            val edgeTolerance = maxOf(24f, referenceHeight * 0.08f)
-            val heightDelta = requestedHeight - lastRequestedHeight
-
-            if (heightDelta < -1 && edgeDifference > edgeTolerance) {
-                if (abs(bottomDelta) <= movementLimit) return NodeMatch.TOP_TRIMMED
-                if (abs(topDelta) <= movementLimit) return NodeMatch.BOTTOM_TRIMMED
-                return NodeMatch.DIFFERENT
-            }
-            if (outlineAnchor == OutlineAnchor.BOTTOM && abs(bottomDelta) <= movementLimit * 2f) {
-                return NodeMatch.CONTINUE
-            }
-            if (outlineAnchor == OutlineAnchor.TOP && abs(topDelta) <= movementLimit * 2f) {
-                return NodeMatch.CONTINUE
-            }
-            if (abs(heightDelta) <= 2 && edgeDifference <= edgeTolerance) {
-                return NodeMatch.CONTINUE
-            }
-            if (abs(topDelta) <= movementLimit && abs(bottomDelta) <= movementLimit) {
-                return NodeMatch.CONTINUE
-            }
-            return NodeMatch.DIFFERENT
+        fun canReuse(rect: RectF, requestedHeight: Int): Boolean {
+            if (lastRequestedHeight == 0) return true
+            if (requestedHeight < lastRequestedHeight - 64) return false
+            if (lastTop.isNaN() || lastBottom.isNaN()) return true
+            // A normal scroll moves both edges by a small, similar amount. A slot that has
+            // shifted from one card to another jumps by roughly a whole card height.
+            val movementLimit = maxOf(96f, requestedHeight * 0.35f)
+            return abs(rect.top - lastTop) <= movementLimit &&
+                abs(rect.bottom - lastBottom) <= movementLimit
         }
 
-        fun draw(
-            canvas: Canvas,
-            rect: RectF,
-            path: Path,
-            config: SoftGlassParams,
-            density: Float,
-            tintColor: Int,
-            match: NodeMatch,
-        ) {
+        private var lastRequestedHeight = 0
+
+        fun seedFrom(previous: GlassNode) {
+            localPath.set(previous.localPath)
+            outlineHeight = previous.outlineHeight
+            outlineInitialized = previous.outlineInitialized
+            minimumWidth = previous.width
+            minimumHeight = previous.height
+        }
+
+        fun draw(canvas: Canvas, rect: RectF, path: Path, config: SoftGlassParams, density: Float, tintColor: Int) {
             val requestedWidth = ceil(rect.width()).toInt().coerceAtLeast(1)
             val requestedHeight = ceil(rect.height()).toInt().coerceAtLeast(1)
+            lastRequestedHeight = requestedHeight
+            lastTop = rect.top
+            lastBottom = rect.bottom
             try {
-                val w = maxOf(width, requestedWidth)
-                val h = maxOf(height, requestedHeight)
+                val w = maxOf(width, requestedWidth, minimumWidth)
+                val h = maxOf(height, requestedHeight, minimumHeight)
                 if (width != w || height != h) {
                     // Keep both the bridge's View geometry and its native node in sync.
                     bridge.layout(0, 0, w, h)
@@ -394,25 +246,20 @@ internal class DynamicSoftGlassDrawable(
                     height = h
                     color = tintColor
                 }
-                when (match) {
-                    NodeMatch.TOP_TRIMMED -> outlineAnchor = OutlineAnchor.BOTTOM
-                    NodeMatch.BOTTOM_TRIMMED -> outlineAnchor = OutlineAnchor.TOP
-                    NodeMatch.FRESH, NodeMatch.DIFFERENT -> outlineAnchor = OutlineAnchor.NONE
-                    NodeMatch.CONTINUE -> Unit
-                }
-                // Preserve a complete outline while MIUIX temporarily rebuilds the group from
-                // fewer attached rows. Anchor the unchanged edge instead of placing the cached
-                // outline at the shortened rect.top: otherwise its lower shader edge falls below
-                // the current clip and the bottom highlight disappears.
-                val preserveOutline = outlineInitialized && requestedHeight < outlineHeight &&
-                    outlineAnchor != OutlineAnchor.NONE
-                val outlineChanged = !preserveOutline
+                // Always keep the complete card outline in node-local coordinates. When the
+                // card top is negative, only the Canvas placement is clamped; clipping or
+                // shortening this outline removes Bionics' full-shape refraction input.
+                // CardItemDecoration rebuilds the group path from the remaining visible rows.
+                // When the first row leaves the viewport, that path becomes shorter even though
+                // it is still the same card. Bionics uses the RenderNode outline for refraction;
+                // replacing it with the shortened path drops refraction while leaving the edge
+                // highlight. Keep the last complete outline whenever the supplied group shrinks.
+                val outlineChanged = !outlineInitialized || requestedHeight > outlineHeight
                 if (outlineChanged) {
                     localPath.set(path)
                     localPath.offset(-rect.left, -rect.top)
                     outlineHeight = requestedHeight
                     outlineInitialized = true
-                    outlineAnchor = OutlineAnchor.NONE
                 }
                 if (outlineChanged || !outlineApplied) {
                     outline.setPath(localPath)
@@ -426,18 +273,11 @@ internal class DynamicSoftGlassDrawable(
                 try {
                     // Keep the same Canvas sequence as the working frost drawable.
                     canvas.clipPath(path)
-                    val drawTop = when (outlineAnchor) {
-                        OutlineAnchor.BOTTOM -> rect.bottom - outlineHeight
-                        OutlineAnchor.TOP, OutlineAnchor.NONE -> rect.top
-                    }
-                    canvas.translate(rect.left, drawTop)
+                    canvas.translate(rect.left, rect.top)
                     canvas.drawRenderNode(node)
                 } finally {
                     canvas.restoreToCount(checkpoint)
                 }
-                lastRequestedHeight = requestedHeight
-                lastTop = rect.top
-                lastBottom = rect.bottom
             } catch (error: Throwable) {
                 clear()
                 throw error
@@ -464,7 +304,8 @@ internal class DynamicSoftGlassDrawable(
             outlineHeight = 0
             outlineInitialized = false
             outlineApplied = false
-            outlineAnchor = OutlineAnchor.NONE
+            minimumWidth = 0
+            minimumHeight = 0
             lastRequestedHeight = 0
             lastTop = Float.NaN
             lastBottom = Float.NaN
@@ -484,6 +325,12 @@ internal class DynamicSoftGlassDrawable(
     )
 
     companion object {
+        /**
+         * setMiViewMaterialType/setMiGlass exist only on HyperOS 4's Bionics builds; their
+         * absence marks the whole material unavailable and the card hook stays on frost.
+         */
+        fun hasBionicsApi(): Boolean = glassApi != null
+
         /**
          * Full gate the system itself uses before rendering Bionics glass
          * (HyperMaterialUtils.isGlassReady): the hardware property, the background-blur
@@ -505,6 +352,14 @@ internal class DynamicSoftGlassDrawable(
             activeCheckedAt = now
             return bionicsActive
         }
+
+        /** Fresh values for the module log; shows which gate blocks rendering, if any. */
+        fun bionicsDiagnostics(context: Context): String = runCatching {
+            val resolver = context.contentResolver
+            "api=${glassApi != null} bionicProp=${bionicMaterialSupported()} " +
+                "blurEnable=${Settings.Secure.getInt(resolver, "background_blur_enable", 0)} " +
+                "materialStyle=${Settings.Secure.getInt(resolver, "material_style", -1)}"
+        }.getOrDefault("diagnostics unavailable")
 
         /**
          * Apply the same Bionics material parameters directly to a real, attached widget.
@@ -662,7 +517,6 @@ internal class DynamicSoftGlassDrawable(
          * giving up. 8 covers "inflated but not attached yet" plus a few dropped frames.
          */
         private const val READY_RETRIES = 8
-        private const val NO_POSITION = -1
         private const val HOST_SURFACE_ACTIVE = "hyperbackground_glass_host_surface_active"
         @Volatile private var bionicsActive = false
         @Volatile private var activeCheckedAt = 0L

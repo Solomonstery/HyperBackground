@@ -4,6 +4,7 @@ import android.content.SharedPreferences
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.View
 import com.ciallo.hyperbackground.appearance.ComponentKeys
 import com.ciallo.hyperbackground.appearance.KEY_APP_COMPONENT_DISABLED
@@ -123,5 +124,6 @@ internal object DynamicFloatingBarHook {
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
+        module.log(Log.INFO, TAG, "Suspended MIUIX action menu material hook installed")
     }
 }

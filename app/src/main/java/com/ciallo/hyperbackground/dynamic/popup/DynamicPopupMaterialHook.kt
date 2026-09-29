@@ -98,6 +98,7 @@ internal object DynamicPopupMaterialHook {
             .onFailure { module.log(Log.WARN, TAG, "DialogParentPanel2 hook unavailable", it) }
         runCatching { installListSurfaceHook(loader) }
             .onFailure { module.log(Log.WARN, TAG, "MIUIX list popup hook unavailable", it) }
+        module.log(Log.INFO, TAG, "MIUIX popup hook installed for ${loader.javaClass.name}")
     }
 
     private fun installPopupViewHook(loader: ClassLoader) {
@@ -230,6 +231,9 @@ internal object DynamicPopupMaterialHook {
                 .invoke(view, view.context.packageName) as? Boolean
         }.getOrNull() ?: return false
         deniedWindowBlur[view] = !whitelisted
+        if (!whitelisted) module.log(Log.INFO, TAG,
+            "Popup skipped: pass-window blur denied view=${view.javaClass.name} " +
+                "background=${view.background?.javaClass?.name} alpha=${view.background?.alpha}")
         return !whitelisted
     }
 
@@ -374,6 +378,7 @@ internal object DynamicPopupMaterialHook {
             replacement.setTintList(null)
             glass[view] = false
         }
+        module.log(Log.INFO, TAG, "Popup color fallback: ${view.javaClass.name}@${System.identityHashCode(view).toString(16)} original=${original?.javaClass?.name} mode=${config.mode}")
     }
 
     private fun restoreBackground(view: View) {
